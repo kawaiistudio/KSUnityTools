@@ -52,6 +52,8 @@ namespace KawaiiStudio
         const int MAX_ATLAS_COUNT = 64;
         const string DISCORD_URL = "https://discord.gg/xAeJrSAgqG";
         const string LOGO_URL = "https://github.com/kawaiistudio/KSUnityTools/blob/main/logo_v2.png?raw=true";
+        const string SHADER_PATH = "Assets/Kawaii Studio/Shaders/KSVideoDecoder.shader";
+        const string DEFAULT_OUTPUT_PATH = "Assets/Kawaii Studio/Videos"; // MODIFIÉ
         
         // Variables principales
         private string inputVideoPath = "";
@@ -84,7 +86,7 @@ namespace KawaiiStudio
         private bool saveAsJPEG = false;
         private int jpegQuality = 90;
         private bool loopAnimation = true;
-        private bool generateMipmaps = true;
+        private bool generateMipmaps = false;
         
         // Custom Material
         private bool useCustomMaterial = false;
@@ -187,7 +189,7 @@ namespace KawaiiStudio
             redTexture = MakeTex(2, 2, new Color(1f, 0.278f, 0.341f, 1f));
             blackTexture = MakeTex(2, 2, new Color(0.039f, 0.039f, 0.059f, 1f));
             greenTexture = MakeTex(2, 2, new Color(0f, 1f, 0.255f, 1f));
-            discordTexture = MakeTex(2, 2, new Color(0.345f, 0.396f, 0.949f, 1f)); // Discord blurple
+            discordTexture = MakeTex(2, 2, new Color(0.345f, 0.396f, 0.949f, 1f));
 
             headerStyle = new GUIStyle(EditorStyles.boldLabel)
             {
@@ -247,7 +249,7 @@ namespace KawaiiStudio
         
         private void FindFFMPEG()
         {
-            string[] guids = AssetDatabase.FindAssets("ffmpeg");
+            string[] guids = AssetDatabase.FindAssets("ffmpeg t:folder");
             foreach (string guid in guids)
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
@@ -261,10 +263,27 @@ namespace KawaiiStudio
             ffmpegPath = Path.Combine(Application.dataPath, "ThirdParty", "FFMPEG");
         }
         
+        // MODIFIÉ : Nouveau chemin par défaut avec création automatique du dossier
         private void LoadPreferences()
         {
             lastOpenedDirectory = EditorPrefs.GetString("KawaiiStudio.VideoAnimator.LastDirectory", Application.dataPath);
-            outputDirectory = EditorPrefs.GetString("KawaiiStudio.VideoAnimator.OutputDirectory", "Assets/Animations");
+            outputDirectory = EditorPrefs.GetString("KawaiiStudio.VideoAnimator.OutputDirectory", DEFAULT_OUTPUT_PATH);
+            
+            // Créer le dossier par défaut s'il n'existe pas
+            if (!AssetDatabase.IsValidFolder(DEFAULT_OUTPUT_PATH))
+            {
+                // Créer "Assets/Kawaii Studio" si nécessaire
+                if (!AssetDatabase.IsValidFolder("Assets/Kawaii Studio"))
+                {
+                    AssetDatabase.CreateFolder("Assets", "Kawaii Studio");
+                }
+                
+                // Créer "Assets/Kawaii Studio/Videos"
+                AssetDatabase.CreateFolder("Assets/Kawaii Studio", "Videos");
+                
+                outputDirectory = DEFAULT_OUTPUT_PATH;
+                SavePreferences();
+            }
         }
         
         private void SavePreferences()
@@ -278,10 +297,8 @@ namespace KawaiiStudio
         {
             InitializeStyles();
             
-            // Background
             EditorGUI.DrawRect(new Rect(0, 0, position.width, position.height), new Color(0.102f, 0.059f, 0.122f, 1f));
             
-            // Logo en haut à gauche
             DrawLogo();
             
             scrollPosition = GUILayout.BeginScrollView(scrollPosition);
@@ -328,7 +345,6 @@ namespace KawaiiStudio
                 Rect logoRect = new Rect(10, 10, 60, 60);
                 GUI.DrawTexture(logoRect, logoTexture, ScaleMode.ScaleToFit);
                 
-                // Bouton Discord à côté du logo
                 Rect discordRect = new Rect(80, 20, 120, 40);
                 if (GUI.Button(discordRect, "💬 Discord", discordButtonStyle))
                 {
@@ -339,7 +355,7 @@ namespace KawaiiStudio
         
         private void DrawHeader()
         {
-            GUILayout.Space(logoTexture != null ? 50 : 0); // Space for logo
+            GUILayout.Space(logoTexture != null ? 50 : 0);
             GUILayout.Label("⚡ VIDEO ANIMATOR v2.0 ⚡", headerStyle);
             
             GUIStyle subtitleStyle = new GUIStyle(EditorStyles.label)
@@ -446,11 +462,11 @@ namespace KawaiiStudio
                     
                     if (customMaterial == null)
                     {
-                        EditorGUILayout.HelpBox("If there is no custom material, the built-in Unlit/Texture will be used", MessageType.Info);
+                        EditorGUILayout.HelpBox("If there is no custom material, KSVideoDecoder shader will be used", MessageType.Info);
                     }
                     else if (customShaderTextures.Names.Length == 0)
                     {
-                        EditorGUILayout.HelpBox("Shader has not 2D textures, the built-in Unlit/Texture will be used", MessageType.Warning);
+                        EditorGUILayout.HelpBox("Shader has not 2D textures, KSVideoDecoder shader will be used", MessageType.Warning);
                     }
                     else
                     {
@@ -510,7 +526,7 @@ namespace KawaiiStudio
             
             if (atlasCount > MAX_ATLAS_COUNT && !useCustomMaterial)
             {
-                EditorGUILayout.HelpBox("Too much textures. Custom material will be used as a fallback", MessageType.Warning);
+                EditorGUILayout.HelpBox("Too much textures (max 64). Consider using custom material or reducing video length.", MessageType.Warning);
             }
         }
         
@@ -550,9 +566,9 @@ namespace KawaiiStudio
         private void DrawProgressBar()
         {
             Rect rect = GUILayoutUtility.GetRect(position.width - 40, 24);
-            float progress = totalFrames > 0 ? (float)currentFrame / totalFrames : 0f;
+            float progress = totalFrames > 0 ? (float)(currentFrame + 1) / totalFrames : 0f;
             int percents = Mathf.FloorToInt(progress * 100f);
-            EditorGUI.ProgressBar(rect, progress, $"{percents}% Frame {currentFrame}/{totalFrames}");
+            EditorGUI.ProgressBar(rect, progress, $"{percents}% Frame {currentFrame + 1}/{totalFrames}");
         }
         
         private void DrawLog()
@@ -563,9 +579,8 @@ namespace KawaiiStudio
             };
             GUILayout.Label("[ CONVERSION LOG ]", logLabelStyle);
             
-            Vector2 scroll = GUILayout.BeginScrollView(scrollPosition, logStyle, GUILayout.Height(100));
+            GUILayout.BeginScrollView(scrollPosition, logStyle, GUILayout.Height(100));
             GUILayout.Label(logOutput, logStyle);
-            scrollPosition = scroll;
             GUILayout.EndScrollView();
         }
         
@@ -622,7 +637,7 @@ namespace KawaiiStudio
             if (!File.Exists(inputVideoPath))
                 return;
             
-            AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            AddLog("╔════════════════════════════════════");
             AddLog("🔍 Analyzing video...");
             
             videoInfo = GetVideoInfo(inputVideoPath);
@@ -633,24 +648,20 @@ namespace KawaiiStudio
                 timeEnd = videoInfo.Duration;
                 frameRate = Mathf.Min(30f, videoInfo.FrameRate);
                 
+                // MODIFIÉ : Créer le chemin dans Assets/Kawaii Studio/Videos/NomVideo
                 string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
-                string videoDir = Path.GetDirectoryName(inputVideoPath);
-                string childFolder = videoDir + "/" + videoName;
-                
-                if (childFolder.StartsWith(Application.dataPath))
-                {
-                    outputDirectory = "Assets" + childFolder.Substring(Application.dataPath.Length);
-                }
+                outputDirectory = DEFAULT_OUTPUT_PATH + "/" + videoName;
                 
                 AddLog($"✓ Video: {videoInfo.Width}x{videoInfo.Height}");
                 AddLog($"✓ Duration: {videoInfo.Duration:F2}s");
                 AddLog($"✓ Frame Rate: {videoInfo.FrameRate:F2} FPS");
-                AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                AddLog($"📁 Output: {outputDirectory}");
+                AddLog("╚════════════════════════════════════");
             }
             else
             {
                 AddLog("✗ Failed to analyze video!");
-                AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                AddLog("╚════════════════════════════════════");
             }
         }
         
@@ -708,17 +719,15 @@ namespace KawaiiStudio
 
         private string GetFFMPEGExecutable(string name)
         {
-            // Windows
             string exePath = Path.Combine(ffmpegPath, name + ".exe");
             if (File.Exists(exePath))
                 return exePath;
             
-            // Unix (macOS, Linux)
             string unixPath = Path.Combine(ffmpegPath, name);
             if (File.Exists(unixPath))
                 return unixPath;
             
-            return exePath; // Return Windows path as default
+            return exePath;
         }
         
         private float ParseFloatFromJson(string json, string key)
@@ -734,7 +743,6 @@ namespace KawaiiStudio
 
         private float ParseFrameRateFromJson(string json)
         {
-            // Parse r_frame_rate which can be "30/1" or "30000/1001"
             string pattern = "\"r_frame_rate\"\\s*:\\s*\"([0-9]+)/([0-9]+)\"";
             System.Text.RegularExpressions.Match match = System.Text.RegularExpressions.Regex.Match(json, pattern);
             if (match.Success)
@@ -970,20 +978,21 @@ namespace KawaiiStudio
                 return;
             }
             
-            if (string.IsNullOrEmpty(outputDirectory) || !AssetDatabase.IsValidFolder(outputDirectory))
+            if (string.IsNullOrEmpty(outputDirectory))
             {
                 EditorUtility.DisplayDialog("Error", "Please select a valid output folder in Assets!", "OK");
                 return;
             }
             
-            AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            AddLog("╔════════════════════════════════════");
             AddLog("🚀 Starting video conversion...");
-            AddLog($"📹 Input: {Path.GetFileName(inputVideoPath)}");
+            AddLog($"🎹 Input: {Path.GetFileName(inputVideoPath)}");
             AddLog($"⏱️ Duration: {FormatTime(timeEnd - timeStart)}");
             AddLog($"📊 Frames: {totalFrames} @ {frameRate} fps");
-            AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            AddLog("╚════════════════════════════════════");
             
             SetupConversion();
+            
             if (useAtlasMode)
             {
                 StartAtlasConversion();
@@ -997,15 +1006,37 @@ namespace KawaiiStudio
         private void SetupConversion()
         {
             string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
-            string basePath = outputDirectory + "/" + videoName;
             
-            if (!AssetDatabase.IsValidFolder(outputDirectory))
+            // MODIFIÉ : S'assurer que outputDirectory pointe vers Assets/Kawaii Studio/Videos/NomVideo
+            if (!outputDirectory.Contains(videoName))
             {
-                string parentFolder = Path.GetDirectoryName(outputDirectory);
-                string folderName = Path.GetFileName(outputDirectory);
-                AssetDatabase.CreateFolder(parentFolder, folderName);
+                outputDirectory = DEFAULT_OUTPUT_PATH + "/" + videoName;
             }
             
+            // Créer le dossier de sortie si nécessaire
+            if (!AssetDatabase.IsValidFolder(outputDirectory))
+            {
+                string[] folders = outputDirectory.Replace("Assets/", "").Replace("Assets", "").Split('/');
+                string currentPath = "Assets";
+                
+                foreach (string folder in folders)
+                {
+                    if (string.IsNullOrEmpty(folder)) continue;
+                    
+                    string newPath = currentPath + "/" + folder;
+                    if (!AssetDatabase.IsValidFolder(newPath))
+                    {
+                        AssetDatabase.CreateFolder(currentPath, folder);
+                    }
+                    currentPath = newPath;
+                }
+                outputDirectory = currentPath;
+            }
+            
+            // MODIFIÉ : Les fichiers sont maintenant dans le dossier de la vidéo
+            string basePath = outputDirectory + "/" + videoName;
+            
+            // Créer les textures placeholder
             atlasPaths.Clear();
             string extension = saveAsJPEG ? "jpg" : "png";
             byte[] placeholderBytes = saveAsJPEG ? Texture2D.blackTexture.EncodeToJPG(jpegQuality) : Texture2D.blackTexture.EncodeToPNG();
@@ -1019,6 +1050,7 @@ namespace KawaiiStudio
             
             AssetDatabase.Refresh();
             
+            // Configurer les importeurs de texture
             AssetDatabase.StartAssetEditing();
             try
             {
@@ -1053,10 +1085,9 @@ namespace KawaiiStudio
                 return;
             }
             
-            string filename = EscapeFilterGraph(EscapeFilterOption(inputVideoPath));
             string arguments = string.Format(CultureInfo.InvariantCulture,
                 "-nostdin -ss {1} -to {2} -i \"{0}\" -filter_complex \"fps=fps={5}, format=pix_fmts=rgb24, scale={3}x{4}:flags=area:out_range=full, vflip\" -f rawvideo -frames {6} pipe:1",
-                filename, timeStart, timeEnd, actualFrameSize.x, actualFrameSize.y, frameRate, totalFrames);
+                inputVideoPath, timeStart, timeEnd, actualFrameSize.x, actualFrameSize.y, frameRate, totalFrames);
             
             try
             {
@@ -1104,10 +1135,10 @@ namespace KawaiiStudio
             string extension = saveAsJPEG ? "jpg" : "png";
             string quality = saveAsJPEG ? $"-qscale:v {QualityToQScale(jpegQuality)}" : "";
             
-            string filename = EscapeFilterGraph(EscapeFilterOption(inputVideoPath));
+            string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
             string arguments = string.Format(CultureInfo.InvariantCulture,
-                "-nostdin -y -ss {1} -to {2} -i \"{0}\" -filter_complex \"fps=fps={5}, format=pix_fmts=rgb24, scale={3}x{4}:flags=area:out_range=full\" -f image2 -start_number 0 -frames {6} {7} \"{8}/{9} %d.{10}\"",
-                filename, timeStart, timeEnd, actualFrameSize.x, actualFrameSize.y, frameRate, totalFrames, quality, outputDirectory, Path.GetFileNameWithoutExtension(inputVideoPath), extension);
+                "-nostdin -y -ss {1} -to {2} -i \"{0}\" -filter_complex \"fps=fps={5}, format=pix_fmts=rgb24, scale={3}x{4}:flags=area:out_range=full\" -f image2 -start_number 0 -frames {6} {7} \"{8}/{9} Atlas %d.{10}\"",
+                inputVideoPath, timeStart, timeEnd, actualFrameSize.x, actualFrameSize.y, frameRate, totalFrames, quality, outputDirectory, videoName, extension);
             
             try
             {
@@ -1149,18 +1180,28 @@ namespace KawaiiStudio
             {
                 int position = 0;
                 int bytes = 0;
-                while (position < bytesPerFrame)
+                
+                try
                 {
-                    bytes = ffmpegStream.Read(imageDataBuffer, position, bytesPerFrame - position);
-                    if (bytes == 0)
-                        break;
-                    position += bytes;
+                    while (position < bytesPerFrame)
+                    {
+                        bytes = ffmpegStream.Read(imageDataBuffer, position, bytesPerFrame - position);
+                        if (bytes == 0)
+                            break;
+                        position += bytes;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AddLog($"✗ Stream read error: {ex.Message}");
+                    StopEncoding();
+                    return;
                 }
                 
                 bool endOfStream = bytes == 0;
                 bool flushAtlas = false;
                 
-                if (bytes > 0)
+                if (position == bytesPerFrame)
                 {
                     currentFrame++;
                     
@@ -1200,31 +1241,43 @@ namespace KawaiiStudio
         
         private void FlushCurrentAtlas(bool endOfStream)
         {
-            outputTexture.Apply();
-            
-            byte[] bytes;
-            if (saveAsJPEG)
+            try
             {
-                bytes = outputTexture.EncodeToJPG(jpegQuality);
+                outputTexture.Apply();
+                
+                byte[] bytes;
+                if (saveAsJPEG)
+                {
+                    bytes = outputTexture.EncodeToJPG(jpegQuality);
+                }
+                else
+                {
+                    bytes = outputTexture.EncodeToPNG();
+                }
+                
+                File.WriteAllBytes(atlasPaths[currentAtlas], bytes);
+                AddLog($"✓ Atlas {currentAtlas + 1}/{atlasCount} saved");
+                
+                if (endOfStream)
+                {
+                    StopEncoding();
+                    EditorApplication.delayCall += () =>
+                    {
+                        AssetDatabase.Refresh();
+                        AddLog("✅ Atlas conversion completed!");
+                        FinalizeConversion();
+                    };
+                }
+                else
+                {
+                    ClearCurrentAtlas();
+                    currentAtlas++;
+                }
             }
-            else
+            catch (Exception ex)
             {
-                bytes = outputTexture.EncodeToPNG();
-            }
-            
-            File.WriteAllBytes(atlasPaths[currentAtlas], bytes);
-            
-            if (endOfStream)
-            {
+                AddLog($"✗ Error flushing atlas: {ex.Message}");
                 StopEncoding();
-                AssetDatabase.Refresh();
-                AddLog("✅ Atlas conversion completed!");
-                FinalizeConversion();
-            }
-            else
-            {
-                ClearCurrentAtlas();
-                currentAtlas++;
             }
         }
         
@@ -1243,6 +1296,8 @@ namespace KawaiiStudio
             isEncoding = false;
             currentFrame = 0;
             
+            EditorApplication.update -= UpdateFFMPEGEncoding;
+            
             if (ffmpegProcess != null)
             {
                 try
@@ -1257,7 +1312,11 @@ namespace KawaiiStudio
             
             if (ffmpegStream != null)
             {
-                ffmpegStream.Dispose();
+                try
+                {
+                    ffmpegStream.Dispose();
+                }
+                catch { }
                 ffmpegStream = null;
             }
             
@@ -1266,15 +1325,12 @@ namespace KawaiiStudio
                 DestroyImmediate(outputTexture);
                 outputTexture = null;
             }
-            
-            EditorApplication.update -= UpdateFFMPEGEncoding;
         }
         
         private void OnFFMPEGError(object sender, DataReceivedEventArgs e)
         {
             if (e.Data != null && !string.IsNullOrEmpty(e.Data))
             {
-                // Only log important errors, skip progress info
                 if (e.Data.Contains("Error") || e.Data.Contains("Invalid") || e.Data.Contains("failed"))
                 {
                     AddLog($"⚠️ FFMPEG: {e.Data}");
@@ -1284,29 +1340,49 @@ namespace KawaiiStudio
         
         private void OnFFMPEGExited(object sender, EventArgs e)
         {
-            StopEncoding();
-            AddLog("✅ FFMPEG process completed.");
+            EditorApplication.delayCall += () =>
+            {
+                if (isEncoding)
+                {
+                    StopEncoding();
+                    AddLog("✅ FFMPEG process completed.");
+                }
+            };
         }
         
         private void OnFFMPEGFrameExited(object sender, EventArgs e)
         {
             StopEncoding();
-            AssetDatabase.Refresh();
-            AddLog("✅ Frame conversion completed!");
-            FinalizeConversion();
+            EditorApplication.delayCall += () =>
+            {
+                AssetDatabase.Refresh();
+                AddLog("✅ Frame conversion completed!");
+                FinalizeConversion();
+            };
         }
         
         private void FinalizeConversion()
         {
-            string basePath = outputDirectory + "/" + Path.GetFileNameWithoutExtension(inputVideoPath);
-            
-            AnimationClip animClip = CreateAnimationClip(basePath);
-            GameObject videoPrefab = CreateVideoPrefab(basePath, animClip);
-            
-            Selection.activeObject = videoPrefab;
-            
-            AddLog($"🎉 Conversion finished! Prefab created at: {basePath}.prefab");
-            EditorUtility.DisplayDialog("Success! 🎉", "Video conversion completed successfully!", "OK");
+            try
+            {
+                string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
+                string basePath = outputDirectory + "/" + videoName;
+                
+                AddLog("📦 Creating animation assets...");
+                
+                AnimationClip animClip = CreateAnimationClip(basePath);
+                GameObject videoPrefab = CreateVideoPrefab(basePath, animClip);
+                
+                Selection.activeObject = videoPrefab;
+                
+                AddLog($"🎉 Conversion finished! Prefab created at: {basePath}.prefab");
+                EditorUtility.DisplayDialog("Success! 🎉", "Video conversion completed successfully!\n\nPrefab: " + basePath + ".prefab", "OK");
+            }
+            catch (Exception ex)
+            {
+                AddLog($"✗ Error finalizing: {ex.Message}");
+                EditorUtility.DisplayDialog("Error", "Failed to finalize conversion: " + ex.Message, "OK");
+            }
         }
         
         private AnimationClip CreateAnimationClip(string basePath)
@@ -1333,7 +1409,7 @@ namespace KawaiiStudio
             }
             else
             {
-                AnimateAtlasDecoder(anim, basePath);
+                AnimateKSVideoDecoder(anim, basePath);
             }
             
             EditorUtility.SetDirty(anim);
@@ -1358,12 +1434,12 @@ namespace KawaiiStudio
             }
         }
         
-        private void AnimateAtlasDecoder(AnimationClip anim, string basePath)
+        private void AnimateKSVideoDecoder(AnimationClip anim, string basePath)
         {
-            Shader decoderShader = CreateAtlasDecoderShader();
+            Shader decoderShader = AssetDatabase.LoadAssetAtPath<Shader>(SHADER_PATH);
             if (decoderShader == null)
             {
-                AddLog("✗ Failed to create decoder shader!");
+                AddLog("✗ KSVideoDecoder shader not found at: " + SHADER_PATH);
                 return;
             }
             
@@ -1387,7 +1463,10 @@ namespace KawaiiStudio
             {
                 string texProp = i == 0 ? "_MainTex" : $"_MainTex{i}";
                 Texture2D tex = AssetDatabase.LoadAssetAtPath<Texture2D>(atlasPaths[i]);
-                mat.SetTexture(texProp, tex);
+                if (tex != null)
+                {
+                    mat.SetTexture(texProp, tex);
+                }
             }
             
             float timeLength = totalFrames / frameRate;
@@ -1397,147 +1476,13 @@ namespace KawaiiStudio
             EditorUtility.SetDirty(mat);
         }
         
-        private Shader CreateAtlasDecoderShader()
-        {
-            string shaderDir = "Assets/Shaders";
-            string shaderPath = shaderDir + "/VideoAtlasDecoder.shader";
-            
-            Shader existingShader = AssetDatabase.LoadAssetAtPath<Shader>(shaderPath);
-            if (existingShader != null)
-            {
-                return existingShader;
-            }
-            
-            if (!AssetDatabase.IsValidFolder(shaderDir))
-            {
-                AssetDatabase.CreateFolder("Assets", "Shaders");
-            }
-            
-            string shaderCode = GetAtlasDecoderShaderCode();
-            File.WriteAllText(shaderPath, shaderCode);
-            AssetDatabase.Refresh();
-            
-            return AssetDatabase.LoadAssetAtPath<Shader>(shaderPath);
-        }
-
-        private string GetAtlasDecoderShaderCode()
-        {
-            return @"Shader ""Kawaii Studio/Video Atlas Decoder""
-{
-    Properties
-    {
-        _MainTex (""Atlas 0"", 2D) = ""white"" {}
-        _MainTex1 (""Atlas 1"", 2D) = ""white"" {}
-        _MainTex2 (""Atlas 2"", 2D) = ""white"" {}
-        _MainTex3 (""Atlas 3"", 2D) = ""white"" {}
-        _MainTex4 (""Atlas 4"", 2D) = ""white"" {}
-        _MainTex5 (""Atlas 5"", 2D) = ""white"" {}
-        _MainTex6 (""Atlas 6"", 2D) = ""white"" {}
-        _MainTex7 (""Atlas 7"", 2D) = ""white"" {}
-        _FrameRate (""Frame Rate"", Float) = 30
-        _AtlasSizeX (""Atlas Size X"", Float) = 4
-        _AtlasSizeY (""Atlas Size Y"", Float) = 4
-        _CustomTime (""Custom Time"", Float) = 0
-    }
-    
-    SubShader
-    {
-        Tags { ""RenderType""=""Opaque"" }
-        LOD 100
-
-        Pass
-        {
-            CGPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
-            #include ""UnityCG.cginc""
-
-            struct appdata
-            {
-                float4 vertex : POSITION;
-                float2 uv : TEXCOORD0;
-            };
-
-            struct v2f
-            {
-                float2 uv : TEXCOORD0;
-                float4 vertex : SV_POSITION;
-            };
-
-            sampler2D _MainTex;
-            sampler2D _MainTex1;
-            sampler2D _MainTex2;
-            sampler2D _MainTex3;
-            sampler2D _MainTex4;
-            sampler2D _MainTex5;
-            sampler2D _MainTex6;
-            sampler2D _MainTex7;
-            float _FrameRate;
-            float _AtlasSizeX;
-            float _AtlasSizeY;
-            float _CustomTime;
-
-            v2f vert (appdata v)
-            {
-                v2f o;
-                o.vertex = UnityObjectToClipPos(v.vertex);
-                o.uv = v.uv;
-                return o;
-            }
-
-            fixed4 frag (v2f i) : SV_Target
-            {
-                float currentFrame = floor(_CustomTime * _FrameRate);
-                float framesPerAtlas = _AtlasSizeX * _AtlasSizeY;
-                float atlasIndex = floor(currentFrame / framesPerAtlas);
-                float frameInAtlas = fmod(currentFrame, framesPerAtlas);
-                
-                float column = fmod(frameInAtlas, _AtlasSizeX);
-                float row = floor(frameInAtlas / _AtlasSizeX);
-                
-                float2 atlasUV = i.uv;
-                atlasUV.x = (column + i.uv.x) / _AtlasSizeX;
-                atlasUV.y = ((_AtlasSizeY - 1 - row) + i.uv.y) / _AtlasSizeY;
-                
-                fixed4 col = fixed4(0, 0, 0, 1);
-                
-                if (atlasIndex < 0.5)
-                    col = tex2D(_MainTex, atlasUV);
-                else if (atlasIndex < 1.5)
-                    col = tex2D(_MainTex1, atlasUV);
-                else if (atlasIndex < 2.5)
-                    col = tex2D(_MainTex2, atlasUV);
-                else if (atlasIndex < 3.5)
-                    col = tex2D(_MainTex3, atlasUV);
-                else if (atlasIndex < 4.5)
-                    col = tex2D(_MainTex4, atlasUV);
-                else if (atlasIndex < 5.5)
-                    col = tex2D(_MainTex5, atlasUV);
-                else if (atlasIndex < 6.5)
-                    col = tex2D(_MainTex6, atlasUV);
-                else if (atlasIndex < 7.5)
-                    col = tex2D(_MainTex7, atlasUV);
-                
-                return col;
-            }
-            ENDCG
-        }
-    }
-}";
-        }
-        
         private GameObject CreateVideoPrefab(string basePath, AnimationClip anim)
         {
             string prefabPath = basePath + ".prefab";
-            GameObject existingPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-            
-            if (existingPrefab != null)
-            {
-                DestroyImmediate(existingPrefab);
-            }
+            string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
             
             GameObject tempObj = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            tempObj.name = Path.GetFileNameWithoutExtension(inputVideoPath) + " Video";
+            tempObj.name = videoName + " Video";
             tempObj.transform.localScale = new Vector3(videoInfo.AspectRatio, 1, 1);
             
             DestroyImmediate(tempObj.GetComponent<MeshCollider>());
@@ -1712,8 +1657,6 @@ namespace KawaiiStudio
             int globalFrame = 0;
             for (int atlasIdx = 0; atlasIdx < atlasCount && globalFrame < totalFrames; atlasIdx++)
             {
-                int framesInThisAtlas = Mathf.Min(framesPerAtlas, totalFrames - globalFrame);
-                
                 int frameY = 0;
                 for (int y = slices.y - 1; y >= 0 && globalFrame < totalFrames; y--, frameY++)
                 {
