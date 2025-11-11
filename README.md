@@ -1,7 +1,9 @@
+<div align="center">
+
+![Kawaii Studio Banner](https://github.com/kawaiistudio/KSUnityTools/blob/main/logo%20KS.png)
+
 # 🎨 KS Unity Tools
 ### *Professional VRChat Avatar Optimization Suite*
-
-<div align="center">
 
 ![Version](https://img.shields.io/badge/version-1.1-7c3aed?style=for-the-badge)
 ![Unity](https://img.shields.io/badge/Unity-2019.4+-ff4757?style=for-the-badge)
@@ -264,11 +266,13 @@ If this tool saved you hours of manual optimization:
 - ⭐ Star the repository
 - 🐦 Share with fellow VRChat creators
 - 💬 Join the discussion in Issues/Discussions
-- ☕ [Buy me a coffee](https://ko-fi.com/kawaiistudio) *(optional)*
+- ☕ [Buy me a coffee](https://ko-fi.com/laylakitsune) *(optional)*
 
 ---
 
 <div align="center">
+
+<img src="https://github.com/kawaiistudio/KSUnityTools/blob/main/logo_v2.png" alt="Kawaii Studio Logo" width="120"/>
 
 ### ⚡ Made with 💜 by Kawaii Studio
 
