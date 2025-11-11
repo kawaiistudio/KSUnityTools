@@ -3,14 +3,14 @@
 ![Kawaii Studio Banner](https://github.com/kawaiistudio/KSUnityTools/blob/main/logo%20KS.png)
 
 # 🎨 KS Unity Tools
-### *Professional VRChat Avatar Optimization Suite*
+### *Professional VRChat Avatar & Video Optimization Suite*
 
-![Version](https://img.shields.io/badge/version-1.1-7c3aed?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-2.0-7c3aed?style=for-the-badge)
 ![Unity](https://img.shields.io/badge/Unity-2019.4+-ff4757?style=for-the-badge)
 ![VRChat](https://img.shields.io/badge/VRChat-SDK_3.0+-00ff41?style=for-the-badge)
 ![License](https://img.shields.io/badge/license-MIT-7c3aed?style=for-the-badge)
 
-**Transform your VRChat avatars from bloated to blazing fast** ⚡
+**Transform your VRChat avatars and videos from bloated to blazing fast** ⚡
 
 [Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [Screenshots](#-screenshots)
 
@@ -25,19 +25,45 @@ Transform heavy avatars into optimized masterpieces with surgical precision:
 
 - **🔍 Smart Texture Analysis** - Instantly scan and list every texture in your prefab with detailed memory metrics
 - **📊 Real-Time Size Comparison** - See "Before" vs "After" optimization stats side-by-side in MB/GB
-- **⚡ Batch Optimization** - Apply compression settings to multiple textures simultaneously
-- **🎯 Granular Control** - Individual texture selection with resolution, compression format, and mipmap info
+- **⚡ Batch Optimization** - Apply compression settings to multiple textures and audio files simultaneously
+- **🎯 Granular Control** - Individual texture/audio selection with resolution, compression format, and mipmap info
 - **💾 Memory Tracking** - Track both file size (disk) and runtime memory usage
 - **🔧 Mesh Compression** - FBX mesh optimization with vertex/triangle count display
 - **📈 Smart Compression** - DXT1/BC1 Crunch compression with adjustable quality (0-100)
 - **🎨 Custom Max Size** - Set texture limits: 128, 256, 512, 1024, 2048, 4096
+- **🎵 Audio Compression** - Vorbis/ADPCM compression with quality control and sample rate optimization
 - **📋 Detailed Logging** - Real-time console output showing every optimization step
 
 **Perfect for:**
 - Reducing avatar file sizes by 50-80%
 - Meeting VRChat performance rank requirements (Good/Excellent)
 - Lowering VRAM usage for better FPS in crowded worlds
+- Compressing audio files for smaller builds
 - Quick iteration during avatar development
+
+---
+
+### 🎬 **Video Animator** - *The Video Texture Wizard*
+Convert videos into optimized Unity texture animations with texture atlas technology:
+
+- **🎥 Video to Texture Atlas** - Automatically converts videos into efficient texture atlases
+- **📐 Smart Atlas Packing** - Optimizes frame layout for minimal VRAM usage
+- **🎨 Multiple Compression Formats** - PNG with Crunch compression or JPEG with quality control
+- **⚡ Custom Shader Integration** - Built-in KSVideoDecoder shader or use your own materials
+- **🎞️ Flexible Frame Control** - Adjust resolution, frame rate, and time range
+- **📊 VRAM Calculator** - Real-time memory usage estimation
+- **🔄 Loop & Audio Support** - Seamless looping with synchronized AudioClip playback
+- **📦 Complete Prefab Generation** - Auto-creates prefab, material, animation, and animator controller
+- **🎯 Organized Output** - Each video gets its own subfolder: `Assets/Kawaii Studio/Videos/VideoName/`
+- **🖼️ Atlas Size Control** - Set maximum atlas dimensions (512-8192px)
+- **📹 FFMPEG Integration** - Built-in video processing with preview support
+
+**Perfect for:**
+- Creating animated textures for VRChat worlds
+- Converting video backgrounds into optimized animations
+- Building video screens and displays in Unity
+- Reducing video memory footprint with atlas compression
+- Syncing video animations with audio tracks
 
 ---
 
@@ -91,6 +117,7 @@ Seamlessly convert GLB models to VRChat-ready FBX with automatic material setup:
 3. **Analyze Assets**
    - Click `🔍 SCAN PREFAB` to generate a complete asset inventory
    - Review texture resolutions, compression formats, and memory usage
+   - Check audio clip sample rates, channels, and compression formats
    - Check mesh vertex/triangle counts and current compression settings
    
 4. **Configure Optimization**
@@ -101,12 +128,19 @@ Seamlessly convert GLB models to VRChat-ready FBX with automatic material setup:
      - **Crunch Quality:** Fine-tune compression (0-100, higher = better quality)
      - **Generate Mipmaps:** Toggle for distance-based LOD
    
+   - **Audio Settings:**
+     - **Load Type:** Decompress On Load / Compressed In Memory / Streaming
+     - **Compression Format:** PCM / Vorbis / ADPCM
+     - **Quality:** 1-100 for Vorbis compression
+     - **Sample Rate:** Preserve / Override (8000-48000 Hz)
+     - **Force To Mono:** Convert stereo to mono for smaller size
+   
    - **Mesh Settings:**
      - **Mesh Compression:** Off/Low/Medium/High
      - Automatically enables polygon and vertex optimization
    
 5. **Select Assets**
-   - Use checkboxes to select individual textures/meshes
+   - Use checkboxes to select individual textures/audio/meshes
    - Or click "Select All" / "Select None" for batch operations
    - Expand categories with ▶/▼ arrows to see full lists
    
@@ -114,13 +148,64 @@ Seamlessly convert GLB models to VRChat-ready FBX with automatic material setup:
    - Click `🚀 OPTIMIZE` to apply settings instantly
    - Watch the console log for real-time progress
    - See memory savings calculated automatically
-   - Review "Size After Opt." column for per-texture results
+   - Review "Size After Opt." column for per-asset results
 
 7. **Review Results**
    - Compare "Original Size" vs "Size After Opt." columns
    - Check percentage saved indicators (e.g., "-67.3%")
    - Read the optimization log for detailed changes
    - Test avatar in VRChat to verify performance improvements
+
+---
+
+### 🎬 Video Animator Workflow
+
+1. **Launch the Tool**
+   - Navigate to `Kawaii Studio > Video Animator` in Unity's menu
+   
+2. **Select Video File**
+   - Click `Browse (...)` next to "Video" field
+   - Select your video file (MP4, MOV, AVI, WebM, MKV, etc.)
+   - Tool automatically analyzes duration, fps, and resolution
+   
+3. **Configure Settings**
+   - **Frame Size:** Set output texture resolution (e.g., 512x512)
+   - **Frame Rate:** Adjust playback speed (1-60 fps)
+   - **Time Range:** Use slider to trim video start/end points
+   - **Audio:** Optionally add an AudioClip for synchronized playback
+   
+4. **Advanced Settings**
+   - **Loop Animation:** Enable seamless video looping
+   - **Crunch Compression:** Enable for smaller texture sizes
+   - **Use Atlases:** Pack frames into texture atlases (recommended)
+   - **Single Atlas:** Force all frames into one texture
+   - **Limit Atlas Size:** Set max atlas dimensions (512-8192px)
+   - **Save as JPEG:** Use JPEG instead of PNG (smaller but lossy)
+   - **Custom Material:** Use your own shader instead of KSVideoDecoder
+   
+5. **Preview & Convert**
+   - Click `Preview` to test settings with FFMPEG player
+   - Click `Create Animation` to start conversion
+   - Watch progress bar and console log
+   - Output saved to `Assets/Kawaii Studio/Videos/VideoName/`
+   
+6. **Use the Prefab**
+   - Drag generated prefab into your scene
+   - Video plays automatically with Animator component
+   - Audio syncs if AudioClip was provided
+   - Adjust scale to match video aspect ratio
+
+**Output Structure:**
+```
+Assets/Kawaii Studio/Videos/VideoName/
+├── VideoName.prefab          (Ready-to-use video quad)
+├── VideoName.mat             (Material with textures)
+├── VideoName.anim            (Animation clip)
+├── VideoName.controller      (Animator controller)
+├── VideoName Atlas 0.png     (Texture atlas frames)
+├── VideoName Atlas 1.png
+└── ...
+```
 
 ---
 
@@ -166,19 +251,38 @@ Seamlessly convert GLB models to VRChat-ready FBX with automatic material setup:
 **What You're Looking At:**
 - **Top Section:** Clean purple-themed interface with avatar selection
 - **Texture Compression Settings:** Granular control over max size, compression type, crunch settings, and mipmaps
+- **Audio Compression Settings:** Load type, compression format, quality, sample rate control
 - **Texture List (Collapsible):** Every texture with resolution, original size, optimized size, and percentage saved
+- **Audio List (Collapsible):** All audio clips with sample rate, channels, format, and size tracking
 - **Mesh Compression Settings:** FBX mesh optimization with compression level selector
 - **Mesh List (Collapsible):** All meshes with vertex/triangle counts and individual compression options
 - **Optimize Button:** One-click batch processing with real-time counter
 - **Console Log:** Live output showing each optimization step with color-coded status messages
 - **Memory Tracking:** Real-time display of disk size (MB) and runtime VRAM usage
 
+---
+
+### Video Animator Interface
+![Video Animator Interface](https://github.com/kawaiistudio/KSUnityTools/blob/main/Video-Animator.png)
+
+**What You're Looking At:**
+- **Video Input:** File browser with automatic video analysis
+- **Audio Support:** Optional AudioClip field for synchronized playback
+- **Frame Settings:** Resolution and frame rate controls with real-time preview
+- **Time Range:** Min/max slider to trim video clips
+- **Advanced Settings:** Atlas configuration, compression options, custom materials
+- **Statistics Panel:** Real-time VRAM calculation and optimization warnings
+- **Output Folder:** Automatic subfolder creation per video
+- **Preview & Convert Buttons:** Test settings before final conversion
+- **Progress Bar:** Live encoding progress with frame counter
+- **Console Log:** Detailed conversion steps and FFMPEG output
+
 **Key Visual Elements:**
-- 🟣 Purple accents for headers and branding
+- 🟣 Purple headers for section organization
 - 🔴 Red action buttons for primary operations
-- 🟢 Green success indicators and console text
-- ⚫ Black console background for readability
-- Clean checkbox selection system for individual assets
+- 🟢 Green success indicators and statistics
+- ⚫ Dark console background for readability
+- Organized folder structure display
 
 ---
 
@@ -194,20 +298,6 @@ Seamlessly convert GLB models to VRChat-ready FBX with automatic material setup:
 - **Console Output:** Live streaming of Blender's conversion process
 - **Clean UI:** Minimal distractions, maximum functionality
 
-**Key Visual Elements:**
-- 🟣 Purple headers for section organization
-- 🔴 Red convert button for immediate action
-- 🟢 Green console text showing live Blender output
-- ⚫ Dark theme for reduced eye strain
-- Persistent settings automatically saved between sessions
-
-**Workflow Highlights:**
-- One-time Blender setup with auto-detection
-- Three clicks to convert: Browse GLB → Browse Output → Convert
-- Real-time feedback during 10-30 second conversion
-- Automatic material node setup (no manual Blender work needed)
-- Organized output structure for easy Unity import
-
 ---
 
 ## 🛠️ System Requirements
@@ -217,6 +307,7 @@ Seamlessly convert GLB models to VRChat-ready FBX with automatic material setup:
 | **Unity** | 2019.4 or newer |
 | **VRChat SDK** | 3.0 or later (for Prefab Optimizer) |
 | **Blender** | 2.8+ (for GLB Converter) |
+| **FFMPEG** | Latest version (for Video Animator) |
 | **OS** | Windows, macOS, or Linux |
 | **.NET** | 4.x or later |
 
@@ -224,7 +315,17 @@ Seamlessly convert GLB models to VRChat-ready FBX with automatic material setup:
 
 ## 📝 Changelog
 
-### v1.1 (Current Release)
+### v2.0 (Current Release)
+- ✨ **NEW:** Video Animator tool with texture atlas generation
+- ✨ **NEW:** Audio compression optimizer with Vorbis/ADPCM support
+- 🎨 Improved UI consistency across all tools
+- 📊 Enhanced memory tracking with VRAM calculations
+- 🔧 Better FFMPEG integration for video processing
+- 📁 Automatic subfolder organization for videos
+- 🐛 Fixed audio import parameter bugs
+- 🏷️ Updated version labels to v2.0
+
+### v1.1
 - ✨ Added "After Optimization" estimated size display
 - 🎨 Improved UI colors for better readability (purple/red/green theme)
 - 🏷️ Added version label to header (`v1.1`)
