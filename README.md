@@ -1,4 +1,3 @@
-
 ### Method 2: Manual Installation
 1. Download the latest release from [Releases](https://github.com/kawaiistudio/KSUnityTools/releases)
 2. Extract the files
@@ -7,18 +6,21 @@
 ---
 
 ## 🎮 Usage
-
 1. **Open the Tool**
-- Go to `Kawaii Studio > VRChat Optimizer` in the Unity menu  
+   - Go to `Kawaii Studio > VRChat Optimizer` in the Unity menu  
+
 2. **Select Your Prefab**
-- Drag and drop your avatar prefab in the input field  
+   - Drag and drop your avatar prefab in the input field  
+
 3. **Analyze**
-- Click `🔍 SCAN PREFAB` to list all textures used  
+   - Click `🔍 SCAN PREFAB` to list all textures used  
+
 4. **Optimize**
-- Adjust texture settings, compression, and max size  
-- Click `🚀 OPTIMIZE` to apply all settings instantly  
+   - Adjust texture settings, compression, and max size  
+   - Click `🚀 OPTIMIZE` to apply all settings instantly  
+
 5. **Compare**
-- See “Before” and “After Optimization” sizes side-by-side in the UI  
+   - See "Before" and "After Optimization" sizes side-by-side in the UI  
 
 ---
 
@@ -35,7 +37,6 @@
 ---
 
 ## 🛠️ System Requirements
-
 - **Unity:** 2019.4 or newer  
 - **VRChat SDK:** 3.0 or later  
 - **OS:** Windows, macOS, or Linux  
@@ -46,7 +47,7 @@
 ## 📝 Changelog
 
 ### v1.1 (Current)
-- Added “After Optimization” estimated size display  
+- Added "After Optimization" estimated size display  
 - Improved UI colors for clarity  
 - Added version label to header  
 - Fixed minor UI layout issues  
@@ -59,6 +60,4 @@
 ---
 
 ## 📄 License
-
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
-
