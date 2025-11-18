@@ -1,7 +1,7 @@
 // Kawaii Studio - Video Animator v2.0
 // Convertissez vos vidéos en animations texturées Unity
 // Tout-en-un : Pas besoin de shaders externes !
-
+VERSION = "2.0";
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -1766,3 +1766,4 @@ namespace KawaiiStudio
         }
     }
 }
+
