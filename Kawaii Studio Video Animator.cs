@@ -1059,3 +1059,5 @@ namespace KawaiiStudio
                 AddLog($"✗ Preview error: {ex.Message}");
             }
         }
+    }
+}
