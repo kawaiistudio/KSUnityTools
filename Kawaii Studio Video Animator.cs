@@ -1,7 +1,6 @@
 // Kawaii Studio - Video Animator v2.0
 // Convertissez vos vidéos en animations texturées Unity
-// Tout-en-un : Pas besoin de shaders externes !
-VERSION = "2.0";
+// Multi-language support via JSON files
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -17,6 +16,19 @@ using Debug = UnityEngine.Debug;
 
 namespace KawaiiStudio
 {
+    [Serializable]
+    public class VideoTranslationEntry
+    {
+        public string key;
+        public string value;
+    }
+
+    [Serializable]
+    public class VideoTranslationFile
+    {
+        public List<VideoTranslationEntry> entries;
+    }
+
     [Serializable]
     public struct VideoInfo
     {
@@ -48,12 +60,19 @@ namespace KawaiiStudio
     public class VideoAnimatorWindow : EditorWindow
     {
         // ========== CONFIGURATION ==========
+        const string VERSION = "2.0";
         const int MAX_TEXTURE_SIZE = 8192;
         const int MAX_ATLAS_COUNT = 64;
         const string DISCORD_URL = "https://discord.gg/xAeJrSAgqG";
         const string LOGO_URL = "https://github.com/kawaiistudio/KSUnityTools/blob/main/logo_v2.png?raw=true";
         const string SHADER_PATH = "Assets/Kawaii Studio/Shaders/KSVideoDecoder.shader";
-        const string DEFAULT_OUTPUT_PATH = "Assets/Kawaii Studio/Videos"; // MODIFIÉ
+        const string DEFAULT_OUTPUT_PATH = "Assets/Kawaii Studio/Videos";
+        const string LANGUAGES_FOLDER = "Assets/Kawaii Studio/Languages";
+        const string PREFS_LANGUAGE = "KawaiiStudio.Language";
+        
+        // Language
+        private Dictionary<string, string> translations = new Dictionary<string, string>();
+        private string currentLanguage = "en";
         
         // Variables principales
         private string inputVideoPath = "";
@@ -107,6 +126,7 @@ namespace KawaiiStudio
         
         // UI State
         private Vector2 scrollPosition;
+        private Vector2 logScrollPosition;
         private string logOutput = "";
         private bool showAdvancedSettings = false;
         private string lastOpenedDirectory = "";
@@ -130,7 +150,7 @@ namespace KawaiiStudio
         [MenuItem("Kawaii Studio/Video Animator")]
         public static void ShowWindow()
         {
-            VideoAnimatorWindow window = GetWindow<VideoAnimatorWindow>("Video Animator v2.0");
+            VideoAnimatorWindow window = GetWindow<VideoAnimatorWindow>("Video Animator");
             window.minSize = new Vector2(500, 700);
             window.Show();
         }
@@ -138,6 +158,7 @@ namespace KawaiiStudio
         // ========== INITIALISATION ==========
         private void OnEnable()
         {
+            LoadLanguage();
             FindFFMPEG();
             LoadPreferences();
             DownloadLogo();
@@ -154,6 +175,78 @@ namespace KawaiiStudio
         {
             if (isEncoding)
                 StopEncoding();
+        }
+
+        private void LoadLanguage()
+        {
+            currentLanguage = EditorPrefs.GetString(PREFS_LANGUAGE, "en");
+            translations.Clear();
+            
+            string jsonPath = Path.Combine(LANGUAGES_FOLDER, $"{currentLanguage}.json");
+            
+            if (File.Exists(jsonPath))
+            {
+                try
+                {
+                    string jsonContent = File.ReadAllText(jsonPath);
+                    VideoTranslationFile translationFile = JsonUtility.FromJson<VideoTranslationFile>(jsonContent);
+                    
+                    if (translationFile != null && translationFile.entries != null)
+                    {
+                        foreach (var entry in translationFile.entries)
+                        {
+                            if (!string.IsNullOrEmpty(entry.key) && !string.IsNullOrEmpty(entry.value))
+                            {
+                                translations[entry.key] = entry.value;
+                            }
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"Failed to load translations: {e.Message}");
+                    LoadFallbackTranslations();
+                }
+            }
+            else
+            {
+                LoadFallbackTranslations();
+            }
+        }
+
+        private void LoadFallbackTranslations()
+        {
+            translations = new Dictionary<string, string>
+            {
+                { "video_file", "Video" },
+                { "audio", "Audio" },
+                { "frame_size", "Frame size" },
+                { "frame_rate", "Frame rate" },
+                { "output_folder", "Output folder" },
+                { "advanced_settings", "Advanced settings" },
+                { "loop_animation", "Loop animation" },
+                { "create_animation", "CREATE ANIMATION" },
+                { "preview", "Preview" },
+                { "time", "Time" },
+                { "crunch_compression", "Crunch compression" },
+                { "use_custom_material", "Use custom material" },
+                { "material", "Material" },
+                { "save_jpeg", "Save in JPEG" },
+                { "quality", "Quality" },
+                { "use_atlases", "Use atlases" },
+                { "single_atlas", "Single atlas" },
+                { "limit_atlas_size", "Limit Atlas size" },
+                { "texture2d", "Texture2D" },
+                { "generate_mipmaps", "Generate Mipmaps" },
+                { "log", "CONVERSION LOG" }
+            };
+        }
+
+        private string T(string key)
+        {
+            if (translations.ContainsKey(key))
+                return translations[key];
+            return key;
         }
 
         private void DownloadLogo()
@@ -263,7 +356,6 @@ namespace KawaiiStudio
             ffmpegPath = Path.Combine(Application.dataPath, "ThirdParty", "FFMPEG");
         }
         
-        // MODIFIÉ : Nouveau chemin par défaut avec création automatique du dossier
         private void LoadPreferences()
         {
             lastOpenedDirectory = EditorPrefs.GetString("KawaiiStudio.VideoAnimator.LastDirectory", Application.dataPath);
@@ -272,15 +364,11 @@ namespace KawaiiStudio
             // Créer le dossier par défaut s'il n'existe pas
             if (!AssetDatabase.IsValidFolder(DEFAULT_OUTPUT_PATH))
             {
-                // Créer "Assets/Kawaii Studio" si nécessaire
                 if (!AssetDatabase.IsValidFolder("Assets/Kawaii Studio"))
                 {
                     AssetDatabase.CreateFolder("Assets", "Kawaii Studio");
                 }
-                
-                // Créer "Assets/Kawaii Studio/Videos"
                 AssetDatabase.CreateFolder("Assets/Kawaii Studio", "Videos");
-                
                 outputDirectory = DEFAULT_OUTPUT_PATH;
                 SavePreferences();
             }
@@ -356,7 +444,7 @@ namespace KawaiiStudio
         private void DrawHeader()
         {
             GUILayout.Space(logoTexture != null ? 50 : 0);
-            GUILayout.Label("⚡ VIDEO ANIMATOR v2.0 ⚡", headerStyle);
+            GUILayout.Label($"⚡ VIDEO ANIMATOR v{VERSION} ⚡", headerStyle);
             
             GUIStyle subtitleStyle = new GUIStyle(EditorStyles.label)
             {
@@ -373,7 +461,7 @@ namespace KawaiiStudio
         {
             GUILayout.BeginHorizontal();
             EditorGUI.BeginChangeCheck();
-            inputVideoPath = EditorGUILayout.TextField("Video", inputVideoPath);
+            inputVideoPath = EditorGUILayout.TextField(T("video_file"), inputVideoPath);
             if (EditorGUI.EndChangeCheck() && File.Exists(inputVideoPath))
             {
                 AnalyzeVideo();
@@ -397,12 +485,12 @@ namespace KawaiiStudio
         
         private void DrawAudioSection()
         {
-            audioClip = (AudioClip)EditorGUILayout.ObjectField("Audio", audioClip, typeof(AudioClip), false);
+            audioClip = (AudioClip)EditorGUILayout.ObjectField(T("audio"), audioClip, typeof(AudioClip), false);
         }
         
         private void DrawFrameSizeSection()
         {
-            targetFrameSize = EditorGUILayout.Vector2IntField("Frame size", targetFrameSize);
+            targetFrameSize = EditorGUILayout.Vector2IntField(T("frame_size"), targetFrameSize);
             if (videoInfo.IsValid)
             {
                 targetFrameSize.x = Mathf.Clamp(targetFrameSize.x, 32, videoInfo.FrameSize.x);
@@ -414,7 +502,7 @@ namespace KawaiiStudio
         {
             if (!videoInfo.IsValid) return;
             
-            EditorGUILayout.MinMaxSlider("Time", ref timeStart, ref timeEnd, 0f, videoInfo.Duration);
+            EditorGUILayout.MinMaxSlider(T("time"), ref timeStart, ref timeEnd, 0f, videoInfo.Duration);
             
             TimeSpan t1 = TimeSpan.FromSeconds(timeStart);
             TimeSpan t2 = TimeSpan.FromSeconds(timeEnd);
@@ -429,31 +517,31 @@ namespace KawaiiStudio
         {
             if (videoInfo.IsValid)
             {
-                frameRate = EditorGUILayout.Slider("Frame rate", frameRate, 1f, videoInfo.FrameRate);
+                frameRate = EditorGUILayout.Slider(T("frame_rate"), frameRate, 1f, videoInfo.FrameRate);
             }
             else
             {
-                frameRate = EditorGUILayout.Slider("Frame rate", frameRate, 1f, 60f);
+                frameRate = EditorGUILayout.Slider(T("frame_rate"), frameRate, 1f, 60f);
             }
         }
         
         private void DrawAdvancedSettings()
         {
-            showAdvancedSettings = EditorGUILayout.Foldout(showAdvancedSettings, "Advanced settings", true);
+            showAdvancedSettings = EditorGUILayout.Foldout(showAdvancedSettings, T("advanced_settings"), true);
             if (showAdvancedSettings)
             {
                 EditorGUI.indentLevel++;
                 
-                loopAnimation = EditorGUILayout.Toggle("Loop animation", loopAnimation);
-                useCrunchCompression = EditorGUILayout.Toggle("Crunch compression", useCrunchCompression);
+                loopAnimation = EditorGUILayout.Toggle(T("loop_animation"), loopAnimation);
+                useCrunchCompression = EditorGUILayout.Toggle(T("crunch_compression"), useCrunchCompression);
                 
-                useCustomMaterial = EditorGUILayout.Toggle("Use custom material", useCustomMaterial);
+                useCustomMaterial = EditorGUILayout.Toggle(T("use_custom_material"), useCustomMaterial);
                 if (useCustomMaterial)
                 {
                     EditorGUI.indentLevel++;
                     
                     EditorGUI.BeginChangeCheck();
-                    customMaterial = (Material)EditorGUILayout.ObjectField("Material", customMaterial, typeof(Material), false);
+                    customMaterial = (Material)EditorGUILayout.ObjectField(T("material"), customMaterial, typeof(Material), false);
                     if (EditorGUI.EndChangeCheck())
                     {
                         customShaderTextures = GetCustomShaderTextures(customMaterial);
@@ -470,28 +558,30 @@ namespace KawaiiStudio
                     }
                     else
                     {
-                        customShaderTexture = EditorGUILayout.Popup("Texture2D", customShaderTexture, customShaderTextures.Names);
+                        customShaderTexture = EditorGUILayout.Popup(T("texture2d"), customShaderTexture, customShaderTextures.Names);
                     }
                     
                     EditorGUI.indentLevel--;
                 }
                 
-                saveAsJPEG = EditorGUILayout.Toggle("Save in JPEG", saveAsJPEG);
+                saveAsJPEG = EditorGUILayout.Toggle(T("save_jpeg"), saveAsJPEG);
                 if (saveAsJPEG)
                 {
                     EditorGUI.indentLevel++;
-                    jpegQuality = EditorGUILayout.IntSlider("Quality", jpegQuality, 1, 100);
+                    jpegQuality = EditorGUILayout.IntSlider(T("quality"), jpegQuality, 1, 100);
                     EditorGUI.indentLevel--;
                 }
                 
-                useAtlasMode = EditorGUILayout.Toggle("Use atlases", useAtlasMode);
+                useAtlasMode = EditorGUILayout.Toggle(T("use_atlases"), useAtlasMode);
                 
                 EditorGUI.BeginDisabledGroup(!useAtlasMode);
-                useSingleAtlas = EditorGUILayout.Toggle("Single atlas", useSingleAtlas);
-                limitAtlasSize = EditorGUILayout.Vector2IntField("Limit Atlas size", limitAtlasSize);
+                useSingleAtlas = EditorGUILayout.Toggle(T("single_atlas"), useSingleAtlas);
+                limitAtlasSize = EditorGUILayout.Vector2IntField(T("limit_atlas_size"), limitAtlasSize);
                 limitAtlasSize.x = Mathf.Clamp(limitAtlasSize.x, 512, MAX_TEXTURE_SIZE);
                 limitAtlasSize.y = Mathf.Clamp(limitAtlasSize.y, 512, MAX_TEXTURE_SIZE);
                 EditorGUI.EndDisabledGroup();
+                
+                generateMipmaps = EditorGUILayout.Toggle(T("generate_mipmaps"), generateMipmaps);
                 
                 EditorGUI.indentLevel--;
             }
@@ -533,7 +623,7 @@ namespace KawaiiStudio
         private void DrawOutputSection()
         {
             GUILayout.BeginHorizontal();
-            outputDirectory = EditorGUILayout.TextField("Output folder", outputDirectory);
+            outputDirectory = EditorGUILayout.TextField(T("output_folder"), outputDirectory);
             if (GUILayout.Button("...", GUILayout.Width(30), GUILayout.Height(18)))
             {
                 BrowseOutputFolder();
@@ -549,12 +639,12 @@ namespace KawaiiStudio
             {
                 GUILayout.BeginHorizontal();
                 
-                if (GUILayout.Button("Preview", buttonStyle, GUILayout.Width(120)))
+                if (GUILayout.Button(T("preview"), buttonStyle, GUILayout.Width(120)))
                 {
                     PreviewVideo();
                 }
                 
-                if (GUILayout.Button("Create animation", buttonStyle, GUILayout.Width(150)))
+                if (GUILayout.Button(T("create_animation"), buttonStyle, GUILayout.Width(150)))
                 {
                     StartConversion();
                 }
@@ -577,9 +667,9 @@ namespace KawaiiStudio
             {
                 normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
             };
-            GUILayout.Label("[ CONVERSION LOG ]", logLabelStyle);
+            GUILayout.Label($"[ {T("log")} ]", logLabelStyle);
             
-            GUILayout.BeginScrollView(scrollPosition, logStyle, GUILayout.Height(100));
+            logScrollPosition = GUILayout.BeginScrollView(logScrollPosition, logStyle, GUILayout.Height(100));
             GUILayout.Label(logOutput, logStyle);
             GUILayout.EndScrollView();
         }
@@ -601,9 +691,10 @@ namespace KawaiiStudio
         private void AddLog(string message)
         {
             logOutput += message + "\n";
-            scrollPosition = new Vector2(0, float.MaxValue);
+            logScrollPosition = new Vector2(0, float.MaxValue);
             Repaint();
         }
+
         
         private void BrowseVideoFile()
         {
@@ -648,7 +739,6 @@ namespace KawaiiStudio
                 timeEnd = videoInfo.Duration;
                 frameRate = Mathf.Min(30f, videoInfo.FrameRate);
                 
-                // MODIFIÉ : Créer le chemin dans Assets/Kawaii Studio/Videos/NomVideo
                 string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
                 outputDirectory = DEFAULT_OUTPUT_PATH + "/" + videoName;
                 
@@ -969,801 +1059,3 @@ namespace KawaiiStudio
                 AddLog($"✗ Preview error: {ex.Message}");
             }
         }
-        
-        private void StartConversion()
-        {
-            if (!videoInfo.IsValid)
-            {
-                EditorUtility.DisplayDialog("Error", "Please select a valid video file first!", "OK");
-                return;
-            }
-            
-            if (string.IsNullOrEmpty(outputDirectory))
-            {
-                EditorUtility.DisplayDialog("Error", "Please select a valid output folder in Assets!", "OK");
-                return;
-            }
-            
-            AddLog("╔════════════════════════════════════");
-            AddLog("🚀 Starting video conversion...");
-            AddLog($"🎹 Input: {Path.GetFileName(inputVideoPath)}");
-            AddLog($"⏱️ Duration: {FormatTime(timeEnd - timeStart)}");
-            AddLog($"📊 Frames: {totalFrames} @ {frameRate} fps");
-            AddLog("╚════════════════════════════════════");
-            
-            SetupConversion();
-            
-            if (useAtlasMode)
-            {
-                StartAtlasConversion();
-            }
-            else
-            {
-                StartFrameConversion();
-            }
-        }
-        
-        private void SetupConversion()
-        {
-            string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
-            
-            // MODIFIÉ : S'assurer que outputDirectory pointe vers Assets/Kawaii Studio/Videos/NomVideo
-            if (!outputDirectory.Contains(videoName))
-            {
-                outputDirectory = DEFAULT_OUTPUT_PATH + "/" + videoName;
-            }
-            
-            // Créer le dossier de sortie si nécessaire
-            if (!AssetDatabase.IsValidFolder(outputDirectory))
-            {
-                string[] folders = outputDirectory.Replace("Assets/", "").Replace("Assets", "").Split('/');
-                string currentPath = "Assets";
-                
-                foreach (string folder in folders)
-                {
-                    if (string.IsNullOrEmpty(folder)) continue;
-                    
-                    string newPath = currentPath + "/" + folder;
-                    if (!AssetDatabase.IsValidFolder(newPath))
-                    {
-                        AssetDatabase.CreateFolder(currentPath, folder);
-                    }
-                    currentPath = newPath;
-                }
-                outputDirectory = currentPath;
-            }
-            
-            // MODIFIÉ : Les fichiers sont maintenant dans le dossier de la vidéo
-            string basePath = outputDirectory + "/" + videoName;
-            
-            // Créer les textures placeholder
-            atlasPaths.Clear();
-            string extension = saveAsJPEG ? "jpg" : "png";
-            byte[] placeholderBytes = saveAsJPEG ? Texture2D.blackTexture.EncodeToJPG(jpegQuality) : Texture2D.blackTexture.EncodeToPNG();
-            
-            for (int i = 0; i < atlasCount; i++)
-            {
-                string atlasPath = $"{basePath} Atlas {i}.{extension}";
-                File.WriteAllBytes(atlasPath, placeholderBytes);
-                atlasPaths.Add(atlasPath);
-            }
-            
-            AssetDatabase.Refresh();
-            
-            // Configurer les importeurs de texture
-            AssetDatabase.StartAssetEditing();
-            try
-            {
-                foreach (string path in atlasPaths)
-                {
-                    TextureImporter importer = (TextureImporter)AssetImporter.GetAtPath(path);
-                    if (importer != null)
-                    {
-                        importer.alphaSource = TextureImporterAlphaSource.None;
-                        importer.npotScale = TextureImporterNPOTScale.None;
-                        importer.wrapMode = TextureWrapMode.Clamp;
-                        importer.maxTextureSize = MAX_TEXTURE_SIZE;
-                        importer.crunchedCompression = useCrunchCompression;
-                        importer.compressionQuality = 100;
-                        importer.mipmapEnabled = generateMipmaps;
-                        importer.SaveAndReimport();
-                    }
-                }
-            }
-            finally
-            {
-                AssetDatabase.StopAssetEditing();
-            }
-        }
-        
-        private void StartAtlasConversion()
-        {
-            string ffmpegExe = GetFFMPEGExecutable("ffmpeg");
-            if (!File.Exists(ffmpegExe))
-            {
-                AddLog("✗ ffmpeg not found!");
-                return;
-            }
-            
-            string arguments = string.Format(CultureInfo.InvariantCulture,
-                "-nostdin -ss {1} -to {2} -i \"{0}\" -filter_complex \"fps=fps={5}, format=pix_fmts=rgb24, scale={3}x{4}:flags=area:out_range=full, vflip\" -f rawvideo -frames {6} pipe:1",
-                inputVideoPath, timeStart, timeEnd, actualFrameSize.x, actualFrameSize.y, frameRate, totalFrames);
-            
-            try
-            {
-                ffmpegProcess = new Process();
-                ffmpegProcess.StartInfo.FileName = ffmpegExe;
-                ffmpegProcess.StartInfo.Arguments = arguments;
-                ffmpegProcess.StartInfo.CreateNoWindow = true;
-                ffmpegProcess.StartInfo.UseShellExecute = false;
-                ffmpegProcess.StartInfo.RedirectStandardOutput = true;
-                ffmpegProcess.StartInfo.RedirectStandardError = true;
-                ffmpegProcess.StartInfo.WorkingDirectory = Environment.CurrentDirectory;
-                ffmpegProcess.EnableRaisingEvents = true;
-                ffmpegProcess.ErrorDataReceived += OnFFMPEGError;
-                ffmpegProcess.Exited += OnFFMPEGExited;
-                
-                ffmpegProcess.Start();
-                ffmpegProcess.BeginErrorReadLine();
-                
-                ffmpegStream = ffmpegProcess.StandardOutput.BaseStream;
-                
-                outputTexture = new Texture2D(atlasSize.x, atlasSize.y, TextureFormat.RGB24, false);
-                ClearCurrentAtlas();
-                
-                frameBuffer = new Color32[actualFrameSize.x * actualFrameSize.y];
-                imageDataBuffer = new byte[actualFrameSize.x * actualFrameSize.y * 3];
-                
-                isEncoding = true;
-                currentAtlas = 0;
-                currentFrame = -1;
-                
-                EditorApplication.update += UpdateFFMPEGEncoding;
-                
-                AddLog("▶ Atlas conversion started...");
-            }
-            catch (Exception ex)
-            {
-                AddLog($"✗ FFMPEG error: {ex.Message}");
-                StopEncoding();
-            }
-        }
-        
-        private void StartFrameConversion()
-        {
-            string ffmpegExe = GetFFMPEGExecutable("ffmpeg");
-            string extension = saveAsJPEG ? "jpg" : "png";
-            string quality = saveAsJPEG ? $"-qscale:v {QualityToQScale(jpegQuality)}" : "";
-            
-            string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
-            string arguments = string.Format(CultureInfo.InvariantCulture,
-                "-nostdin -y -ss {1} -to {2} -i \"{0}\" -filter_complex \"fps=fps={5}, format=pix_fmts=rgb24, scale={3}x{4}:flags=area:out_range=full\" -f image2 -start_number 0 -frames {6} {7} \"{8}/{9} Atlas %d.{10}\"",
-                inputVideoPath, timeStart, timeEnd, actualFrameSize.x, actualFrameSize.y, frameRate, totalFrames, quality, outputDirectory, videoName, extension);
-            
-            try
-            {
-                ffmpegProcess = new Process();
-                ffmpegProcess.StartInfo.FileName = ffmpegExe;
-                ffmpegProcess.StartInfo.Arguments = arguments;
-                ffmpegProcess.StartInfo.CreateNoWindow = true;
-                ffmpegProcess.StartInfo.UseShellExecute = false;
-                ffmpegProcess.StartInfo.RedirectStandardOutput = true;
-                ffmpegProcess.StartInfo.RedirectStandardError = true;
-                ffmpegProcess.StartInfo.WorkingDirectory = Environment.CurrentDirectory;
-                ffmpegProcess.EnableRaisingEvents = true;
-                ffmpegProcess.ErrorDataReceived += OnFFMPEGError;
-                ffmpegProcess.Exited += OnFFMPEGFrameExited;
-                
-                ffmpegProcess.Start();
-                ffmpegProcess.BeginErrorReadLine();
-                
-                isEncoding = true;
-                
-                AddLog("▶ Frame conversion started...");
-            }
-            catch (Exception ex)
-            {
-                AddLog($"✗ FFMPEG error: {ex.Message}");
-                StopEncoding();
-            }
-        }
-        
-        private void UpdateFFMPEGEncoding()
-        {
-            if (!isEncoding || ffmpegProcess == null || ffmpegStream == null)
-                return;
-            
-            int bytesPerFrame = imageDataBuffer.Length;
-            float updateStartTime = Time.realtimeSinceStartup;
-            
-            do
-            {
-                int position = 0;
-                int bytes = 0;
-                
-                try
-                {
-                    while (position < bytesPerFrame)
-                    {
-                        bytes = ffmpegStream.Read(imageDataBuffer, position, bytesPerFrame - position);
-                        if (bytes == 0)
-                            break;
-                        position += bytes;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    AddLog($"✗ Stream read error: {ex.Message}");
-                    StopEncoding();
-                    return;
-                }
-                
-                bool endOfStream = bytes == 0;
-                bool flushAtlas = false;
-                
-                if (position == bytesPerFrame)
-                {
-                    currentFrame++;
-                    
-                    for (int i = 0, j = 0; j < bytesPerFrame; i++, j += 3)
-                    {
-                        frameBuffer[i].r = imageDataBuffer[j];
-                        frameBuffer[i].g = imageDataBuffer[j + 1];
-                        frameBuffer[i].b = imageDataBuffer[j + 2];
-                        frameBuffer[i].a = 255;
-                    }
-                    
-                    endOfStream = endOfStream || (currentFrame + 1) >= totalFrames;
-                    
-                    int frameIndex = currentFrame % framesPerAtlas;
-                    int column = frameIndex % slices.x;
-                    int row = slices.y - 1 - frameIndex / slices.x;
-                    
-                    outputTexture.SetPixels32(column * actualFrameSize.x, row * actualFrameSize.y, actualFrameSize.x, actualFrameSize.y, frameBuffer, 0);
-                    
-                    flushAtlas = (frameIndex + 1) % framesPerAtlas == 0;
-                }
-                
-                if (flushAtlas || endOfStream)
-                {
-                    FlushCurrentAtlas(endOfStream);
-                }
-                
-                if (endOfStream)
-                {
-                    return;
-                }
-                
-            } while ((Time.realtimeSinceStartup - updateStartTime) < 1f / 20f);
-            
-            Repaint();
-        }
-        
-        private void FlushCurrentAtlas(bool endOfStream)
-        {
-            try
-            {
-                outputTexture.Apply();
-                
-                byte[] bytes;
-                if (saveAsJPEG)
-                {
-                    bytes = outputTexture.EncodeToJPG(jpegQuality);
-                }
-                else
-                {
-                    bytes = outputTexture.EncodeToPNG();
-                }
-                
-                File.WriteAllBytes(atlasPaths[currentAtlas], bytes);
-                AddLog($"✓ Atlas {currentAtlas + 1}/{atlasCount} saved");
-                
-                if (endOfStream)
-                {
-                    StopEncoding();
-                    EditorApplication.delayCall += () =>
-                    {
-                        AssetDatabase.Refresh();
-                        AddLog("✅ Atlas conversion completed!");
-                        FinalizeConversion();
-                    };
-                }
-                else
-                {
-                    ClearCurrentAtlas();
-                    currentAtlas++;
-                }
-            }
-            catch (Exception ex)
-            {
-                AddLog($"✗ Error flushing atlas: {ex.Message}");
-                StopEncoding();
-            }
-        }
-        
-        private void ClearCurrentAtlas()
-        {
-            RenderTexture tempRT = RenderTexture.GetTemporary(atlasSize.x, atlasSize.y, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
-            RenderTexture.active = tempRT;
-            Graphics.DrawTexture(new Rect(Vector2.zero, atlasSize), Texture2D.blackTexture);
-            outputTexture.ReadPixels(new Rect(Vector2.zero, atlasSize), 0, 0);
-            RenderTexture.active = null;
-            RenderTexture.ReleaseTemporary(tempRT);
-        }
-        
-        private void StopEncoding()
-        {
-            isEncoding = false;
-            currentFrame = 0;
-            
-            EditorApplication.update -= UpdateFFMPEGEncoding;
-            
-            if (ffmpegProcess != null)
-            {
-                try
-                {
-                    if (!ffmpegProcess.HasExited)
-                        ffmpegProcess.Kill();
-                    ffmpegProcess.Dispose();
-                }
-                catch { }
-                ffmpegProcess = null;
-            }
-            
-            if (ffmpegStream != null)
-            {
-                try
-                {
-                    ffmpegStream.Dispose();
-                }
-                catch { }
-                ffmpegStream = null;
-            }
-            
-            if (outputTexture != null)
-            {
-                DestroyImmediate(outputTexture);
-                outputTexture = null;
-            }
-        }
-        
-        private void OnFFMPEGError(object sender, DataReceivedEventArgs e)
-        {
-            if (e.Data != null && !string.IsNullOrEmpty(e.Data))
-            {
-                if (e.Data.Contains("Error") || e.Data.Contains("Invalid") || e.Data.Contains("failed"))
-                {
-                    AddLog($"⚠️ FFMPEG: {e.Data}");
-                }
-            }
-        }
-        
-        private void OnFFMPEGExited(object sender, EventArgs e)
-        {
-            EditorApplication.delayCall += () =>
-            {
-                if (isEncoding)
-                {
-                    StopEncoding();
-                    AddLog("✅ FFMPEG process completed.");
-                }
-            };
-        }
-        
-        private void OnFFMPEGFrameExited(object sender, EventArgs e)
-        {
-            StopEncoding();
-            EditorApplication.delayCall += () =>
-            {
-                AssetDatabase.Refresh();
-                AddLog("✅ Frame conversion completed!");
-                FinalizeConversion();
-            };
-        }
-        
-        private void FinalizeConversion()
-        {
-            try
-            {
-                string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
-                string basePath = outputDirectory + "/" + videoName;
-                
-                AddLog("📦 Creating animation assets...");
-                
-                AnimationClip animClip = CreateAnimationClip(basePath);
-                GameObject videoPrefab = CreateVideoPrefab(basePath, animClip);
-                
-                Selection.activeObject = videoPrefab;
-                
-                AddLog($"🎉 Conversion finished! Prefab created at: {basePath}.prefab");
-                EditorUtility.DisplayDialog("Success! 🎉", "Video conversion completed successfully!\n\nPrefab: " + basePath + ".prefab", "OK");
-            }
-            catch (Exception ex)
-            {
-                AddLog($"✗ Error finalizing: {ex.Message}");
-                EditorUtility.DisplayDialog("Error", "Failed to finalize conversion: " + ex.Message, "OK");
-            }
-        }
-        
-        private AnimationClip CreateAnimationClip(string basePath)
-        {
-            string animPath = basePath + ".anim";
-            AnimationClip anim = AssetDatabase.LoadAssetAtPath<AnimationClip>(animPath);
-            
-            if (anim == null)
-            {
-                anim = new AnimationClip();
-                AssetDatabase.CreateAsset(anim, animPath);
-            }
-            
-            anim.ClearCurves();
-            anim.frameRate = frameRate;
-            
-            AnimationClipSettings settings = AnimationUtility.GetAnimationClipSettings(anim);
-            settings.loopTime = loopAnimation;
-            AnimationUtility.SetAnimationClipSettings(anim, settings);
-            
-            if (useCustomMaterial && customMaterial != null && customShaderTextures.Names.Length > 0)
-            {
-                AnimateCustomMaterial(anim, basePath);
-            }
-            else
-            {
-                AnimateKSVideoDecoder(anim, basePath);
-            }
-            
-            EditorUtility.SetDirty(anim);
-            AssetDatabase.SaveAssets();
-            
-            return anim;
-        }
-        
-        private void AnimateCustomMaterial(AnimationClip anim, string basePath)
-        {
-            if (atlasCount == 1)
-            {
-                AnimateSingleAtlasUV(anim);
-            }
-            else
-            {
-                AnimateMultiAtlasMaterial(anim, basePath);
-                if (framesPerAtlas > 1)
-                {
-                    AnimateMultiAtlasUV(anim);
-                }
-            }
-        }
-        
-        private void AnimateKSVideoDecoder(AnimationClip anim, string basePath)
-        {
-            Shader decoderShader = AssetDatabase.LoadAssetAtPath<Shader>(SHADER_PATH);
-            if (decoderShader == null)
-            {
-                AddLog("✗ KSVideoDecoder shader not found at: " + SHADER_PATH);
-                return;
-            }
-            
-            string matPath = basePath + ".mat";
-            Material mat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
-            if (mat == null)
-            {
-                mat = new Material(decoderShader);
-                AssetDatabase.CreateAsset(mat, matPath);
-            }
-            else
-            {
-                mat.shader = decoderShader;
-            }
-            
-            mat.SetFloat("_FrameRate", frameRate);
-            mat.SetFloat("_AtlasSizeX", slices.x);
-            mat.SetFloat("_AtlasSizeY", slices.y);
-            
-            for (int i = 0; i < atlasCount && i < MAX_ATLAS_COUNT; i++)
-            {
-                string texProp = i == 0 ? "_MainTex" : $"_MainTex{i}";
-                Texture2D tex = AssetDatabase.LoadAssetAtPath<Texture2D>(atlasPaths[i]);
-                if (tex != null)
-                {
-                    mat.SetTexture(texProp, tex);
-                }
-            }
-            
-            float timeLength = totalFrames / frameRate;
-            AnimationCurve timeCurve = AnimationCurve.Linear(0, 0, timeLength, timeLength);
-            anim.SetCurve("", typeof(MeshRenderer), "material._CustomTime", timeCurve);
-            
-            EditorUtility.SetDirty(mat);
-        }
-        
-        private GameObject CreateVideoPrefab(string basePath, AnimationClip anim)
-        {
-            string prefabPath = basePath + ".prefab";
-            string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
-            
-            GameObject tempObj = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            tempObj.name = videoName + " Video";
-            tempObj.transform.localScale = new Vector3(videoInfo.AspectRatio, 1, 1);
-            
-            DestroyImmediate(tempObj.GetComponent<MeshCollider>());
-            
-            MeshRenderer renderer = tempObj.GetComponent<MeshRenderer>();
-            if (useCustomMaterial && customMaterial != null)
-            {
-                renderer.sharedMaterial = customMaterial;
-            }
-            else
-            {
-                renderer.sharedMaterial = AssetDatabase.LoadAssetAtPath<Material>(basePath + ".mat");
-            }
-            
-            Animator animator = tempObj.AddComponent<Animator>();
-            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-            
-            if (audioClip != null)
-            {
-                AudioSource audioSource = tempObj.AddComponent<AudioSource>();
-                audioSource.clip = audioClip;
-                audioSource.loop = loopAnimation;
-                audioSource.playOnAwake = true;
-                audioSource.dopplerLevel = 0;
-            }
-            
-            string controllerPath = basePath + ".controller";
-            AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
-            if (controller == null)
-            {
-                controller = AnimatorController.CreateAnimatorControllerAtPath(controllerPath);
-                AnimatorStateMachine stateMachine = controller.layers[0].stateMachine;
-                AnimatorState state = stateMachine.AddState("Play");
-                state.motion = anim;
-                state.writeDefaultValues = false;
-            }
-            else
-            {
-                if (controller.layers.Length > 0)
-                {
-                    AnimatorStateMachine stateMachine = controller.layers[0].stateMachine;
-                    if (stateMachine.states.Length > 0)
-                    {
-                        stateMachine.states[0].state.motion = anim;
-                    }
-                }
-            }
-            
-            animator.runtimeAnimatorController = controller;
-            
-            GameObject prefab = PrefabUtility.SaveAsPrefabAsset(tempObj, prefabPath);
-            DestroyImmediate(tempObj);
-            
-            return prefab;
-        }
-        
-        private void AnimateSingleAtlasUV(AnimationClip anim)
-        {
-            float timeLength = totalFrames / frameRate;
-            Vector2 tileSize = new Vector2(1f / slices.x, 1f / slices.y);
-            Vector2 frameSize = new Vector2(actualFrameSize.x, actualFrameSize.y);
-            Vector2 pixelSize = new Vector2(1f / atlasSize.x, 1f / atlasSize.y);
-            
-            tileSize.x *= (frameSize.x - 1f) / frameSize.x;
-            tileSize.y *= (frameSize.y - 1f) / frameSize.y;
-            
-            AnimationCurve scaleX = AnimationCurve.Constant(0, timeLength, tileSize.x);
-            AnimationCurve scaleY = AnimationCurve.Constant(0, timeLength, tileSize.y);
-            AnimationCurve offsetX = AnimationCurve.Linear(0, 0, timeLength, 1);
-            AnimationCurve offsetY = AnimationCurve.Linear(0, 0, timeLength, 1);
-            
-            Keyframe[] offsetXKeys = new Keyframe[totalFrames];
-            Keyframe[] offsetYKeys = new Keyframe[(totalFrames - 1) / slices.x + 1];
-            Keyframe k = new Keyframe();
-            
-            int frameX = 0;
-            int frameY = 0;
-            
-            for (int y = slices.y - 1; y >= 0 && frameX < totalFrames; y--, frameY++)
-            {
-                float pixelOffsetY = y * frameSize.y + 0.5f;
-                float offsetYValue = pixelOffsetY * pixelSize.y;
-                k.time = frameY * slices.x / frameRate;
-                k.value = offsetYValue;
-                offsetYKeys[frameY] = k;
-                
-                for (int x = 0; x < slices.x && frameX < totalFrames; x++, frameX++)
-                {
-                    float pixelOffsetX = x * frameSize.x + 0.5f;
-                    float offsetXValue = pixelOffsetX * pixelSize.x;
-                    k.time = frameX / frameRate;
-                    k.value = offsetXValue;
-                    offsetXKeys[frameX] = k;
-                }
-            }
-            
-            offsetX.keys = offsetXKeys;
-            offsetY.keys = offsetYKeys;
-            
-            for (int i = 0; i < offsetX.keys.Length; i++)
-            {
-                AnimationUtility.SetKeyLeftTangentMode(offsetX, i, AnimationUtility.TangentMode.Constant);
-                AnimationUtility.SetKeyRightTangentMode(offsetX, i, AnimationUtility.TangentMode.Constant);
-            }
-            for (int i = 0; i < offsetY.keys.Length; i++)
-            {
-                AnimationUtility.SetKeyLeftTangentMode(offsetY, i, AnimationUtility.TangentMode.Constant);
-                AnimationUtility.SetKeyRightTangentMode(offsetY, i, AnimationUtility.TangentMode.Constant);
-            }
-            
-            string property = customShaderTextures.PropertyNames[customShaderTexture];
-            string stProperty = property + "_ST";
-            
-            anim.SetCurve("", typeof(MeshRenderer), $"material.{stProperty}.x", scaleX);
-            anim.SetCurve("", typeof(MeshRenderer), $"material.{stProperty}.y", scaleY);
-            anim.SetCurve("", typeof(MeshRenderer), $"material.{stProperty}.z", offsetX);
-            anim.SetCurve("", typeof(MeshRenderer), $"material.{stProperty}.w", offsetY);
-        }
-        
-        private void AnimateMultiAtlasMaterial(AnimationClip anim, string basePath)
-        {
-            string property = customShaderTextures.PropertyNames[customShaderTexture];
-            ObjectReferenceKeyframe[] matKeyframes = new ObjectReferenceKeyframe[atlasCount];
-            
-            AssetDatabase.StartAssetEditing();
-            try
-            {
-                for (int i = 0; i < atlasCount; i++)
-                {
-                    string matPath = basePath + $" Mat {i}.mat";
-                    Material mat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
-                    if (mat == null)
-                    {
-                        mat = new Material(customMaterial);
-                        AssetDatabase.CreateAsset(mat, matPath);
-                    }
-                    
-                    Texture2D tex = AssetDatabase.LoadAssetAtPath<Texture2D>(atlasPaths[i]);
-                    mat.SetTexture(property, tex);
-                    
-                    matKeyframes[i].time = i * framesPerAtlas / frameRate;
-                    matKeyframes[i].value = mat;
-                }
-            }
-            finally
-            {
-                AssetDatabase.StopAssetEditing();
-            }
-            
-            EditorCurveBinding binding = EditorCurveBinding.PPtrCurve("", typeof(MeshRenderer), "m_Materials.Array.data[0]");
-            AnimationUtility.SetObjectReferenceCurve(anim, binding, matKeyframes);
-        }
-        
-        private void AnimateMultiAtlasUV(AnimationClip anim)
-        {
-            float timeLength = totalFrames / frameRate;
-            Vector2 tileSize = new Vector2(1f / slices.x, 1f / slices.y);
-            Vector2 frameSize = new Vector2(actualFrameSize.x, actualFrameSize.y);
-            Vector2 pixelSize = new Vector2(1f / atlasSize.x, 1f / atlasSize.y);
-            
-            tileSize.x *= (frameSize.x - 1f) / frameSize.x;
-            tileSize.y *= (frameSize.y - 1f) / frameSize.y;
-            
-            AnimationCurve scaleX = AnimationCurve.Constant(0, timeLength, tileSize.x);
-            AnimationCurve scaleY = AnimationCurve.Constant(0, timeLength, tileSize.y);
-            AnimationCurve offsetX = AnimationCurve.Linear(0, 0, timeLength, 1);
-            AnimationCurve offsetY = AnimationCurve.Linear(0, 0, timeLength, 1);
-            
-            List<Keyframe> offsetXKeysList = new List<Keyframe>();
-            List<Keyframe> offsetYKeysList = new List<Keyframe>();
-            
-            int globalFrame = 0;
-            for (int atlasIdx = 0; atlasIdx < atlasCount && globalFrame < totalFrames; atlasIdx++)
-            {
-                int frameY = 0;
-                for (int y = slices.y - 1; y >= 0 && globalFrame < totalFrames; y--, frameY++)
-                {
-                    float pixelOffsetY = y * frameSize.y + 0.5f;
-                    float offsetYValue = pixelOffsetY * pixelSize.y;
-                    
-                    Keyframe kY = new Keyframe();
-                    kY.time = globalFrame / frameRate;
-                    kY.value = offsetYValue;
-                    offsetYKeysList.Add(kY);
-                    
-                    for (int x = 0; x < slices.x && globalFrame < totalFrames; x++, globalFrame++)
-                    {
-                        float pixelOffsetX = x * frameSize.x + 0.5f;
-                        float offsetXValue = pixelOffsetX * pixelSize.x;
-                        
-                        Keyframe kX = new Keyframe();
-                        kX.time = globalFrame / frameRate;
-                        kX.value = offsetXValue;
-                        offsetXKeysList.Add(kX);
-                    }
-                }
-            }
-            
-            offsetX.keys = offsetXKeysList.ToArray();
-            offsetY.keys = offsetYKeysList.ToArray();
-            
-            for (int i = 0; i < offsetX.keys.Length; i++)
-            {
-                AnimationUtility.SetKeyLeftTangentMode(offsetX, i, AnimationUtility.TangentMode.Constant);
-                AnimationUtility.SetKeyRightTangentMode(offsetX, i, AnimationUtility.TangentMode.Constant);
-            }
-            for (int i = 0; i < offsetY.keys.Length; i++)
-            {
-                AnimationUtility.SetKeyLeftTangentMode(offsetY, i, AnimationUtility.TangentMode.Constant);
-                AnimationUtility.SetKeyRightTangentMode(offsetY, i, AnimationUtility.TangentMode.Constant);
-            }
-            
-            string property = customShaderTextures.PropertyNames[customShaderTexture];
-            string stProperty = property + "_ST";
-            
-            anim.SetCurve("", typeof(MeshRenderer), $"material.{stProperty}.x", scaleX);
-            anim.SetCurve("", typeof(MeshRenderer), $"material.{stProperty}.y", scaleY);
-            anim.SetCurve("", typeof(MeshRenderer), $"material.{stProperty}.z", offsetX);
-            anim.SetCurve("", typeof(MeshRenderer), $"material.{stProperty}.w", offsetY);
-        }
-        
-        private CustomShaderTextures GetCustomShaderTextures(Material mat)
-        {
-            CustomShaderTextures textures = new CustomShaderTextures();
-            if (mat == null || mat.shader == null)
-                return textures;
-            
-            int propCount = ShaderUtil.GetPropertyCount(mat.shader);
-            List<string> names = new List<string>();
-            List<string> propNames = new List<string>();
-            
-            for (int i = 0; i < propCount; i++)
-            {
-                if (ShaderUtil.GetPropertyType(mat.shader, i) == ShaderUtil.ShaderPropertyType.TexEnv &&
-                    ShaderUtil.GetTexDim(mat.shader, i) == UnityEngine.Rendering.TextureDimension.Tex2D)
-                {
-                    names.Add(ShaderUtil.GetPropertyDescription(mat.shader, i));
-                    propNames.Add(ShaderUtil.GetPropertyName(mat.shader, i));
-                }
-            }
-            
-            textures.Names = names.ToArray();
-            textures.PropertyNames = propNames.ToArray();
-            
-            return textures;
-        }
-        
-        private string EscapeFilterGraph(string str)
-        {
-            return str.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace(",", "\\,").Replace(";", "\\;").Replace("[", "\\[").Replace("]", "\\]");
-        }
-        
-        private string EscapeFilterOption(string str)
-        {
-            return str.Replace("'", "\\'").Replace(":", "\\:");
-        }
-        
-        private float QualityToQScale(float quality)
-        {
-            float q = 0.025f * quality - 1.68f;
-            return -9.07557f * q - 5.37507f * q * q - 0.135614f * q * q * q + 9.78417f * q * q * q * q + 8.71064f;
-        }
-        
-        private string FormatTime(float seconds)
-        {
-            TimeSpan t = TimeSpan.FromSeconds(seconds);
-            return $"{t.Minutes:D2}:{t.Seconds:D2}.{t.Milliseconds:D3}";
-        }
-        
-        private string FormatBytes(long bytes)
-        {
-            string[] sizes = { "B", "KB", "MB", "GB" };
-            double len = bytes;
-            int order = 0;
-            while (len >= 1024 && order < sizes.Length - 1)
-            {
-                order++;
-                len = len / 1024;
-            }
-            return $"{len:0.##} {sizes[order]}";
-        }
-    }
-}
-
