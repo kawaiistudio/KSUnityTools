@@ -9,16 +9,39 @@ using System;
 
 namespace KawaiiStudio
 {
+    [Serializable]
+    public class GLBTranslationEntry
+    {
+        public string key;
+        public string value;
+    }
+
+    [Serializable]
+    public class GLBTranslationFile
+    {
+        public List<GLBTranslationEntry> entries;
+    }
+
     public class GLBtoFBXConverter : EditorWindow
     {
+        // Version
+        private const string VERSION = "2.0";
+        
         // Configuration
         private string blenderPath = "";
         private string glbFilePath = "";
         private string outputFolder = "";
         private Vector2 scrollPosition;
+        private Vector2 consoleScrollPosition;
         private string consoleOutput = "";
         private bool isConverting = false;
         private Process blenderProcess;
+        
+        // Language
+        private const string LANGUAGES_FOLDER = "Assets/Kawaii Studio/Languages";
+        private const string PREFS_LANGUAGE = "KawaiiStudio.Language";
+        private Dictionary<string, string> translations = new Dictionary<string, string>();
+        private string currentLanguage = "en";
         
         // UI Styles
         private GUIStyle headerStyle;
@@ -42,6 +65,9 @@ namespace KawaiiStudio
 
         private void OnEnable()
         {
+            // Charger la langue
+            LoadLanguage();
+            
             // Charger le chemin Blender sauvegardé
             blenderPath = EditorPrefs.GetString(PREFS_BLENDER_PATH, "");
             
@@ -62,14 +88,74 @@ namespace KawaiiStudio
             }
         }
 
+        private void LoadLanguage()
+        {
+            currentLanguage = EditorPrefs.GetString(PREFS_LANGUAGE, "en");
+            translations.Clear();
+            
+            string jsonPath = Path.Combine(LANGUAGES_FOLDER, $"{currentLanguage}.json");
+            
+            if (File.Exists(jsonPath))
+            {
+                try
+                {
+                    string jsonContent = File.ReadAllText(jsonPath);
+                    GLBTranslationFile translationFile = JsonUtility.FromJson<GLBTranslationFile>(jsonContent);
+                    
+                    if (translationFile != null && translationFile.entries != null)
+                    {
+                        foreach (var entry in translationFile.entries)
+                        {
+                            if (!string.IsNullOrEmpty(entry.key) && !string.IsNullOrEmpty(entry.value))
+                            {
+                                translations[entry.key] = entry.value;
+                            }
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    UnityEngine.Debug.LogWarning($"Failed to load translations: {e.Message}");
+                    LoadFallbackTranslations();
+                }
+            }
+            else
+            {
+                LoadFallbackTranslations();
+            }
+        }
+
+        private void LoadFallbackTranslations()
+        {
+            translations = new Dictionary<string, string>
+            {
+                { "blender_path", "Blender Path:" },
+                { "glb_file", "GLB File:" },
+                { "output_folder", "Output Folder:" },
+                { "browse", "Browse" },
+                { "auto_detect", "Auto-Detect" },
+                { "convert_glb", "CONVERT GLB TO FBX" },
+                { "ready", "READY" },
+                { "converting", "Converting..." },
+                { "console_output", "CONSOLE OUTPUT" }
+            };
+        }
+
+        private string T(string key)
+        {
+            if (translations.ContainsKey(key))
+                return translations[key];
+            return key;
+        }
+
         private void InitializeStyles()
         {
             if (stylesInitialized) return;
 
             // Créer les textures de couleur
-            purpleTexture = MakeTex(2, 2, new Color(0.486f, 0.227f, 0.929f, 1f)); // #7c3aed
-            redTexture = MakeTex(2, 2, new Color(1f, 0.278f, 0.341f, 1f)); // #ff4757
-            blackTexture = MakeTex(2, 2, new Color(0.039f, 0.039f, 0.059f, 1f)); // #0a0a0f
+            purpleTexture = MakeTex(2, 2, new Color(0.486f, 0.227f, 0.929f, 1f));
+            redTexture = MakeTex(2, 2, new Color(1f, 0.278f, 0.341f, 1f));
+            blackTexture = MakeTex(2, 2, new Color(0.039f, 0.039f, 0.059f, 1f));
 
             // Header Style
             headerStyle = new GUIStyle(EditorStyles.boldLabel)
@@ -131,6 +217,7 @@ namespace KawaiiStudio
             // Background
             EditorGUI.DrawRect(new Rect(0, 0, position.width, position.height), new Color(0.102f, 0.059f, 0.122f, 1f));
 
+            scrollPosition = GUILayout.BeginScrollView(scrollPosition);
             GUILayout.BeginVertical();
             GUILayout.Space(10);
 
@@ -173,6 +260,7 @@ namespace KawaiiStudio
             DrawFooter();
 
             GUILayout.EndVertical();
+            GUILayout.EndScrollView();
         }
 
         private void DrawHeader()
@@ -199,7 +287,7 @@ namespace KawaiiStudio
             {
                 normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
             };
-            GUILayout.Label("Blender Path:", labelStyle, GUILayout.Width(100));
+            GUILayout.Label(T("blender_path"), labelStyle, GUILayout.Width(100));
             
             GUIStyle textFieldStyle = new GUIStyle(EditorStyles.textField)
             {
@@ -207,18 +295,18 @@ namespace KawaiiStudio
             };
             blenderPath = EditorGUILayout.TextField(blenderPath, textFieldStyle);
             
-            if (GUILayout.Button("Browse", GUILayout.Width(80)))
+            if (GUILayout.Button(T("browse"), GUILayout.Width(80)))
             {
                 string path = EditorUtility.OpenFilePanel("Select Blender.exe", "", "exe");
                 if (!string.IsNullOrEmpty(path))
                 {
                     blenderPath = path;
                     EditorPrefs.SetString(PREFS_BLENDER_PATH, blenderPath);
-                    AddLog($"✓ Blender path set: {blenderPath}");
+                    AddLog($"✔ Blender path set: {blenderPath}");
                 }
             }
             
-            if (GUILayout.Button("Auto-Detect", GUILayout.Width(100)))
+            if (GUILayout.Button(T("auto_detect"), GUILayout.Width(100)))
             {
                 AddLog("🔍 Starting auto-detection...");
                 string detected = FindBlenderUltra();
@@ -246,7 +334,7 @@ namespace KawaiiStudio
             {
                 normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
             };
-            GUILayout.Label("GLB File:", labelStyle, GUILayout.Width(100));
+            GUILayout.Label(T("glb_file"), labelStyle, GUILayout.Width(100));
             
             GUIStyle textFieldStyle = new GUIStyle(EditorStyles.textField)
             {
@@ -254,13 +342,13 @@ namespace KawaiiStudio
             };
             glbFilePath = EditorGUILayout.TextField(glbFilePath, textFieldStyle);
             
-            if (GUILayout.Button("Browse", GUILayout.Width(80)))
+            if (GUILayout.Button(T("browse"), GUILayout.Width(80)))
             {
                 string path = EditorUtility.OpenFilePanel("Select GLB File", "", "glb");
                 if (!string.IsNullOrEmpty(path))
                 {
                     glbFilePath = path;
-                    AddLog($"✓ GLB file selected: {Path.GetFileName(glbFilePath)}");
+                    AddLog($"✔ GLB file selected: {Path.GetFileName(glbFilePath)}");
                 }
             }
             
@@ -275,7 +363,7 @@ namespace KawaiiStudio
             {
                 normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
             };
-            GUILayout.Label("Output Folder:", labelStyle, GUILayout.Width(100));
+            GUILayout.Label(T("output_folder"), labelStyle, GUILayout.Width(100));
             
             GUIStyle textFieldStyle = new GUIStyle(EditorStyles.textField)
             {
@@ -283,13 +371,13 @@ namespace KawaiiStudio
             };
             outputFolder = EditorGUILayout.TextField(outputFolder, textFieldStyle);
             
-            if (GUILayout.Button("Browse", GUILayout.Width(80)))
+            if (GUILayout.Button(T("browse"), GUILayout.Width(80)))
             {
                 string path = EditorUtility.OpenFolderPanel("Select Output Folder", "", "");
                 if (!string.IsNullOrEmpty(path))
                 {
                     outputFolder = path;
-                    AddLog($"✓ Output folder set: {outputFolder}");
+                    AddLog($"✔ Output folder set: {outputFolder}");
                 }
             }
             
@@ -304,7 +392,7 @@ namespace KawaiiStudio
             GUILayout.BeginHorizontal();
             GUILayout.FlexibleSpace();
             
-            if (GUILayout.Button("🚀 CONVERT GLB TO FBX", buttonStyle, GUILayout.Width(400)))
+            if (GUILayout.Button($"🚀 {T("convert_glb")}", buttonStyle, GUILayout.Width(400)))
             {
                 StartConversion();
             }
@@ -317,7 +405,7 @@ namespace KawaiiStudio
 
         private void DrawStatus()
         {
-            string statusText = isConverting ? "⚡ Converting..." : "● READY";
+            string statusText = isConverting ? $"⚡ {T("converting")}" : $"● {T("ready")}";
             statusStyle.normal.textColor = isConverting ? 
                 new Color(1f, 0.278f, 0.341f, 1f) : 
                 new Color(0f, 1f, 0.255f, 1f);
@@ -331,9 +419,9 @@ namespace KawaiiStudio
             {
                 normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
             };
-            GUILayout.Label("[ CONSOLE OUTPUT ]", consoleLabelStyle);
+            GUILayout.Label($"[ {T("console_output")} ]", consoleLabelStyle);
             
-            scrollPosition = GUILayout.BeginScrollView(scrollPosition, consoleStyle, GUILayout.Height(250));
+            consoleScrollPosition = GUILayout.BeginScrollView(consoleScrollPosition, consoleStyle, GUILayout.Height(250));
             GUILayout.Label(consoleOutput, consoleStyle);
             GUILayout.EndScrollView();
         }
@@ -354,7 +442,7 @@ namespace KawaiiStudio
         private void AddLog(string message)
         {
             consoleOutput += message + "\n";
-            scrollPosition = new Vector2(0, float.MaxValue);
+            consoleScrollPosition = new Vector2(0, float.MaxValue);
             Repaint();
         }
 
@@ -430,7 +518,7 @@ namespace KawaiiStudio
                                             if (File.Exists(blenderExe))
                                             {
                                                 paths.Add(blenderExe);
-                                                AddLog($"    ✓ Found in registry: {blenderExe}");
+                                                AddLog($"    ✔ Found in registry: {blenderExe}");
                                             }
                                         }
                                     }
@@ -462,7 +550,7 @@ namespace KawaiiStudio
                         if (File.Exists(blenderExe))
                         {
                             paths.Add(blenderExe);
-                            AddLog($"    ✓ Found in PATH: {blenderExe}");
+                            AddLog($"    ✔ Found in PATH: {blenderExe}");
                         }
                     }
                 }
@@ -494,7 +582,7 @@ namespace KawaiiStudio
                         foreach (string file in files)
                         {
                             paths.Add(file);
-                            AddLog($"    ✓ Found: {file}");
+                            AddLog($"    ✔ Found: {file}");
                         }
                     }
                     catch { }
@@ -520,7 +608,7 @@ namespace KawaiiStudio
                 if (File.Exists(blenderExe))
                 {
                     paths.Add(blenderExe);
-                    AddLog($"    ✓ Found in Steam: {blenderExe}");
+                    AddLog($"    ✔ Found in Steam: {blenderExe}");
                 }
             }
 
@@ -549,9 +637,9 @@ namespace KawaiiStudio
 
             isConverting = true;
             consoleOutput = "";
-            AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             AddLog("🚀 Starting conversion...");
-            AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
             string assetName = Path.GetFileNameWithoutExtension(glbFilePath);
             string finalFolder = Path.Combine(outputFolder, $"{assetName} Converted to FBX");
@@ -589,9 +677,9 @@ namespace KawaiiStudio
             blenderProcess.EnableRaisingEvents = true;
             blenderProcess.Exited += (sender, e) => {
                 EditorApplication.delayCall += () => {
-                    AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                    AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                     AddLog("✅ CONVERSION COMPLETED!");
-                    AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                    AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                     isConverting = false;
                     EditorUtility.DisplayDialog("Success! 🎉", 
                         $"Conversion completed successfully!\n\nOutput: {finalFolder}", "OK");
