@@ -60,7 +60,7 @@ namespace KawaiiStudio
     public class VideoAnimatorWindow : EditorWindow
     {
         // ========== CONFIGURATION ==========
-        const string VERSION = "2.0";
+        const string VERSION = "2.1";
         const int MAX_TEXTURE_SIZE = 8192;
         const int MAX_ATLAS_COUNT = 64;
         const string DISCORD_URL = "https://discord.gg/xAeJrSAgqG";
