@@ -1059,5 +1059,237 @@ namespace KawaiiStudio
                 AddLog($"✗ Preview error: {ex.Message}");
             }
         }
+
+        // KS: Ajout - arrête proprement un encodage en cours
+        private void StopEncoding()
+        {
+            try
+            {
+                if (ffmpegProcess != null && !ffmpegProcess.HasExited)
+                {
+                    ffmpegProcess.Kill();
+                    ffmpegProcess.WaitForExit(2000);
+                }
+            }
+            catch (Exception e)
+            {
+                AddLog($"✗ Error stopping encoder: {e.Message}");
+            }
+            finally
+            {
+                try { ffmpegStream?.Dispose(); } catch {}
+                ffmpegProcess = null;
+                ffmpegStream = null;
+                isEncoding = false;
+                currentFrame = 0;
+                currentAtlas = 0;
+                if (outputTexture != null)
+                {
+                    DestroyImmediate(outputTexture);
+                    outputTexture = null;
+                }
+                Repaint();
+            }
+        }
+
+        // KS: Ajout - récupère les textures 2D d'un shader custom
+        private CustomShaderTextures GetCustomShaderTextures(Material mat)
+        {
+            var result = new CustomShaderTextures();
+            if (mat == null || mat.shader == null) return result;
+
+            try
+            {
+                Shader shader = mat.shader;
+                int count = ShaderUtil.GetPropertyCount(shader);
+                List<string> names = new List<string>();
+                List<string> propNames = new List<string>();
+                for (int i = 0; i < count; i++)
+                {
+                    var type = ShaderUtil.GetPropertyType(shader, i);
+                    if (type == ShaderUtil.ShaderPropertyType.TexEnv)
+                    {
+                        string propName = ShaderUtil.GetPropertyName(shader, i);
+                        string display = ShaderUtil.GetPropertyDescription(shader, i);
+                        if (string.IsNullOrEmpty(display)) display = propName;
+                        names.Add(display);
+                        propNames.Add(propName);
+                    }
+                }
+                result.Names = names.ToArray();
+                result.PropertyNames = propNames.ToArray();
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"GetCustomShaderTextures failed: {e.Message}");
+            }
+            return result;
+        }
+
+        // KS: Ajout - formatte une taille en octets
+        private string FormatBytes(long bytes)
+        {
+            string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+            double len = bytes;
+            int order = 0;
+            while (len >= 1024 && order < sizes.Length - 1)
+            {
+                order++;
+                len /= 1024.0;
+            }
+            return $"{len:0.##} {sizes[order]}";
+        }
+
+        // KS: Ajout - échappe une option pour un filtergraph ffmpeg
+        private string EscapeFilterOption(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            var sb = new StringBuilder(s);
+            sb.Replace("\\", "\\\\");
+            sb.Replace(":", "\\:");
+            sb.Replace(",", "\\,");
+            sb.Replace("=", "\\=");
+            sb.Replace("'", "\\'");
+            sb.Replace("[", "\\[");
+            sb.Replace("]", "\\]");
+            return sb.ToString();
+        }
+
+        // KS: Ajout - échappe un filtergraph (actuellement passthrough)
+        private string EscapeFilterGraph(string s)
+        {
+            return s;
+        }
+
+        // KS: Ajout - lancement minimal d'une conversion via ffmpeg (extraction PNG)
+        private void StartConversion()
+        {
+            if (!videoInfo.IsValid)
+            {
+                AddLog("✗ No valid video analyzed.");
+                return;
+            }
+
+            string ffmpegExe = GetFFMPEGExecutable("ffmpeg");
+            if (!File.Exists(ffmpegExe))
+            {
+                EditorUtility.DisplayDialog("ffmpeg not found", $"ffmpeg not found at:\n{ffmpegPath}", "OK");
+                return;
+            }
+
+            // S'assurer que le dossier de sortie est dans Assets
+            if (!outputDirectory.StartsWith("Assets"))
+            {
+                outputDirectory = DEFAULT_OUTPUT_PATH;
+            }
+
+            // Créer la hiérarchie de dossiers si nécessaire
+            if (!AssetDatabase.IsValidFolder(outputDirectory))
+            {
+                string parent = "Assets";
+                foreach (var part in outputDirectory.Replace('\\','/').Split('/').Skip(1))
+                {
+                    if (string.IsNullOrEmpty(part)) continue;
+                    string next = parent + "/" + part;
+                    if (!AssetDatabase.IsValidFolder(next))
+                    {
+                        AssetDatabase.CreateFolder(parent, part);
+                    }
+                    parent = next;
+                }
+            }
+
+            string framesDir = Path.Combine(outputDirectory, "Frames");
+            Directory.CreateDirectory(framesDir);
+
+            // Nettoyer d'anciens fichiers
+            try
+            {
+                foreach (var f in Directory.GetFiles(framesDir, "*.png")) File.Delete(f);
+            }
+            catch {}
+
+            float duration = Mathf.Max(0f, timeEnd - timeStart);
+            if (duration <= 0f)
+            {
+                AddLog("✗ Invalid time range.");
+                return;
+            }
+
+            // S'assurer que les tailles sont correctes
+            int width = Mathf.Max(16, actualFrameSize.x > 0 ? actualFrameSize.x : targetFrameSize.x);
+            int height = Mathf.Max(16, actualFrameSize.y > 0 ? actualFrameSize.y : targetFrameSize.y);
+            int fpsInt = Mathf.Max(1, Mathf.RoundToInt(frameRate));
+
+            string outputPattern = Path.Combine(framesDir, "frame_%05d.png").Replace("\\", "/");
+
+            string args = string.Format(CultureInfo.InvariantCulture,
+                "-y -ss {0} -t {1} -i \"{2}\" -vf \"fps={3},scale={4}:{5}:flags=lanczos\" \"{6}\"",
+                timeStart.ToString(CultureInfo.InvariantCulture),
+                duration.ToString(CultureInfo.InvariantCulture),
+                inputVideoPath,
+                fpsInt,
+                width, height,
+                outputPattern);
+
+            try
+            {
+                ffmpegProcess = new Process();
+                ffmpegProcess.StartInfo.FileName = ffmpegExe;
+                ffmpegProcess.StartInfo.Arguments = args;
+                ffmpegProcess.StartInfo.UseShellExecute = false;
+                ffmpegProcess.StartInfo.CreateNoWindow = true;
+                ffmpegProcess.StartInfo.RedirectStandardError = true;
+                ffmpegProcess.StartInfo.RedirectStandardOutput = true;
+                ffmpegProcess.EnableRaisingEvents = true;
+                ffmpegProcess.Exited += (s, e) =>
+                {
+                    isEncoding = false;
+                    AssetDatabase.Refresh();
+                    AddLog("✅ Extraction finished.");
+                };
+
+                bool started = ffmpegProcess.Start();
+                if (!started)
+                {
+                    AddLog("✗ Failed to start ffmpeg.");
+                    return;
+                }
+
+                isEncoding = true;
+                currentFrame = 0;
+
+                // Mise à jour de la progression en comptant les fichiers écrits
+                EditorApplication.update -= PollProgress;
+                EditorApplication.update += PollProgress;
+
+                void PollProgress()
+                {
+                    if (!isEncoding)
+                    {
+                        EditorApplication.update -= PollProgress;
+                        return;
+                    }
+                    try
+                    {
+                        if (Directory.Exists(framesDir))
+                        {
+                            var count = Directory.GetFiles(framesDir, "frame_*.png").Length;
+                            currentFrame = Mathf.Clamp(count, 0, totalFrames);
+                            Repaint();
+                        }
+                    }
+                    catch {}
+                }
+
+                AddLog("▶ Conversion started with ffmpeg.");
+            }
+            catch (Exception ex)
+            {
+                AddLog($"✗ Conversion error: {ex.Message}");
+                isEncoding = false;
+            }
+        }
     }
 }
+
