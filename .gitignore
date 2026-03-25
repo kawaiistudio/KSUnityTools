@@ -1,24 +1,14 @@
-# Unity meta files for folders are included
-# but ignore generated/heavy content
+# Ignore everything — repo is a landing page only.
+# The actual tool is distributed as .unitypackage via GitHub Releases.
+*
 
-# ThirdParty binaries (FFMPEG ~100MB)
-ThirdParty/
+# Allow these files
+!.gitignore
+!README.md
+!LICENSE
+!VERSION.md
 
-# Video outputs (user-generated, large PNGs)
-Videos/
-
-# Export temp/output
-KS Exported/
-
-# Unity package (binary, distributed via Releases)
-*.unitypackage
-
-# WIP / incomplete
-_ShadertoyConverter_WIP/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Large baked animation (362MB - exceeds GitHub 100MB limit)
-Animations/Tail_Baked_Anim_20251129_215400.anim
+# Allow banner & logo for README display
+!References/
+!References/banner.png
+!References/logo.png
