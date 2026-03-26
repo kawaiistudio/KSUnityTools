@@ -17,6 +17,10 @@
 
 ## Screenshots
 
+| Studio Manager |
+|:---:|
+| ![Studio Manager](screenshots/studio-manager.png) |
+
 | Prefab Optimizer | Video Animator | GLB to FBX Converter |
 |:---:|:---:|:---:|
 | ![Prefab Optimizer](screenshots/prefab-optimizer.png) | ![Video Animator](screenshots/video-animator.png) | ![GLB to FBX Converter](screenshots/glb-fbx-converter.png) |
