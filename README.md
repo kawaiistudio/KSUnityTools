@@ -13,31 +13,13 @@
 
 **A complete toolkit for optimizing, converting, securing and exporting VRChat avatars — all from within Unity.**
 
-[Features](#-features) · [Install](#-installation) · [Usage](#-usage) · [Screenshots](#-screenshots) · [Security](#-security) · [Contributing](#-contributing)
-
-## Screenshots
-
-| Studio Manager |
-|:---:|
-| ![Studio Manager](screenshots/studio-manager.png) |
-
-| Prefab Optimizer | Video Animator | GLB to FBX Converter |
-|:---:|:---:|:---:|
-| ![Prefab Optimizer](screenshots/prefab-optimizer.png) | ![Video Animator](screenshots/video-animator.png) | ![GLB to FBX Converter](screenshots/glb-fbx-converter.png) |
-
-| Kawaii Exporter | NSFW Detector | KS Obfuscator |
-|:---:|:---:|:---:|
-| ![Kawaii Exporter](screenshots/kawaii-exporter.png) | ![NSFW Detector](screenshots/nsfw-detector.png) | ![KS Obfuscator](screenshots/ks-obfuscator.png) |
-
-| Tail Animator to PhysBones |
-|:---:|
-| ![Tail Animator to PhysBones](screenshots/tail-to-physbones.png) |
-
----
+[Features](#-features) · [Install](#-installation) · [Usage](#-usage) · [Security](#-security) · [Contributing](#-contributing)
 
 </div>
 
 ## Features
+
+---
 
 ### Studio Manager
 > Central hub for all Kawaii Studio tools — install, update, and launch everything from one window.
@@ -45,7 +27,13 @@
 - One-click update from GitHub Releases (auto-backup + rollback on failure)
 - Overview of installed tools & shaders with version tracking
 - Quick-launch buttons for every tool
-- 7 languages: English, Francais, Deutsch, Espanol, Russkiy, Zhongwen, Nihongo
+- 7 languages: English, Français, Deutsch, Español, Русский, 中文, 日本語
+
+<div align="center">
+<img src="screenshots/studio-manager.png" alt="Studio Manager" width="700"/>
+</div>
+
+---
 
 ### Prefab Optimizer
 > Reduce avatar file size by 50-80% while maintaining visual quality.
@@ -57,6 +45,12 @@
 - Progress bar with detailed logging
 - Alpha-aware format detection (DXT5/BC3 vs DXT1/BC1)
 
+<div align="center">
+<img src="screenshots/prefab-optimizer.png" alt="Prefab Optimizer" width="700"/>
+</div>
+
+---
+
 ### Video Animator
 > Convert videos into lightweight texture atlas animations — no VideoPlayer needed.
 
@@ -67,6 +61,12 @@
 - PNG (Crunch) or JPEG output with quality control
 - Organized per-video output folders
 
+<div align="center">
+<img src="screenshots/video-animator.png" alt="Video Animator" width="700"/>
+</div>
+
+---
+
 ### GLB to FBX Converter
 > Import GLB/GLTF models from Booth, Gumroad, etc. as Unity-ready FBX files.
 
@@ -74,6 +74,12 @@
 - Principled BSDF → Unity material mapping (BaseColor, Normal, Metallic, Roughness, Emissive)
 - Embedded texture extraction to organized `Textures/` subfolder
 - Live Blender output streaming in the console
+
+<div align="center">
+<img src="screenshots/glb-fbx-converter.png" alt="GLB to FBX Converter" width="700"/>
+</div>
+
+---
 
 ### NSFW Detector
 > Heuristic content scanner for VRChat avatar compliance.
@@ -84,6 +90,12 @@
 - One-click **AUTO-SET**: marks avatar Private + adds `content_sex` / `content_adult` tags
 - [Demo video](https://youtu.be/H9snke59njA)
 
+<div align="center">
+<img src="screenshots/nsfw-detector.png" alt="NSFW Detector" width="700"/>
+</div>
+
+---
+
 ### Obfuscator
 > Protect your avatar meshes, shaders and hierarchy from ripping.
 
@@ -91,6 +103,12 @@
 - Shader encryption & material clipping
 - GUID-based name obfuscation
 - VRC parameter injection for client-side decryption
+
+<div align="center">
+<img src="screenshots/ks-obfuscator.png" alt="KS Obfuscator" width="700"/>
+</div>
+
+---
 
 ### Tail Animator to PhysBones
 > Convert FImpossible Creations Tail Animator to native VRC PhysBones.
@@ -100,12 +118,24 @@
 - Auto-detection of tail animators in the hierarchy
 - Loop blending & PhysBone parameter tuning (Pull, Spring, Stiffness, Gravity, Immobile)
 
+<div align="center">
+<img src="screenshots/tail-to-physbones.png" alt="Tail Animator to PhysBones" width="700"/>
+</div>
+
+---
+
 ### Exporter
 > Smart .unitypackage export with dependency resolution.
 
 - Standard export or **organized export** (sorted into Textures, Materials, Models, Audio, Animations, Shaders, Prefabs)
 - Full dependency collection and validation
 - Post-export folder reveal
+
+<div align="center">
+<img src="screenshots/kawaii-exporter.png" alt="Kawaii Exporter" width="700"/>
+</div>
+
+---
 
 ### Ultimate Constraint Tool
 > Copy and remap constraints between avatars — including VRC SDK variants.
@@ -114,11 +144,15 @@
 - VRC SDK variants: VRCParentConstraint, VRCRotationConstraint, etc.
 - Smart bone mapping: path-based → name-based fallback
 
+---
+
 ### Contact Scanner
 > List and navigate to all VRCContactReceiver components in your avatar.
 
 - Click-to-select and focus in hierarchy
 - Quick overview of all contact points
+
+---
 
 ### Custom Shader GUIs
 Polished inspector interfaces for included shaders:
