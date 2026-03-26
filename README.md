@@ -15,6 +15,20 @@
 
 [Features](#-features) · [Install](#-installation) · [Usage](#-usage) · [Screenshots](#-screenshots) · [Security](#-security) · [Contributing](#-contributing)
 
+## Screenshots
+
+| Prefab Optimizer | Video Animator | GLB to FBX Converter |
+|:---:|:---:|:---:|
+| ![Prefab Optimizer](screenshots/prefab-optimizer.png) | ![Video Animator](screenshots/video-animator.png) | ![GLB to FBX Converter](screenshots/glb-fbx-converter.png) |
+
+| Kawaii Exporter | NSFW Detector | KS Obfuscator |
+|:---:|:---:|:---:|
+| ![Kawaii Exporter](screenshots/kawaii-exporter.png) | ![NSFW Detector](screenshots/nsfw-detector.png) | ![KS Obfuscator](screenshots/ks-obfuscator.png) |
+
+| Tail Animator to PhysBones |
+|:---:|
+| ![Tail Animator to PhysBones](screenshots/tail-to-physbones.png) |
+
 ---
 
 </div>
@@ -213,22 +227,6 @@ Every release is scanned on VirusTotal before publishing.
 5. Select/deselect individual assets
 6. Click **OPTIMIZE**
 7. Review the before/after stats and test in VRChat
-
----
-
-## Screenshots
-
-| Prefab Optimizer | Video Animator | GLB to FBX Converter |
-|:---:|:---:|:---:|
-| ![Prefab Optimizer](screenshots/prefab-optimizer.png) | ![Video Animator](screenshots/video-animator.png) | ![GLB to FBX Converter](screenshots/glb-fbx-converter.png) |
-
-| Kawaii Exporter | NSFW Detector | KS Obfuscator |
-|:---:|:---:|:---:|
-| ![Kawaii Exporter](screenshots/kawaii-exporter.png) | ![NSFW Detector](screenshots/nsfw-detector.png) | ![KS Obfuscator](screenshots/ks-obfuscator.png) |
-
-| Tail Animator to PhysBones |
-|:---:|
-| ![Tail Animator to PhysBones](screenshots/tail-to-physbones.png) |
 
 ---
 
