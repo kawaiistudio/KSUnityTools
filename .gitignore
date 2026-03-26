@@ -12,3 +12,7 @@
 !References/
 !References/banner.png
 !References/logo.png
+
+# Allow screenshot gallery for README / GitHub landing page
+!screenshots/
+!screenshots/*.png

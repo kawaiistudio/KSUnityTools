@@ -218,9 +218,17 @@ Every release is scanned on VirusTotal before publishing.
 
 ## Screenshots
 
-| Prefab Optimizer | Video Animator | GLB Converter |
+| Prefab Optimizer | Video Animator | GLB to FBX Converter |
 |:---:|:---:|:---:|
-| ![Prefab Optimizer](https://raw.githubusercontent.com/kawaiistudio/KSUnityTools/main/prefab-optimizer.png) | ![Video Animator](https://raw.githubusercontent.com/kawaiistudio/KSUnityTools/main/Video-Animator.png) | ![GLB Converter](https://raw.githubusercontent.com/kawaiistudio/KSUnityTools/main/glb-converter.png) |
+| ![Prefab Optimizer](screenshots/prefab-optimizer.png) | ![Video Animator](screenshots/video-animator.png) | ![GLB to FBX Converter](screenshots/glb-fbx-converter.png) |
+
+| Kawaii Exporter | NSFW Detector | KS Obfuscator |
+|:---:|:---:|:---:|
+| ![Kawaii Exporter](screenshots/kawaii-exporter.png) | ![NSFW Detector](screenshots/nsfw-detector.png) | ![KS Obfuscator](screenshots/ks-obfuscator.png) |
+
+| Tail Animator to PhysBones |
+|:---:|
+| ![Tail Animator to PhysBones](screenshots/tail-to-physbones.png) |
 
 ---
 
