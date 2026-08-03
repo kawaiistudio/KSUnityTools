@@ -715,11 +715,50 @@ namespace KawaiiStudio
 
         void StartCoroutine(IEnumerator routine)
         {
+            if (routine == null) return;
+
+            // A coroutine may "yield return <another IEnumerator>" to run it as a
+            // sub-routine. The previous driver only called MoveNext() on the outer
+            // routine and threw Current away, so the nested enumerator was created but
+            // never stepped: CheckAllToolsForUpdates() and UpdateMultipleTools() both
+            // completed instantly without performing a single request, then reported
+            // "All tools are up to date" / "All tools updated!".
+            // Keeping a stack of enumerators makes nested yields actually run.
+            Stack<IEnumerator> stack = new Stack<IEnumerator>();
+            stack.Push(routine);
+
             EditorApplication.update += UpdateCoroutine;
+
             void UpdateCoroutine()
             {
-                if (!routine.MoveNext())
+                try
+                {
+                    if (stack.Count == 0)
+                    {
+                        EditorApplication.update -= UpdateCoroutine;
+                        return;
+                    }
+
+                    IEnumerator current = stack.Peek();
+
+                    if (!current.MoveNext())
+                    {
+                        stack.Pop();
+                        if (stack.Count == 0)
+                            EditorApplication.update -= UpdateCoroutine;
+                        return;
+                    }
+
+                    if (current.Current is IEnumerator nested)
+                        stack.Push(nested);
+                }
+                catch (Exception e)
+                {
+                    // Without this, a throw left the delegate subscribed to
+                    // EditorApplication.update and re-threw on every editor tick forever.
                     EditorApplication.update -= UpdateCoroutine;
+                    UnityEngine.Debug.LogException(e);
+                }
             }
         }
     }

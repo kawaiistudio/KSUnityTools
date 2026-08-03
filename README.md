@@ -1,6 +1,6 @@
 <div align="center">
 
-![Kawaii Studio Banner](https://github.com/kawaiistudio/KSUnityTools/blob/main/logo%20KS.png)
+![Kawaii Studio Banner](https://github.com/kawaiistudio/KSUnityTools/blob/main/Documentation~/logo%20KS.png)
 
 # 🎨 KS Unity Tools
 ### *Professional VRChat Avatar & Video Optimization Suite*
@@ -273,7 +273,7 @@ Assets/Kawaii Studio/Videos/VideoName/
 ## 🎨 Screenshots
 
 ### VRChat Prefab Optimizer Interface
-![Prefab Optimizer Interface](https://github.com/kawaiistudio/KSUnityTools/blob/main/prefab-optimizer.png)
+![Prefab Optimizer Interface](https://github.com/kawaiistudio/KSUnityTools/blob/main/Documentation~/prefab-optimizer.png)
 
 **What You're Looking At:**
 - **Top Section:** Clean purple-themed interface with avatar selection
@@ -290,7 +290,7 @@ Assets/Kawaii Studio/Videos/VideoName/
 ---
 
 ### Video Animator Interface
-![Video Animator Interface](https://github.com/kawaiistudio/KSUnityTools/blob/main/Video-Animator.png)
+![Video Animator Interface](https://github.com/kawaiistudio/KSUnityTools/blob/main/Documentation~/Video-Animator.png)
 
 **What You're Looking At:**
 - **Video Input:** File browser with automatic video analysis
@@ -314,7 +314,7 @@ Assets/Kawaii Studio/Videos/VideoName/
 ---
 
 ### GLB to FBX Converter Interface
-![GLB Converter Interface](https://github.com/kawaiistudio/KSUnityTools/blob/main/glb-converter.png)
+![GLB Converter Interface](https://github.com/kawaiistudio/KSUnityTools/blob/main/Documentation~/glb-converter.png)
 
 **What You're Looking At:**
 - **Blender Path Section:** Auto-detection button with manual browse fallback

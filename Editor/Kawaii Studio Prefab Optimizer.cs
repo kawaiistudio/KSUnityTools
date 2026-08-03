@@ -3,6 +3,7 @@ using UnityEditor;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System;
 
 namespace KawaiiStudio
@@ -32,6 +33,9 @@ namespace KawaiiStudio
         public Vector2Int resolution;
         public string compressionFormat;
         public bool hasMipmaps;
+        // True once this texture has actually been through an optimization pass,
+        // so the UI can tell "0 bytes measured" apart from "not measured yet".
+        public bool hasOptimizationResult;
     }
 
     public class MeshItem
@@ -42,6 +46,10 @@ namespace KawaiiStudio
         public ModelImporterMeshCompression compression;
         public int vertexCount;
         public int triangleCount;
+        // When true the global mesh compression setting is applied to this mesh.
+        // Without this flag a per-mesh value of "Off" is indistinguishable from
+        // "unset" and can never actually be applied.
+        public bool useGlobalCompression = true;
     }
 
     public class AudioItem
@@ -98,6 +106,7 @@ namespace KawaiiStudio
         private Vector2 meshScrollPosition;
         private Vector2 audioScrollPosition;
         private string logOutput = "";
+        private readonly StringBuilder logBuilder = new StringBuilder();
         private bool showTextures = false;
         private bool showMeshes = false;
         private bool showAudio = false;
@@ -108,11 +117,12 @@ namespace KawaiiStudio
         private GUIStyle buttonStyle;
         private GUIStyle logStyle;
         private GUIStyle toggleStyle;
-        private Texture2D purpleTexture;
         private Texture2D redTexture;
+        private Texture2D redHoverTexture;
         private Texture2D blackTexture;
-        private Texture2D greenTexture;
         private bool stylesInitialized = false;
+        // Every texture allocated by MakeTex, so they can be destroyed in OnDisable.
+        private readonly List<Texture2D> generatedTextures = new List<Texture2D>();
         
         // Stats
         private long originalSize = 0;
@@ -197,19 +207,19 @@ namespace KawaiiStudio
 
         private string T(string key)
         {
-            if (translations.ContainsKey(key))
-                return translations[key];
-            return key;
+            return translations.TryGetValue(key, out string value) ? value : key;
         }
 
         private void InitializeStyles()
         {
-            if (stylesInitialized) return;
+            // The generated textures are destroyed by Unity on domain reload / assembly
+            // reload while stylesInitialized stays true, which leaves the styles pointing
+            // at dead textures. Re-check the textures, not just the flag.
+            if (stylesInitialized && redTexture != null && blackTexture != null && redHoverTexture != null) return;
 
-            purpleTexture = MakeTex(2, 2, new Color(0.486f, 0.227f, 0.929f, 1f));
             redTexture = MakeTex(2, 2, new Color(1f, 0.278f, 0.341f, 1f));
+            redHoverTexture = MakeTex(2, 2, new Color(1f, 0.42f, 0.506f, 1f));
             blackTexture = MakeTex(2, 2, new Color(0.039f, 0.039f, 0.059f, 1f));
-            greenTexture = MakeTex(2, 2, new Color(0f, 1f, 0.255f, 1f));
 
             headerStyle = new GUIStyle(EditorStyles.boldLabel)
             {
@@ -223,7 +233,7 @@ namespace KawaiiStudio
                 fontSize = 14,
                 fontStyle = FontStyle.Bold,
                 normal = { background = redTexture, textColor = Color.white },
-                hover = { background = MakeTex(2, 2, new Color(1f, 0.42f, 0.506f, 1f)), textColor = Color.white },
+                hover = { background = redHoverTexture, textColor = Color.white },
                 active = { background = redTexture, textColor = Color.white },
                 padding = new RectOffset(20, 20, 10, 10),
                 fixedHeight = 50
@@ -249,10 +259,25 @@ namespace KawaiiStudio
             Color[] pix = new Color[width * height];
             for (int i = 0; i < pix.Length; i++)
                 pix[i] = col;
-            Texture2D result = new Texture2D(width, height);
+            Texture2D result = new Texture2D(width, height)
+            {
+                // Without this Unity logs "Texture2D has been leaked" every reload.
+                hideFlags = HideFlags.HideAndDontSave
+            };
             result.SetPixels(pix);
             result.Apply();
+            generatedTextures.Add(result);
             return result;
+        }
+
+        private void OnDisable()
+        {
+            foreach (Texture2D tex in generatedTextures)
+            {
+                if (tex != null) DestroyImmediate(tex);
+            }
+            generatedTextures.Clear();
+            stylesInitialized = false;
         }
 
         private void OnGUI()
@@ -492,16 +517,17 @@ namespace KawaiiStudio
                     GUILayout.Label(item.hasMipmaps ? "Yes" : "No", textureStyle, GUILayout.Width(70));
                     GUILayout.Label($"{FormatBytes(item.originalMemorySize)}", textureStyle, GUILayout.Width(100));
                     
-                    if (item.optimizedMemorySize > 0)
+                    if (item.hasOptimizationResult)
                     {
-                        GUILayout.Label($"{FormatBytes(item.optimizedMemorySize)}", optimizedStyle, GUILayout.Width(100));
-                        
-                        if (item.originalMemorySize > item.optimizedMemorySize)
+                        long effectiveOptimized = GetEffectiveOptimizedTextureMemory(item);
+                        GUILayout.Label($"{FormatBytes(effectiveOptimized)}", optimizedStyle, GUILayout.Width(100));
+
+                        if (item.originalMemorySize > effectiveOptimized && item.originalMemorySize > 0)
                         {
-                            float percentSaved = ((float)(item.originalMemorySize - item.optimizedMemorySize) / item.originalMemorySize) * 100f;
+                            float percentSaved = ((float)(item.originalMemorySize - effectiveOptimized) / item.originalMemorySize) * 100f;
                             GUILayout.Label($"(-{percentSaved:F1}%)", optimizedStyle, GUILayout.Width(70));
                         }
-                        else if (item.originalMemorySize == item.optimizedMemorySize)
+                        else
                         {
                             GUILayout.Label("(No change)", optimizedStyle, GUILayout.Width(70));
                         }
@@ -601,7 +627,12 @@ namespace KawaiiStudio
                     GUILayout.Label($"Tris: {item.triangleCount}", meshStyle, GUILayout.Width(100));
                     
                     GUILayout.Label("Compression:", meshStyle, GUILayout.Width(90));
+                    // "Global" follows the global setting above; unticking it makes the
+                    // per-mesh dropdown authoritative, including a value of Off.
+                    item.useGlobalCompression = EditorGUILayout.ToggleLeft("Global", item.useGlobalCompression, GUILayout.Width(70));
+                    EditorGUI.BeginDisabledGroup(item.useGlobalCompression);
                     item.compression = (ModelImporterMeshCompression)EditorGUILayout.EnumPopup(item.compression, GUILayout.Width(100));
+                    EditorGUI.EndDisabledGroup();
                     
                     GUILayout.FlexibleSpace();
                     GUILayout.EndHorizontal();
@@ -817,9 +848,18 @@ namespace KawaiiStudio
             GUILayout.Label("★ Kawaii Studio ★", footerStyle);
         }
 
+        private void ClearLog()
+        {
+            logBuilder.Length = 0;
+            logOutput = "";
+        }
+
         private void AddLog(string message)
         {
-            logOutput += message + "\n";
+            // Plain "logOutput += ..." is O(n^2) over a few hundred assets and was
+            // visibly stalling the optimize pass on large avatars.
+            logBuilder.Append(message).Append('\n');
+            logOutput = logBuilder.ToString();
             logScrollPosition = new Vector2(0, float.MaxValue);
             Repaint();
         }
@@ -828,7 +868,7 @@ namespace KawaiiStudio
         {
             if (prefab == null) return;
 
-            logOutput = "";
+            ClearLog();
             textureItems.Clear();
             meshItems.Clear();
             audioItems.Clear();
@@ -854,7 +894,15 @@ namespace KawaiiStudio
                     if (mat != null)
                     {
                         Shader shader = mat.shader;
-                        for (int i = 0; i < ShaderUtil.GetPropertyCount(shader); i++)
+                        // A material whose shader failed to compile / was deleted has a null
+                        // shader; ShaderUtil.GetPropertyCount(null) throws and aborted the scan.
+                        if (shader == null)
+                        {
+                            AddLog($"   ⚠ Skipped material '{mat.name}' (missing shader)");
+                            continue;
+                        }
+                        int propertyCount = ShaderUtil.GetPropertyCount(shader);
+                        for (int i = 0; i < propertyCount; i++)
                         {
                             if (ShaderUtil.GetPropertyType(shader, i) == ShaderUtil.ShaderPropertyType.TexEnv)
                             {
@@ -867,7 +915,7 @@ namespace KawaiiStudio
                                     string path = AssetDatabase.GetAssetPath(tex);
                                     if (!string.IsNullOrEmpty(path))
                                     {
-                                        FileInfo fileInfo = new FileInfo(path);
+                                        long fileSize = GetFileSizeFromAssetPath(path);
                                         Texture2D tex2D = tex as Texture2D;
                                         TextureImporter texImporter = AssetImporter.GetAtPath(path) as TextureImporter;
                                         
@@ -891,7 +939,7 @@ namespace KawaiiStudio
                                             texture = tex,
                                             selected = true,
                                             path = path,
-                                            originalSize = fileInfo.Exists ? fileInfo.Length : 0,
+                                            originalSize = fileSize,
                                             optimizedSize = 0,
                                             originalMemorySize = memorySize,
                                             optimizedMemorySize = 0,
@@ -953,7 +1001,7 @@ namespace KawaiiStudio
                     string path = AssetDatabase.GetAssetPath(audioSource.clip);
                     if (!string.IsNullOrEmpty(path))
                     {
-                        FileInfo fileInfo = new FileInfo(path);
+                        long fileSize = GetFileSizeFromAssetPath(path);
                         AudioImporter audioImporter = AssetImporter.GetAtPath(path) as AudioImporter;
                         
                         AudioClipLoadType loadType = AudioClipLoadType.CompressedInMemory;
@@ -973,7 +1021,7 @@ namespace KawaiiStudio
                             audioClip = audioSource.clip,
                             selected = true,
                             path = path,
-                            originalSize = fileInfo.Exists ? fileInfo.Length : 0,
+                            originalSize = fileSize,
                             estimatedSize = 0,
                             loadType = loadType,
                             compressionFormat = format,
@@ -1000,7 +1048,7 @@ namespace KawaiiStudio
 
         private void OptimizeAvatar()
         {
-            logOutput = "";
+            ClearLog();
             originalSize = 0;
             optimizedSize = 0;
 
@@ -1012,57 +1060,81 @@ namespace KawaiiStudio
             int meshesOptimized = 0;
             int audiosOptimized = 0;
 
-            // Optimize Textures
             var selectedTextures = textureItems.Where(t => t.selected).ToList();
-            if (selectedTextures.Count > 0)
-            {
-                AddLog($"\n🎨 Optimizing {selectedTextures.Count} texture(s)...");
-                
-                foreach (var item in selectedTextures)
-                {
-                    if (OptimizeTexture(item))
-                        texturesOptimized++;
-                }
-            }
-
-            // Optimize Meshes
             var selectedMeshes = meshItems.Where(m => m.selected).ToList();
-            if (selectedMeshes.Count > 0)
-            {
-                AddLog($"\n🔧 Optimizing {selectedMeshes.Count} mesh(es)...");
-                
-                foreach (var item in selectedMeshes)
-                {
-                    if (OptimizeMesh(item))
-                        meshesOptimized++;
-                }
-            }
-
-            // Optimize Audio
             var selectedAudios = audioItems.Where(x => x.selected).ToList();
-            if (selectedAudios.Count > 0)
+            int totalItems = selectedTextures.Count + selectedMeshes.Count + selectedAudios.Count;
+            int processed = 0;
+
+            // try/finally: a throw inside any Optimize* call used to leave the modal
+            // progress bar on screen, which locks the whole editor until restart.
+            try
             {
-                AddLog($"\n🔊 Optimizing {selectedAudios.Count} audio clip(s)...");
-                
-                long totalOriginalAudioSize = 0;
-                long totalOptimizedAudioSize = 0;
-                
-                foreach (var item in selectedAudios)
+                // Optimize Textures
+                if (selectedTextures.Count > 0)
                 {
-                    if (OptimizeAudio(item))
+                    AddLog($"\n🎨 Optimizing {selectedTextures.Count} texture(s)...");
+
+                    foreach (var item in selectedTextures)
                     {
-                        audiosOptimized++;
-                        totalOriginalAudioSize += item.originalSize;
-                        totalOptimizedAudioSize += item.estimatedSize;
+                        EditorUtility.DisplayProgressBar("Prefab Optimizer",
+                            $"Texture: {(item.texture != null ? item.texture.name : item.path)}",
+                            totalItems > 0 ? (float)processed / totalItems : 1f);
+                        if (OptimizeTexture(item))
+                            texturesOptimized++;
+                        processed++;
                     }
                 }
-                
-                AddLog($"✓ Audio optimization: {audiosOptimized}/{selectedAudios.Count}");
-                if (totalOriginalAudioSize > 0)
+
+                // Optimize Meshes
+                if (selectedMeshes.Count > 0)
                 {
-                    long savedAudio = totalOriginalAudioSize - totalOptimizedAudioSize;
-                    AddLog($"💾 Estimated audio size reduction: {FormatBytes(savedAudio)}");
+                    AddLog($"\n🔧 Optimizing {selectedMeshes.Count} mesh(es)...");
+
+                    foreach (var item in selectedMeshes)
+                    {
+                        EditorUtility.DisplayProgressBar("Prefab Optimizer",
+                            $"Mesh: {(item.mesh != null ? item.mesh.name : item.path)}",
+                            totalItems > 0 ? (float)processed / totalItems : 1f);
+                        if (OptimizeMesh(item))
+                            meshesOptimized++;
+                        processed++;
+                    }
                 }
+
+                // Optimize Audio
+                if (selectedAudios.Count > 0)
+                {
+                    AddLog($"\n🔊 Optimizing {selectedAudios.Count} audio clip(s)...");
+
+                    long totalOriginalAudioSize = 0;
+                    long totalOptimizedAudioSize = 0;
+
+                    foreach (var item in selectedAudios)
+                    {
+                        EditorUtility.DisplayProgressBar("Prefab Optimizer",
+                            $"Audio: {(item.audioClip != null ? item.audioClip.name : item.path)}",
+                            totalItems > 0 ? (float)processed / totalItems : 1f);
+                        if (OptimizeAudio(item))
+                        {
+                            audiosOptimized++;
+                            totalOriginalAudioSize += item.originalSize;
+                            totalOptimizedAudioSize += item.estimatedSize;
+                        }
+                        processed++;
+                    }
+
+                    AddLog($"✓ Audio optimization: {audiosOptimized}/{selectedAudios.Count}");
+                    if (totalOriginalAudioSize > 0)
+                    {
+                        long savedAudio = totalOriginalAudioSize - totalOptimizedAudioSize;
+                        AddLog($"💾 Estimated audio size reduction: {FormatBytes(savedAudio)}");
+                    }
+                }
+            }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
             }
 
             AddLog("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -1077,7 +1149,9 @@ namespace KawaiiStudio
             foreach (var item in selectedTextures)
             {
                 totalOriginalMemory += item.originalMemorySize;
-                totalOptimizedMemory += item.optimizedMemorySize;
+                // Textures that were already optimal contribute their original size, not 0,
+                // which used to inflate "Memory saved" by the whole size of every skipped texture.
+                totalOptimizedMemory += GetEffectiveOptimizedTextureMemory(item);
             }
             
             if (totalOriginalMemory > 0)
@@ -1107,8 +1181,11 @@ namespace KawaiiStudio
             if (importer == null) return false;
 
             bool modified = false;
-            FileInfo fileInfo = new FileInfo(item.path);
-            originalSize += fileInfo.Length;
+            // new FileInfo(path).Length throws FileNotFoundException when the asset has
+            // been moved/deleted since the scan; GetFileSizeFromAssetPath returns 0.
+            originalSize += GetFileSizeFromAssetPath(item.path);
+            // Captured before the reimport: item.texture can be replaced/destroyed by it.
+            string textureName = item.texture != null ? item.texture.name : Path.GetFileName(item.path);
 
             if (importer.maxTextureSize != maxTextureSize)
             {
@@ -1145,24 +1222,78 @@ namespace KawaiiStudio
                 EditorUtility.SetDirty(importer);
                 importer.SaveAndReimport();
 
-                // Get updated memory size after reimport
-                Texture2D tex2D = item.texture as Texture2D;
-                if (tex2D != null)
-                {
-                    item.optimizedMemorySize = UnityEngine.Profiling.Profiler.GetRuntimeMemorySizeLong(tex2D);
-                }
+                RefreshTextureMetrics(item, importer);
+                optimizedSize += GetFileSizeFromAssetPath(item.path);
 
-                FileInfo newFileInfo = new FileInfo(item.path);
-                optimizedSize += newFileInfo.Length;
-
-                AddLog($"   ✓ {item.texture.name} ({FormatBytes(item.originalMemorySize)} → {FormatBytes(item.optimizedMemorySize)})");
+                AddLog($"   ✓ {textureName} ({FormatBytes(item.originalMemorySize)} → {FormatBytes(item.optimizedMemorySize)})");
                 return true;
             }
             else
             {
-                AddLog($"   ○ {item.texture.name} (already optimized)");
+                RefreshTextureMetrics(item, importer);
+                AddLog($"   ○ {textureName} (already optimized)");
                 return false;
             }
+        }
+
+        // After SaveAndReimport the previously held Texture2D instance is stale (Unity
+        // recreates it), so the "optimized" memory read used to measure the old object
+        // and report a bogus saving. Reload from the asset path instead.
+        private void RefreshTextureMetrics(TextureItem item, TextureImporter importer)
+        {
+            Texture2D reloadedTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(item.path);
+            if (reloadedTexture != null)
+            {
+                item.texture = reloadedTexture;
+                item.resolution = new Vector2Int(reloadedTexture.width, reloadedTexture.height);
+                item.optimizedMemorySize = UnityEngine.Profiling.Profiler.GetRuntimeMemorySizeLong(reloadedTexture);
+            }
+            else
+            {
+                item.optimizedMemorySize = item.originalMemorySize;
+            }
+
+            if (importer != null)
+            {
+                item.compressionFormat = GetCompressionFormat(importer);
+                item.hasMipmaps = importer.mipmapEnabled;
+            }
+
+            item.hasOptimizationResult = true;
+        }
+
+        private static long GetEffectiveOptimizedTextureMemory(TextureItem item)
+        {
+            if (item == null) return 0;
+            return item.hasOptimizationResult ? item.optimizedMemorySize : item.originalMemorySize;
+        }
+
+        private static long GetFileSizeFromAssetPath(string assetPath)
+        {
+            string absolutePath = AssetPathToAbsolutePath(assetPath);
+            if (string.IsNullOrEmpty(absolutePath) || !File.Exists(absolutePath)) return 0;
+            return new FileInfo(absolutePath).Length;
+        }
+
+        private static string AssetPathToAbsolutePath(string assetPath)
+        {
+            if (string.IsNullOrWhiteSpace(assetPath)) return null;
+            if (Path.IsPathRooted(assetPath)) return assetPath;
+            if (!assetPath.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(assetPath, "Assets", StringComparison.OrdinalIgnoreCase))
+            {
+                // Package assets ("Packages/com.x.y/...") resolve through the CWD.
+                return Path.GetFullPath(assetPath);
+            }
+
+            string projectRoot = Directory.GetParent(Application.dataPath)?.FullName;
+            if (string.IsNullOrEmpty(projectRoot)) return null;
+
+            string relativePath = assetPath.Length > "Assets/".Length
+                ? assetPath.Substring("Assets/".Length)
+                : string.Empty;
+
+            return Path.Combine(projectRoot, "Assets", relativePath.Replace('/', Path.DirectorySeparatorChar));
         }
 
         private bool OptimizeMesh(MeshItem item)
@@ -1172,10 +1303,12 @@ namespace KawaiiStudio
 
             bool modified = false;
 
-            // Use individual compression setting or global setting
-            ModelImporterMeshCompression targetCompression = item.compression != ModelImporterMeshCompression.Off 
-                ? item.compression 
-                : meshCompression;
+            // Use individual compression setting or global setting.
+            // The old test was "item.compression != Off ? item.compression : meshCompression",
+            // which made a deliberate per-mesh choice of "Off" impossible to apply.
+            ModelImporterMeshCompression targetCompression = item.useGlobalCompression
+                ? meshCompression
+                : item.compression;
 
             if (modelImporter.meshCompression != targetCompression)
             {
@@ -1235,7 +1368,11 @@ namespace KawaiiStudio
                 modified = true;
             }
 
-            if (settings.sampleRateSetting != AudioSampleRateSetting.PreserveSampleRate)
+            // Was "!= PreserveSampleRate", which (a) never applied the chosen rate to clips
+            // set to Preserve and (b) reported "modified" on every subsequent run because the
+            // condition stayed true once overridden. Compare against the desired target.
+            if (settings.sampleRateSetting != AudioSampleRateSetting.OverrideSampleRate ||
+                settings.sampleRateOverride != (uint)audioSampleRate)
             {
                 settings.sampleRateSetting = AudioSampleRateSetting.OverrideSampleRate;
                 settings.sampleRateOverride = (uint)audioSampleRate;
@@ -1248,22 +1385,30 @@ namespace KawaiiStudio
                 modified = true;
             }
 
+            string clipName = item.audioClip != null ? item.audioClip.name : Path.GetFileName(item.path);
+
             if (modified)
             {
                 importer.defaultSampleSettings = settings;
                 EditorUtility.SetDirty(importer);
                 importer.SaveAndReimport();
-                
-                // Recalculer la taille après optimisation
-                FileInfo fileInfo = new FileInfo(item.path);
-                item.estimatedSize = fileInfo.Exists ? fileInfo.Length : CalculateEstimatedAudioSize(item);
-                
-                AddLog($"   ✓ {item.audioClip.name} ({FormatBytes(item.originalSize)} → {FormatBytes(item.estimatedSize)})");
+
+                // Use the estimation formula: changing importer settings does NOT rewrite the
+                // source file, so reading its size back always reported a 0-byte saving.
+                item.loadType = settings.loadType;
+                item.compressionFormat = settings.compressionFormat;
+                item.quality = settings.quality;
+                item.frequency = (int)settings.sampleRateOverride;
+                item.channels = forceToMono ? 1 : (item.audioClip != null ? item.audioClip.channels : item.channels);
+                item.estimatedSize = CalculateEstimatedAudioSize(item);
+
+                AddLog($"   ✓ {clipName} ({FormatBytes(item.originalSize)} → ~{FormatBytes(item.estimatedSize)})");
                 return true;
             }
             else
             {
-                AddLog($"   ○ {item.audioClip.name} (already optimized)");
+                item.estimatedSize = CalculateEstimatedAudioSize(item);
+                AddLog($"   ○ {clipName} (already optimized)");
                 return false;
             }
         }
@@ -1273,7 +1418,9 @@ namespace KawaiiStudio
             // Formule approximative: (bitrate * durée * channels) / 8
             // Le bitrate est basé sur la qualité (0-1 → 0-320 kbps)
             int estimatedBitrate = Mathf.RoundToInt(audioQuality * 320000); // en bits/sec
-            int channelCount = forceToMono ? 1 : item.channels;
+            // Mathf.Max guards clips that report 0 channels, which produced a 0-byte estimate
+            // and a bogus "-100%" reduction in the list.
+            int channelCount = forceToMono ? 1 : Mathf.Max(1, item.channels);
             
             // Si c'est du PCM non compressé
             if (audioCompressionFormat == AudioCompressionFormat.PCM)

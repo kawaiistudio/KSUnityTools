@@ -839,13 +839,35 @@ namespace KawaiiStudio
                 };
                 using (var p = Process.Start(psi))
                 {
+                    if (p == null)
+                    {
+                        stderr = $"Could not start '{fileName}'.";
+                        return string.Empty;
+                    }
+
+                    // Drain stderr asynchronously while stdout is read on this thread.
+                    // Reading stdout to completion first and only then stderr deadlocks as
+                    // soon as the child fills the ~4 KB stderr pipe buffer: it blocks writing
+                    // stderr, therefore never closes stdout, so ReadToEnd() never returns and
+                    // the WaitForExit timeout below is never reached - the editor hangs for good.
+                    StringBuilder errorBuilder = new StringBuilder();
+                    p.ErrorDataReceived += (s, e) => { if (e.Data != null) errorBuilder.AppendLine(e.Data); };
+                    p.BeginErrorReadLine();
+
                     string stdout = p.StandardOutput.ReadToEnd();
-                    stderr = p.StandardError.ReadToEnd();
+
                     if (!p.WaitForExit(timeoutMs))
                     {
-                        try { p.Kill(); } catch {}
-                        stderr = (stderr ?? "") + "\n(timeout)";
+                        try { p.Kill(); } catch (Exception) { }
+                        errorBuilder.AppendLine("(timeout)");
                     }
+                    else
+                    {
+                        // Lets the async stderr handler flush; the process has already exited.
+                        p.WaitForExit();
+                    }
+
+                    stderr = errorBuilder.ToString();
                     return stdout;
                 }
             }
@@ -1027,14 +1049,16 @@ namespace KawaiiStudio
             float aspect = (float)frameSize.x / frameSize.y;
             slices = Vector2Int.zero;
 
-            slices.x = limitAtlasSize.x / frameSize.x;
-            slices.y = limitAtlasSize.y / frameSize.y;
+            // A frame larger than the atlas limit yields 0 slices, which then divides by
+            // zero below. One slice is the only meaningful floor.
+            slices.x = Mathf.Max(1, limitAtlasSize.x / frameSize.x);
+            slices.y = Mathf.Max(1, limitAtlasSize.y / frameSize.y);
             int framesPerAtlas = slices.x * slices.y;
-            
+
             if (frames > framesPerAtlas)
             {
-                slices.x = Mathf.RoundToInt(Mathf.Sqrt(frames / aspect));
-                slices.y = Mathf.CeilToInt((float)frames / slices.x);
+                slices.x = Mathf.Max(1, Mathf.RoundToInt(Mathf.Sqrt(frames / aspect)));
+                slices.y = Mathf.Max(1, Mathf.CeilToInt((float)frames / slices.x));
 
                 frameSize.x = limitAtlasSize.x / slices.x;
                 frameSize.y = limitAtlasSize.y / slices.y;
@@ -1074,8 +1098,10 @@ namespace KawaiiStudio
         private Vector2Int ComputePackedFrameSize(Vector2Int frameSize, Vector2Int limitAtlasSize, int totalFrames, out Vector2Int slices, out int atlases)
         {
             slices = Vector2Int.zero;
-            slices.x = limitAtlasSize.x / frameSize.x;
-            slices.y = limitAtlasSize.y / frameSize.y;
+            // Same guard as PackSingleAtlas: a frame bigger than the atlas limit gave
+            // framesPerAtlas == 0 and threw DivideByZeroException on the next line.
+            slices.x = Mathf.Max(1, limitAtlasSize.x / frameSize.x);
+            slices.y = Mathf.Max(1, limitAtlasSize.y / frameSize.y);
             int framesPerAtlas = slices.x * slices.y;
             atlases = (totalFrames - 1) / framesPerAtlas + 1;
 
@@ -1128,19 +1154,25 @@ namespace KawaiiStudio
         
         private int GCD(int x, int y)
         {
-            while (x != y)
+            // The subtractive form looped forever whenever either argument was 0 or
+            // negative (GCD(0,4) never terminates), hard-freezing the editor.
+            x = Mathf.Abs(x);
+            y = Mathf.Abs(y);
+            while (y != 0)
             {
-                if (x > y)
-                    x -= y;
-                else
-                    y -= x;
+                int remainder = x % y;
+                x = y;
+                y = remainder;
             }
             return x;
         }
 
         private int LCM(int x, int y)
         {
-            return x * y / GCD(x, y);
+            int gcd = GCD(x, y);
+            // Callers divide by the result, so never return 0.
+            if (gcd == 0) return 1;
+            return Mathf.Max(1, Mathf.Abs(x * y) / gcd);
         }
         
         private void PreviewVideo()
@@ -1573,9 +1605,12 @@ namespace KawaiiStudio
         
         private void OnFFMPEGFrameExited(object sender, EventArgs e)
         {
-            StopEncoding();
+            // Process.Exited fires on a threadpool thread. StopEncoding() touches
+            // EditorApplication.update and DestroyImmediate, which are main-thread only,
+            // so it has to run inside delayCall - exactly like OnFFMPEGExited above.
             EditorApplication.delayCall += () =>
             {
+                StopEncoding();
                 AssetDatabase.Refresh();
                 AddLog("✅ Frame conversion completed!");
                 FinalizeConversion();

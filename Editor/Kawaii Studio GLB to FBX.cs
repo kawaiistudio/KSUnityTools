@@ -635,16 +635,28 @@ namespace KawaiiStudio
                 return;
             }
 
+            string assetName = Path.GetFileNameWithoutExtension(glbFilePath);
+            string finalFolder = Path.Combine(outputFolder, $"{assetName} Converted to FBX");
+            string texturesFolder = Path.Combine(finalFolder, "Textures");
+
+            // Create the output folders BEFORE flipping isConverting: an IO failure here
+            // used to escape through OnGUI and leave the window stuck in "converting".
+            try
+            {
+                Directory.CreateDirectory(texturesFolder);
+            }
+            catch (Exception ex)
+            {
+                EditorUtility.DisplayDialog("Error",
+                    $"Could not create the output folder:\n{texturesFolder}\n\n{ex.Message}", "OK");
+                return;
+            }
+
             isConverting = true;
             consoleOutput = "";
             AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             AddLog("🚀 Starting conversion...");
             AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-            string assetName = Path.GetFileNameWithoutExtension(glbFilePath);
-            string finalFolder = Path.Combine(outputFolder, $"{assetName} Converted to FBX");
-            string texturesFolder = Path.Combine(finalFolder, "Textures");
-            Directory.CreateDirectory(texturesFolder);
 
             string blenderScript = GenerateBlenderScript(glbFilePath, finalFolder, texturesFolder, assetName);
             
@@ -657,6 +669,13 @@ namespace KawaiiStudio
                 RedirectStandardError = true,
                 CreateNoWindow = true
             };
+
+            // Release any previous run's process handle before overwriting the field.
+            if (blenderProcess != null)
+            {
+                try { blenderProcess.Dispose(); } catch (Exception) { }
+                blenderProcess = null;
+            }
 
             blenderProcess = new Process { StartInfo = startInfo };
             blenderProcess.OutputDataReceived += (sender, e) => {
@@ -675,20 +694,58 @@ namespace KawaiiStudio
             };
 
             blenderProcess.EnableRaisingEvents = true;
+            string expectedFbx = Path.Combine(finalFolder, $"{assetName}_converted_FBX.fbx");
             blenderProcess.Exited += (sender, e) => {
+                // Read the exit code on the event thread; the Process may be disposed
+                // by the time delayCall runs.
+                int exitCode = -1;
+                try { exitCode = blenderProcess.ExitCode; } catch (Exception) { /* already released */ }
+
                 EditorApplication.delayCall += () => {
-                    AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                    AddLog("✅ CONVERSION COMPLETED!");
-                    AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                    // Previously this branch unconditionally logged "CONVERSION COMPLETED"
+                    // and showed the Success dialog, so a Blender crash or a Python error
+                    // was reported to the user as a success.
                     isConverting = false;
-                    EditorUtility.DisplayDialog("Success! 🎉", 
-                        $"Conversion completed successfully!\n\nOutput: {finalFolder}", "OK");
+                    bool succeeded = exitCode == 0 && File.Exists(expectedFbx);
+
+                    AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                    if (succeeded)
+                    {
+                        AddLog("✅ CONVERSION COMPLETED!");
+                        AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                        // Make the result visible if the user exported inside the project.
+                        string normalized = finalFolder.Replace("\\", "/");
+                        if (normalized.StartsWith(Application.dataPath.Replace("\\", "/"), StringComparison.OrdinalIgnoreCase))
+                            AssetDatabase.Refresh();
+                        EditorUtility.DisplayDialog("Success! 🎉",
+                            $"Conversion completed successfully!\n\nOutput: {finalFolder}", "OK");
+                    }
+                    else
+                    {
+                        AddLog($"❌ CONVERSION FAILED (Blender exit code {exitCode})");
+                        AddLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                        EditorUtility.DisplayDialog("Conversion failed",
+                            $"Blender exited with code {exitCode} and no FBX was produced.\n\nCheck the log for the Blender error.", "OK");
+                    }
                 };
             };
 
-            blenderProcess.Start();
-            blenderProcess.BeginOutputReadLine();
-            blenderProcess.BeginErrorReadLine();
+            try
+            {
+                blenderProcess.Start();
+                blenderProcess.BeginOutputReadLine();
+                blenderProcess.BeginErrorReadLine();
+            }
+            catch (Exception ex)
+            {
+                // A failed Start() used to escape through OnGUI leaving isConverting == true
+                // forever, which permanently greyed out the Convert button.
+                isConverting = false;
+                blenderProcess.Dispose();
+                blenderProcess = null;
+                AddLog($"❌ Could not start Blender: {ex.Message}");
+                EditorUtility.DisplayDialog("Error", $"Could not start Blender:\n{ex.Message}", "OK");
+            }
         }
 
         private string GenerateBlenderScript(string glbPath, string folder, string texturesFolder, string assetName)
@@ -763,9 +820,24 @@ print('Conversion completed!')
 
         private void OnDestroy()
         {
-            if (blenderProcess != null && !blenderProcess.HasExited)
+            // HasExited throws InvalidOperationException when the process was never
+            // started (e.g. Start() failed), and the handle was never disposed.
+            if (blenderProcess != null)
             {
-                blenderProcess.Kill();
+                try
+                {
+                    if (!blenderProcess.HasExited)
+                    {
+                        blenderProcess.Kill();
+                        blenderProcess.WaitForExit(2000);
+                    }
+                }
+                catch (Exception) { /* never started, or already gone */ }
+                finally
+                {
+                    blenderProcess.Dispose();
+                    blenderProcess = null;
+                }
             }
         }
     }

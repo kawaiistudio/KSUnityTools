@@ -1,0 +1,58 @@
+name: Build Release
+
+# Publishing is manual on purpose: pushing a tag like "1.4.1" is what creates a release.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+.[0-9]+-*"
+
+permissions:
+  contents: write
+
+env:
+  PACKAGE_NAME: com.kawaiistudio.ksunitytools
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version from package.json
+        id: version
+        run: |
+          VERSION=$(python -c "import json;print(json.load(open('package.json'))['version'])")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Package version: $VERSION"
+
+      - name: Verify the tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [ "$TAG" != "${{ steps.version.outputs.version }}" ]; then
+            echo "::error::Tag '$TAG' does not match package.json version '${{ steps.version.outputs.version }}'."
+            exit 1
+          fi
+
+      # The package root is the repository root, so everything except repo-only
+      # metadata goes into the zip that VCC / UPM will download.
+      # Documentation~ is excluded on purpose: the README points at absolute GitHub
+      # URLs, so shipping those 14 MB of screenshots to every user buys nothing.
+      - name: Build package zip
+        run: |
+          mkdir -p build
+          zip -r "build/${PACKAGE_NAME}-${{ steps.version.outputs.version }}.zip" . \
+            -x ".git/*" ".github/*" "build/*" "Website~/*" "Documentation~/*" "*.md.meta"
+          ls -la build/
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          body_path: CHANGELOG.md
+          files: |
+            build/${{ env.PACKAGE_NAME }}-${{ steps.version.outputs.version }}.zip
+            package.json
