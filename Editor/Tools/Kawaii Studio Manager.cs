@@ -39,14 +39,15 @@ namespace KawaiiStudio
 
     public class KawaiiStudioManager : EditorWindow
     {
-        private const string VERSION = "2.2";
+        private const string VERSION = KawaiiStudioVersion.Current;
         private const string GITHUB_BASE_URL = "https://raw.githubusercontent.com/kawaiistudio/KSUnityTools/main/";
         private const string DISCORD_URL = "https://discord.gg/xAeJrSAgqG";
         private const string TELEGRAM_URL = "https://t.me/kawaiistudio";
         private const string GITHUB_URL = "https://github.com/kawaiistudio/KSUnityTools";
         private const string PREFS_LANGUAGE = "KawaiiStudio.Language";
         private const string LOGO_URL = "https://github.com/kawaiistudio/KSUnityTools/blob/main/logo_v2.png?raw=true";
-        private const string LANGUAGES_FOLDER = "Assets/Kawaii Studio/Languages";
+        // Resolved at runtime: the old hardcoded literal broke any install under Packages/.
+        private static string LANGUAGES_FOLDER => KawaiiStudioPaths.Languages;
         
         private List<ToolInfo> tools = new List<ToolInfo>
         {
@@ -215,15 +216,8 @@ namespace KawaiiStudio
             stylesInitialized = true;
         }
 
-        Texture2D MakeTex(int width, int height, Color col)
-        {
-            Color[] pix = new Color[width * height];
-            for (int i = 0; i < pix.Length; i++) pix[i] = col;
-            Texture2D result = new Texture2D(width, height);
-            result.SetPixels(pix);
-            result.Apply();
-            return result;
-        }
+        // Shared cached implementation; the local copy leaked a Texture2D per style rebuild.
+        Texture2D MakeTex(int width, int height, Color col) => KawaiiStudioUtil.MakeTex(width, height, col);
 
         string T(string key)
         {

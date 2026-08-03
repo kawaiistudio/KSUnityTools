@@ -2,7 +2,49 @@
 
 All notable changes to KS Unity Tools are documented here.
 
-## [1.4.1] - unreleased
+## [3.0.0] - unreleased
+
+Merge of the two lines that had drifted apart: the published .unitypackage (12 tools,
+product version 1.4) and the git repository (4 tools, versioned 2.0/2.2). The result is
+a superset of both, so it takes 3.0.0 — above every number previously in circulation.
+
+### Merged
+- Imported the 8 tools that existed only in the shipped package: Exporter, NSFW Detector,
+  Obfuscator, Tail Animator to PhysBones, Contact Scanner, Ultimate Constraint Tool,
+  plus the 4 shader GUIs and the 8 shaders.
+- Kept the repository's Video Animator (its ffprobe metadata and loop work was never in
+  the package) and its per-tool localization for the Prefab Optimizer and GLB to FBX.
+- New `Editor/Core` layer: `KawaiiStudioGUI` (design system), `KawaiiStudioBranding`,
+  `KawaiiStudioPaths`, `KawaiiStudioUtil`, `KawaiiStudioLocalization`, `KawaiiStudioVersion`.
+- One version constant for the whole toolset; every tool reads `KawaiiStudioVersion.Current`.
+- VRChat-dependent tools moved into their own assembly, constrained on `VRC_SDK_VRCSDK3`,
+  so the rest of the toolset still compiles without the VRChat SDK.
+
+### User interface
+- Rebuilt `KawaiiStudioGUI` as a real design system: 4pt spacing scale, type ramp, cards,
+  primary/secondary/danger buttons with hover and active states, badges, stat tiles,
+  progress bars, empty states and inline validation banners.
+- Everything is theme-aware and follows Unity's dark **and** light editor skin; styles and
+  generated textures rebuild automatically when the skin changes.
+- All chrome is generated procedurally, so the 13 MB banner PNG is no longer shipped and
+  FFmpeg is no longer bundled (the Video Animator locates an existing or system install).
+- Prefab Optimizer reorganised: scan summary tiles, then Textures / Meshes / Audio as tabs
+  instead of six stacked sections; the log is selectable with copy/clear.
+
+### Fixed in the merged tools
+- Shader GUIs pointed at `Editor/Cache/logo.png`, a folder renamed to `References` in v1.4,
+  so the logo and banner silently never loaded.
+- Obfuscator: created its output folder without telling the AssetDatabase (so every
+  `CreateAsset` failed), reported "Encryption Complete!" even when the prefab was never
+  written, leaked the instantiated avatar clone into the scene, left the modal progress bar
+  up on any exception, and broke on avatar names containing path characters.
+- Exporter: reported success and revealed a nonexistent file when the user cancelled
+  Unity's export dialog.
+- `MakeTex` was duplicated in three tools, each allocating textures without
+  `HideAndDontSave` and never destroying them.
+- Hardcoded `Assets/Kawaii Studio/Languages` broke any install under `Packages/`.
+
+## [1.4.1] - folded into 3.0.0
 
 ### Distribution
 - The repository is now a Unity package (`com.kawaiistudio.ksunitytools`) installable

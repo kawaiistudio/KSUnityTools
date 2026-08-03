@@ -8,18 +8,9 @@ using System;
 
 namespace KawaiiStudio
 {
-    [Serializable]
-    public class PrefabTranslationEntry
-    {
-        public string key;
-        public string value;
-    }
-
-    [Serializable]
-    public class PrefabTranslationFile
-    {
-        public List<PrefabTranslationEntry> entries;
-    }
+    // PrefabTranslationEntry / PrefabTranslationFile removed: they were byte-for-byte
+    // duplicates of the pairs in the Manager and the GLB converter, all reading the
+    // same JSON. See KSTranslationEntry in Editor/Core/KawaiiStudioLocalization.cs.
 
     public class TextureItem
     {
@@ -70,7 +61,7 @@ namespace KawaiiStudio
     public class PrefabOptimizer : EditorWindow
     {
         // Version
-        private const string VERSION = "2.0";
+        private const string VERSION = KawaiiStudioVersion.Current;
         
         // Configuration
         private GameObject prefab;
@@ -88,12 +79,10 @@ namespace KawaiiStudio
         private bool forceToMono = false;
         private int audioSampleRate = 44100;
         
-        // Language
-        private const string LANGUAGES_FOLDER = "Assets/Kawaii Studio/Languages";
-        private const string PREFS_LANGUAGE = "KawaiiStudio.Language";
-        private Dictionary<string, string> translations = new Dictionary<string, string>();
-        private string currentLanguage = "en";
-        
+        // Language state lives in KawaiiStudioLocalization. The hardcoded
+        // "Assets/Kawaii Studio/Languages" literal that used to sit here also broke
+        // any install under Packages/.
+
         // Lists
         private List<TextureItem> textureItems = new List<TextureItem>();
         private List<MeshItem> meshItems = new List<MeshItem>();
@@ -101,29 +90,22 @@ namespace KawaiiStudio
         
         // UI State
         private Vector2 scrollPosition;
+        // Which results table is showing (0 textures, 1 meshes, 2 audio).
+        private int resultsTab = 0;
         private Vector2 logScrollPosition;
         private Vector2 textureScrollPosition;
         private Vector2 meshScrollPosition;
         private Vector2 audioScrollPosition;
         private string logOutput = "";
         private readonly StringBuilder logBuilder = new StringBuilder();
-        private bool showTextures = false;
-        private bool showMeshes = false;
-        private bool showAudio = false;
+        // showTextures / showMeshes / showAudio removed: the three foldouts were
+        // replaced by the Textures / Meshes / Audio tabs.
         private bool scanned = false;
         
-        // UI Styles
-        private GUIStyle headerStyle;
-        private GUIStyle buttonStyle;
-        private GUIStyle logStyle;
-        private GUIStyle toggleStyle;
-        private Texture2D redTexture;
-        private Texture2D redHoverTexture;
-        private Texture2D blackTexture;
-        private bool stylesInitialized = false;
-        // Every texture allocated by MakeTex, so they can be destroyed in OnDisable.
-        private readonly List<Texture2D> generatedTextures = new List<Texture2D>();
-        
+        // All styling now comes from KawaiiStudioGUI: one palette, one spacing
+        // scale, and it follows the dark/light editor skin. The hand-rolled styles
+        // and their leaked Texture2D allocations that used to live here are gone.
+
         // Stats
         private long originalSize = 0;
         private long optimizedSize = 0;
@@ -132,720 +114,536 @@ namespace KawaiiStudio
         public static void ShowWindow()
         {
             PrefabOptimizer window = GetWindow<PrefabOptimizer>("Prefab Optimizer");
-            window.minSize = new Vector2(900, 750);
+            window.minSize = new Vector2(760, 620);
             window.Show();
         }
 
         private void OnEnable()
         {
+            titleContent = new GUIContent("Prefab Optimizer");
             LoadLanguage();
         }
 
-        private void LoadLanguage()
-        {
-            currentLanguage = EditorPrefs.GetString(PREFS_LANGUAGE, "en");
-            translations.Clear();
-            
-            string jsonPath = Path.Combine(LANGUAGES_FOLDER, $"{currentLanguage}.json");
-            
-            if (File.Exists(jsonPath))
-            {
-                try
-                {
-                    string jsonContent = File.ReadAllText(jsonPath);
-                    PrefabTranslationFile translationFile = JsonUtility.FromJson<PrefabTranslationFile>(jsonContent);
-                    
-                    if (translationFile != null && translationFile.entries != null)
-                    {
-                        foreach (var entry in translationFile.entries)
-                        {
-                            if (!string.IsNullOrEmpty(entry.key) && !string.IsNullOrEmpty(entry.value))
-                            {
-                                translations[entry.key] = entry.value;
-                            }
-                        }
-                    }
-                }
-                catch (Exception e)
-                {
-                    UnityEngine.Debug.LogWarning($"Failed to load translations: {e.Message}");
-                    LoadFallbackTranslations();
-                }
-            }
-            else
-            {
-                LoadFallbackTranslations();
-            }
-        }
+        // Translations are shared by the whole toolset now. This tool used to carry
+        // its own [Serializable] entry/file pair, its own dictionary, its own JSON
+        // reader and a 20-key hardcoded English fallback - all duplicated in the
+        // other tools and all reading the very same files.
+        private void LoadLanguage() => KawaiiStudioLocalization.Reload();
 
-        private void LoadFallbackTranslations()
-        {
-            translations = new Dictionary<string, string>
-            {
-                { "prefab", "PREFAB" },
-                { "drag_prefab", "Drag Prefab Here:" },
-                { "scan_prefab", "SCAN PREFAB" },
-                { "texture_settings", "TEXTURE COMPRESSION SETTINGS" },
-                { "max_size", "Max Texture Size:" },
-                { "compression", "Compression Quality:" },
-                { "crunch_compression", "Use Crunch Compression:" },
-                { "generate_mipmaps", "Generate Mipmaps:" },
-                { "mesh_compression", "MESH COMPRESSION SETTINGS" },
-                { "mesh_compression_level", "Mesh Compression:" },
-                { "audio_compression", "AUDIO COMPRESSION SETTINGS" },
-                { "load_type", "Load Type:" },
-                { "compression_format", "Compression Format:" },
-                { "quality", "Quality:" },
-                { "sample_rate", "Sample Rate:" },
-                { "force_to_mono", "Force To Mono:" },
-                { "optimize", "OPTIMIZE" },
-                { "select_all", "Select All" },
-                { "none", "None" },
-                { "log", "LOG OUTPUT" }
-            };
-        }
+        private string T(string key) => KawaiiStudioLocalization.T(key);
 
-        private string T(string key)
-        {
-            return translations.TryGetValue(key, out string value) ? value : key;
-        }
-
-        private void InitializeStyles()
-        {
-            // The generated textures are destroyed by Unity on domain reload / assembly
-            // reload while stylesInitialized stays true, which leaves the styles pointing
-            // at dead textures. Re-check the textures, not just the flag.
-            if (stylesInitialized && redTexture != null && blackTexture != null && redHoverTexture != null) return;
-
-            redTexture = MakeTex(2, 2, new Color(1f, 0.278f, 0.341f, 1f));
-            redHoverTexture = MakeTex(2, 2, new Color(1f, 0.42f, 0.506f, 1f));
-            blackTexture = MakeTex(2, 2, new Color(0.039f, 0.039f, 0.059f, 1f));
-
-            headerStyle = new GUIStyle(EditorStyles.boldLabel)
-            {
-                fontSize = 20,
-                alignment = TextAnchor.MiddleCenter,
-                normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
-            };
-
-            buttonStyle = new GUIStyle(GUI.skin.button)
-            {
-                fontSize = 14,
-                fontStyle = FontStyle.Bold,
-                normal = { background = redTexture, textColor = Color.white },
-                hover = { background = redHoverTexture, textColor = Color.white },
-                active = { background = redTexture, textColor = Color.white },
-                padding = new RectOffset(20, 20, 10, 10),
-                fixedHeight = 50
-            };
-
-            logStyle = new GUIStyle(EditorStyles.textArea)
-            {
-                normal = { background = blackTexture, textColor = new Color(0f, 1f, 0.255f, 1f) },
-                fontSize = 10,
-                wordWrap = true
-            };
-
-            toggleStyle = new GUIStyle(EditorStyles.toggle)
-            {
-                normal = { textColor = new Color(0f, 1f, 0.255f, 1f) }
-            };
-
-            stylesInitialized = true;
-        }
-
-        private Texture2D MakeTex(int width, int height, Color col)
-        {
-            Color[] pix = new Color[width * height];
-            for (int i = 0; i < pix.Length; i++)
-                pix[i] = col;
-            Texture2D result = new Texture2D(width, height)
-            {
-                // Without this Unity logs "Texture2D has been leaked" every reload.
-                hideFlags = HideFlags.HideAndDontSave
-            };
-            result.SetPixels(pix);
-            result.Apply();
-            generatedTextures.Add(result);
-            return result;
-        }
-
-        private void OnDisable()
-        {
-            foreach (Texture2D tex in generatedTextures)
-            {
-                if (tex != null) DestroyImmediate(tex);
-            }
-            generatedTextures.Clear();
-            stylesInitialized = false;
-        }
+        private string FormatBytes(long bytes) => KawaiiStudioUtil.FormatBytes(bytes);
 
         private void OnGUI()
         {
-            InitializeStyles();
-
-            // Background
-            EditorGUI.DrawRect(new Rect(0, 0, position.width, position.height), new Color(0.102f, 0.059f, 0.122f, 1f));
+            KawaiiStudioGUI.DrawWindowBackground(position);
 
             scrollPosition = GUILayout.BeginScrollView(scrollPosition);
             GUILayout.BeginVertical();
-            GUILayout.Space(10);
 
-            // Header
-            DrawHeader();
-            GUILayout.Space(15);
+            KawaiiStudioGUI.DrawBanner(
+                "Prefab Optimizer",
+                "Compress textures, meshes and audio on a prefab or avatar",
+                VERSION,
+                KawaiiStudioBranding.Logo,
+                KawaiiStudioBranding.Banner);
 
-            // Avatar Selection
-            DrawAvatarSelection();
-            GUILayout.Space(10);
+            GUILayout.Space(KawaiiStudioGUI.Space2);
 
-            // Scan Button
+            DrawSourceSection();
+
             if (!scanned || prefab == null)
             {
                 DrawScanButton();
             }
-
-            if (scanned && prefab != null)
+            else
             {
-                // Texture Settings
-                DrawTextureSettings();
-                GUILayout.Space(10);
-
-                // Texture List
-                DrawTextureList();
-                GUILayout.Space(10);
-
-                // Mesh Settings
-                DrawMeshSettings();
-                GUILayout.Space(10);
-
-                // Mesh List
-                DrawMeshList();
-                GUILayout.Space(10);
-
-                // Audio Settings
-                DrawAudioSettings();
-                GUILayout.Space(10);
-
-                // Audio List
-                DrawAudioList();
-                GUILayout.Space(10);
-
-                // Optimize Button
+                DrawSummary();
+                DrawResults();
                 DrawOptimizeButton();
-                GUILayout.Space(10);
-
-                // Log Output
                 DrawLogOutput();
             }
 
-            GUILayout.Space(10);
-            DrawFooter();
+            KawaiiStudioGUI.DrawFooter();
             GUILayout.EndVertical();
             GUILayout.EndScrollView();
         }
 
-        private void DrawHeader()
+        /// <summary>Step 1: pick the prefab, with inline validation rather than a dialog.</summary>
+        private void DrawSourceSection()
         {
-            GUILayout.Label($"✨ {T("prefab").ToUpper()} OPTIMIZER ✨", headerStyle);
-        }
+            KawaiiStudioGUI.DrawSection(T("prefab"), () =>
+            {
+                GameObject newPrefab = (GameObject)EditorGUILayout.ObjectField(
+                    T("drag_prefab"), prefab, typeof(GameObject), true);
 
-        private void DrawAvatarSelection()
-        {
-            GUILayout.BeginVertical(GUI.skin.box);
-            
-            GUIStyle labelStyle = new GUIStyle(EditorStyles.boldLabel)
-            {
-                normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
-            };
-            GUILayout.Label($"🎭 {T("prefab")}", labelStyle);
-            
-            GUILayout.Space(5);
-            GameObject newPrefab = (GameObject)EditorGUILayout.ObjectField(T("drag_prefab"), prefab, typeof(GameObject), true);
-            
-            if (newPrefab != prefab)
-            {
-                prefab = newPrefab;
-                scanned = false;
-                textureItems.Clear();
-                meshItems.Clear();
-                audioItems.Clear();
-            }
-            
-            if (prefab != null)
-            {
-                GUIStyle infoStyle = new GUIStyle(EditorStyles.miniLabel)
+                if (newPrefab != prefab)
                 {
-                    normal = { textColor = new Color(0f, 1f, 0.255f, 1f) }
-                };
-                GUILayout.Label($"✓ Selected: {prefab.name}", infoStyle);
-            }
-            
-            GUILayout.EndVertical();
+                    prefab = newPrefab;
+                    scanned = false;
+                    textureItems.Clear();
+                    meshItems.Clear();
+                    audioItems.Clear();
+                    ClearLog();
+                }
+
+                GUILayout.Space(KawaiiStudioGUI.Space2);
+
+                // Inline validation: the scan button used to be silently disabled with
+                // no indication of why.
+                if (prefab == null)
+                {
+                    KawaiiStudioGUI.Banner(
+                        "Drag a prefab or a scene avatar into the field above to begin.",
+                        KawaiiStudioGUI.MessageKind.Info);
+                }
+                else
+                {
+                    KawaiiStudioGUI.KeyValueRow("Selected", prefab.name, KawaiiStudioGUI.SuccessColor);
+                    if (scanned)
+                    {
+                        KawaiiStudioGUI.KeyValueRow("Status",
+                            $"{textureItems.Count + meshItems.Count + audioItems.Count} assets found",
+                            KawaiiStudioGUI.SubTextColor);
+                    }
+                }
+            });
         }
 
         private void DrawScanButton()
         {
-            GUI.enabled = prefab != null;
-            
-            GUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
-            
-            if (GUILayout.Button($"🔍 {T("scan_prefab")}", buttonStyle, GUILayout.Width(300)))
+            GUILayout.Space(KawaiiStudioGUI.Space2);
+            using (new EditorGUI.DisabledScope(prefab == null))
             {
-                ScanPrefab();
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+                if (KawaiiStudioGUI.PrimaryButton(T("scan_prefab"), GUILayout.Width(280f)))
+                {
+                    ScanPrefab();
+                }
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.EndHorizontal();
             }
-            
-            GUILayout.FlexibleSpace();
-            GUILayout.EndHorizontal();
-            
-            GUI.enabled = true;
+            GUILayout.Space(KawaiiStudioGUI.Space2);
+        }
+
+        /// <summary>Scan results at a glance, before any of the detail tables.</summary>
+        private void DrawSummary()
+        {
+            long originalMemory = 0;
+            long projectedMemory = 0;
+            foreach (TextureItem item in textureItems)
+            {
+                originalMemory += item.originalMemorySize;
+                projectedMemory += GetEffectiveOptimizedTextureMemory(item);
+            }
+            long saved = originalMemory - projectedMemory;
+
+            EditorGUILayout.BeginHorizontal();
+            KawaiiStudioGUI.StatTile(textureItems.Count.ToString(), "Textures", KawaiiStudioGUI.AccentColor);
+            GUILayout.Space(KawaiiStudioGUI.Space2);
+            KawaiiStudioGUI.StatTile(meshItems.Count.ToString(), "Meshes", KawaiiStudioGUI.AccentColor);
+            GUILayout.Space(KawaiiStudioGUI.Space2);
+            KawaiiStudioGUI.StatTile(audioItems.Count.ToString(), "Audio clips", KawaiiStudioGUI.AccentColor);
+            GUILayout.Space(KawaiiStudioGUI.Space2);
+            KawaiiStudioGUI.StatTile(
+                saved > 0 ? FormatBytes(saved) : "—",
+                "Memory saved",
+                saved > 0 ? KawaiiStudioGUI.SuccessColor : KawaiiStudioGUI.SubTextColor);
+            EditorGUILayout.EndHorizontal();
+
+            GUILayout.Space(KawaiiStudioGUI.Space3);
+        }
+
+        /// <summary>
+        /// Textures / Meshes / Audio as tabs. They used to be six stacked sections
+        /// in one long scroll, which made the results very hard to read.
+        /// </summary>
+        private void DrawResults()
+        {
+            resultsTab = KawaiiStudioGUI.Tabs(resultsTab, new[]
+            {
+                $"Textures ({textureItems.Count})",
+                $"Meshes ({meshItems.Count})",
+                $"Audio ({audioItems.Count})"
+            });
+
+            GUILayout.Space(KawaiiStudioGUI.Space2);
+
+            switch (resultsTab)
+            {
+                case 1:
+                    DrawMeshSettings();
+                    DrawMeshList();
+                    break;
+                case 2:
+                    DrawAudioSettings();
+                    DrawAudioList();
+                    break;
+                default:
+                    DrawTextureSettings();
+                    DrawTextureList();
+                    break;
+            }
         }
 
         private void DrawTextureSettings()
         {
-            GUILayout.BeginVertical(GUI.skin.box);
-            
-            GUIStyle labelStyle = new GUIStyle(EditorStyles.boldLabel)
+            KawaiiStudioGUI.DrawSection(T("texture_settings"), () =>
             {
-                normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
-            };
-            GUILayout.Label($"🎨 {T("texture_settings")}", labelStyle);
-            
-            GUILayout.Space(5);
-            
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(T("max_size"), GUILayout.Width(150));
-            maxTextureSize = EditorGUILayout.IntPopup(maxTextureSize, 
-                new string[] { "32", "64", "128", "256", "512", "1024", "2048", "4096", "8192" },
-                new int[] { 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192 });
-            GUILayout.EndHorizontal();
-            
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(T("compression"), GUILayout.Width(150));
-            compressionQuality = (TextureImporterCompression)EditorGUILayout.EnumPopup(compressionQuality);
-            GUILayout.EndHorizontal();
-            
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(T("crunch_compression"), GUILayout.Width(150));
-            useCrunchCompression = EditorGUILayout.Toggle(useCrunchCompression);
-            GUILayout.EndHorizontal();
-            
-            if (useCrunchCompression)
+                EditorGUIUtility.labelWidth = 170f;
+
+                maxTextureSize = EditorGUILayout.IntPopup(T("max_size"), maxTextureSize,
+                    new[] { "32", "64", "128", "256", "512", "1024", "2048", "4096", "8192" },
+                    new[] { 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192 });
+
+                compressionQuality = (TextureImporterCompression)EditorGUILayout.EnumPopup(
+                    T("compression"), compressionQuality);
+
+                useCrunchCompression = EditorGUILayout.Toggle(T("crunch_compression"), useCrunchCompression);
+
+                using (new EditorGUI.DisabledScope(!useCrunchCompression))
+                {
+                    crunchCompressionQuality = EditorGUILayout.IntSlider(
+                        T("quality"), crunchCompressionQuality, 0, 100);
+                }
+
+                generateMipmaps = EditorGUILayout.Toggle(T("generate_mipmaps"), generateMipmaps);
+
+                EditorGUIUtility.labelWidth = 0f;
+
+                if (compressionQuality == TextureImporterCompression.Uncompressed)
+                {
+                    GUILayout.Space(KawaiiStudioGUI.Space2);
+                    KawaiiStudioGUI.Banner(
+                        "Uncompressed keeps full quality but uses far more VRAM. VRChat avatars normally want Compressed.",
+                        KawaiiStudioGUI.MessageKind.Warning);
+                }
+            });
+        }
+
+        /// <summary>Select all / none header shared by the three result tables.</summary>
+        private void DrawSelectionToolbar(int count, int selected, Action<bool> setAll)
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Label($"{selected} of {count} selected", KawaiiStudioGUI.InfoLabelStyle);
+            GUILayout.FlexibleSpace();
+            using (new EditorGUI.DisabledScope(count == 0))
             {
-                GUILayout.BeginHorizontal();
-                GUILayout.Space(20);
-                GUILayout.Label(T("quality"), GUILayout.Width(130));
-                crunchCompressionQuality = EditorGUILayout.IntSlider(crunchCompressionQuality, 0, 100);
-                GUILayout.EndHorizontal();
+                if (KawaiiStudioGUI.SecondaryButton(T("select_all"), GUILayout.Width(90f))) setAll(true);
+                if (KawaiiStudioGUI.SecondaryButton(T("none"), GUILayout.Width(70f))) setAll(false);
             }
-            
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(T("generate_mipmaps"), GUILayout.Width(150));
-            generateMipmaps = EditorGUILayout.Toggle(generateMipmaps);
-            GUILayout.EndHorizontal();
-            
-            GUILayout.EndVertical();
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(KawaiiStudioGUI.Space2);
+        }
+
+        /// <summary>Column header row over a hairline.</summary>
+        private static void DrawTableHeader(params (string label, float width)[] columns)
+        {
+            EditorGUILayout.BeginHorizontal();
+            foreach ((string label, float width) in columns)
+            {
+                if (width > 0f) GUILayout.Label(label, KawaiiStudioGUI.H3, GUILayout.Width(width));
+                else GUILayout.Label(label, KawaiiStudioGUI.H3);
+            }
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+            KawaiiStudioGUI.Separator();
+            GUILayout.Space(KawaiiStudioGUI.Space1);
         }
 
         private void DrawTextureList()
         {
-            GUILayout.BeginVertical(GUI.skin.box);
-            
-            GUIStyle labelStyle = new GUIStyle(EditorStyles.boldLabel)
+            KawaiiStudioGUI.DrawSection("Textures", () =>
             {
-                normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
-            };
-            
-            GUILayout.BeginHorizontal();
-            showTextures = EditorGUILayout.Foldout(showTextures, $"🖼️ TEXTURES ({textureItems.Count})", true, labelStyle);
-            
-            if (textureItems.Count > 0)
-            {
-                if (GUILayout.Button(T("select_all"), GUILayout.Width(80)))
+                if (textureItems.Count == 0)
                 {
-                    foreach (var item in textureItems) item.selected = true;
+                    KawaiiStudioGUI.EmptyState("No textures found",
+                        "Nothing on this prefab references a texture asset that can be re-imported.");
+                    return;
                 }
-                if (GUILayout.Button(T("none"), GUILayout.Width(60)))
+
+                DrawSelectionToolbar(textureItems.Count, textureItems.Count(i => i.selected),
+                    on => { foreach (TextureItem i in textureItems) i.selected = on; });
+
+                DrawTableHeader(("", 20f), ("Texture", 190f), ("Size", 80f), ("Format", 140f),
+                    ("Mips", 44f), ("Memory", 80f), ("After", 80f), ("Saved", 70f));
+
+                textureScrollPosition = GUILayout.BeginScrollView(textureScrollPosition, GUILayout.Height(220f));
+
+                GUIStyle cell = KawaiiStudioGUI.Mono;
+                var resultStyle = new GUIStyle(EditorStyles.miniLabel)
                 {
-                    foreach (var item in textureItems) item.selected = false;
-                }
-            }
-            
-            GUILayout.EndHorizontal();
-            
-            if (showTextures && textureItems.Count > 0)
-            {
-                GUILayout.Space(5);
-                
-                // Header
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("", GUILayout.Width(20));
-                GUILayout.Label("Texture", GUILayout.Width(200));
-                GUILayout.Label("Resolution", GUILayout.Width(100));
-                GUILayout.Label("Format", GUILayout.Width(150));
-                GUILayout.Label("Mipmaps", GUILayout.Width(70));
-                GUILayout.Label("Memory (Original)", GUILayout.Width(100));
-                GUILayout.Label("Memory (Optimized)", GUILayout.Width(100));
-                GUILayout.EndHorizontal();
-                
-                EditorGUI.DrawRect(GUILayoutUtility.GetRect(position.width - 40, 1), new Color(0.486f, 0.227f, 0.929f, 1f));
-                
-                textureScrollPosition = GUILayout.BeginScrollView(textureScrollPosition, GUILayout.Height(200));
-                
-                GUIStyle textureStyle = new GUIStyle(EditorStyles.label)
-                {
-                    normal = { textColor = new Color(0f, 1f, 0.255f, 1f) }
-                };
-                
-                GUIStyle optimizedStyle = new GUIStyle(EditorStyles.label)
-                {
-                    normal = { textColor = new Color(1f, 0.647f, 0f, 1f) },
+                    normal = { textColor = KawaiiStudioGUI.SuccessColor },
                     fontStyle = FontStyle.Bold
                 };
-                
-                foreach (var item in textureItems)
+
+                foreach (TextureItem item in textureItems)
                 {
-                    GUILayout.BeginHorizontal();
-                    
-                    item.selected = EditorGUILayout.Toggle(item.selected, GUILayout.Width(20));
-                    
-                    EditorGUILayout.ObjectField(item.texture, typeof(Texture), false, GUILayout.Width(200));
-                    
-                    GUILayout.Label($"{item.resolution.x}x{item.resolution.y}", textureStyle, GUILayout.Width(100));
-                    GUILayout.Label(item.compressionFormat, textureStyle, GUILayout.Width(150));
-                    GUILayout.Label(item.hasMipmaps ? "Yes" : "No", textureStyle, GUILayout.Width(70));
-                    GUILayout.Label($"{FormatBytes(item.originalMemorySize)}", textureStyle, GUILayout.Width(100));
-                    
+                    EditorGUILayout.BeginHorizontal();
+
+                    item.selected = EditorGUILayout.Toggle(item.selected, GUILayout.Width(20f));
+                    EditorGUILayout.ObjectField(item.texture, typeof(Texture), false, GUILayout.Width(190f));
+
+                    GUILayout.Label($"{item.resolution.x}×{item.resolution.y}", cell, GUILayout.Width(80f));
+                    GUILayout.Label(item.compressionFormat, cell, GUILayout.Width(140f));
+                    GUILayout.Label(item.hasMipmaps ? "Yes" : "No", cell, GUILayout.Width(44f));
+                    GUILayout.Label(FormatBytes(item.originalMemorySize), cell, GUILayout.Width(80f));
+
                     if (item.hasOptimizationResult)
                     {
-                        long effectiveOptimized = GetEffectiveOptimizedTextureMemory(item);
-                        GUILayout.Label($"{FormatBytes(effectiveOptimized)}", optimizedStyle, GUILayout.Width(100));
+                        long after = GetEffectiveOptimizedTextureMemory(item);
+                        GUILayout.Label(FormatBytes(after), cell, GUILayout.Width(80f));
 
-                        if (item.originalMemorySize > effectiveOptimized && item.originalMemorySize > 0)
+                        if (item.originalMemorySize > after && item.originalMemorySize > 0)
                         {
-                            float percentSaved = ((float)(item.originalMemorySize - effectiveOptimized) / item.originalMemorySize) * 100f;
-                            GUILayout.Label($"(-{percentSaved:F1}%)", optimizedStyle, GUILayout.Width(70));
+                            float pct = (item.originalMemorySize - after) / (float)item.originalMemorySize * 100f;
+                            GUILayout.Label($"−{pct:F0}%", resultStyle, GUILayout.Width(70f));
                         }
                         else
                         {
-                            GUILayout.Label("(No change)", optimizedStyle, GUILayout.Width(70));
+                            GUILayout.Label("no change", cell, GUILayout.Width(70f));
                         }
                     }
                     else
                     {
-                        GUILayout.Label("-", textureStyle, GUILayout.Width(100));
+                        GUILayout.Label("—", cell, GUILayout.Width(80f));
+                        GUILayout.Label("", cell, GUILayout.Width(70f));
                     }
-                    
+
                     GUILayout.FlexibleSpace();
-                    GUILayout.EndHorizontal();
+                    EditorGUILayout.EndHorizontal();
                 }
-                
+
                 GUILayout.EndScrollView();
-            }
-            
-            GUILayout.EndVertical();
+            });
         }
 
         private void DrawMeshSettings()
         {
-            GUILayout.BeginVertical(GUI.skin.box);
-            
-            GUIStyle labelStyle = new GUIStyle(EditorStyles.boldLabel)
+            KawaiiStudioGUI.DrawSection(T("mesh_compression"), () =>
             {
-                normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
-            };
-            GUILayout.Label($"🔧 {T("mesh_compression")}", labelStyle);
-            
-            GUILayout.Space(5);
-            
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(T("mesh_compression_level"), GUILayout.Width(150));
-            meshCompression = (ModelImporterMeshCompression)EditorGUILayout.EnumPopup(meshCompression);
-            GUILayout.EndHorizontal();
-            
-            GUILayout.EndVertical();
+                EditorGUIUtility.labelWidth = 170f;
+                meshCompression = (ModelImporterMeshCompression)EditorGUILayout.EnumPopup(
+                    T("mesh_compression_level"), meshCompression);
+                EditorGUIUtility.labelWidth = 0f;
+
+                GUILayout.Space(KawaiiStudioGUI.Space1);
+                GUILayout.Label(
+                    "Applies to every mesh with \"Global\" ticked below. Untick it on a row to override that mesh.",
+                    KawaiiStudioGUI.InfoLabelStyle);
+            });
         }
 
         private void DrawMeshList()
         {
-            GUILayout.BeginVertical(GUI.skin.box);
-            
-            GUIStyle labelStyle = new GUIStyle(EditorStyles.boldLabel)
+            KawaiiStudioGUI.DrawSection("Meshes", () =>
             {
-                normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
-            };
-            
-            GUILayout.BeginHorizontal();
-            showMeshes = EditorGUILayout.Foldout(showMeshes, $"📐 MESHES ({meshItems.Count})", true, labelStyle);
-            
-            if (meshItems.Count > 0)
-            {
-                if (GUILayout.Button(T("select_all"), GUILayout.Width(80)))
+                if (meshItems.Count == 0)
                 {
-                    foreach (var item in meshItems) item.selected = true;
+                    KawaiiStudioGUI.EmptyState("No compressible meshes found",
+                        "Only meshes that come from an .fbx can have their import settings changed.");
+                    return;
                 }
-                if (GUILayout.Button(T("none"), GUILayout.Width(60)))
+
+                DrawSelectionToolbar(meshItems.Count, meshItems.Count(i => i.selected),
+                    on => { foreach (MeshItem i in meshItems) i.selected = on; });
+
+                DrawTableHeader(("", 20f), ("Mesh", 190f), ("Verts", 70f), ("Tris", 70f), ("Compression", 190f));
+
+                meshScrollPosition = GUILayout.BeginScrollView(meshScrollPosition, GUILayout.Height(220f));
+
+                GUIStyle cell = KawaiiStudioGUI.Mono;
+
+                foreach (MeshItem item in meshItems)
                 {
-                    foreach (var item in meshItems) item.selected = false;
-                }
-            }
-            
-            GUILayout.EndHorizontal();
-            
-            if (showMeshes && meshItems.Count > 0)
-            {
-                GUILayout.Space(5);
-                
-                // Header
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("", GUILayout.Width(20));
-                GUILayout.Label("Mesh", GUILayout.Width(200));
-                GUILayout.Label("Vertices", GUILayout.Width(100));
-                GUILayout.Label("Triangles", GUILayout.Width(100));
-                GUILayout.Label("Compression", GUILayout.Width(200));
-                GUILayout.EndHorizontal();
-                
-                EditorGUI.DrawRect(GUILayoutUtility.GetRect(position.width - 40, 1), new Color(0.486f, 0.227f, 0.929f, 1f));
-                
-                meshScrollPosition = GUILayout.BeginScrollView(meshScrollPosition, GUILayout.Height(200));
-                
-                GUIStyle meshStyle = new GUIStyle(EditorStyles.label)
-                {
-                    normal = { textColor = new Color(0f, 1f, 0.255f, 1f) }
-                };
-                
-                foreach (var item in meshItems)
-                {
-                    GUILayout.BeginHorizontal();
-                    
-                    item.selected = EditorGUILayout.Toggle(item.selected, GUILayout.Width(20));
-                    
-                    EditorGUILayout.ObjectField(item.mesh, typeof(Mesh), false, GUILayout.Width(200));
-                    
-                    GUILayout.Label($"Verts: {item.vertexCount}", meshStyle, GUILayout.Width(100));
-                    GUILayout.Label($"Tris: {item.triangleCount}", meshStyle, GUILayout.Width(100));
-                    
-                    GUILayout.Label("Compression:", meshStyle, GUILayout.Width(90));
+                    EditorGUILayout.BeginHorizontal();
+
+                    item.selected = EditorGUILayout.Toggle(item.selected, GUILayout.Width(20f));
+                    EditorGUILayout.ObjectField(item.mesh, typeof(Mesh), false, GUILayout.Width(190f));
+
+                    GUILayout.Label(item.vertexCount.ToString("N0"), cell, GUILayout.Width(70f));
+                    GUILayout.Label(item.triangleCount.ToString("N0"), cell, GUILayout.Width(70f));
+
                     // "Global" follows the global setting above; unticking it makes the
                     // per-mesh dropdown authoritative, including a value of Off.
-                    item.useGlobalCompression = EditorGUILayout.ToggleLeft("Global", item.useGlobalCompression, GUILayout.Width(70));
-                    EditorGUI.BeginDisabledGroup(item.useGlobalCompression);
-                    item.compression = (ModelImporterMeshCompression)EditorGUILayout.EnumPopup(item.compression, GUILayout.Width(100));
-                    EditorGUI.EndDisabledGroup();
-                    
+                    item.useGlobalCompression = EditorGUILayout.ToggleLeft(
+                        "Global", item.useGlobalCompression, GUILayout.Width(66f));
+                    using (new EditorGUI.DisabledScope(item.useGlobalCompression))
+                    {
+                        // While "Global" is ticked the popup previews the global value but
+                        // must not write it back, or the mesh's own choice is lost the
+                        // moment the user unticks the box.
+                        var shown = item.useGlobalCompression ? meshCompression : item.compression;
+                        var picked = (ModelImporterMeshCompression)EditorGUILayout.EnumPopup(shown, GUILayout.Width(110f));
+                        if (!item.useGlobalCompression) item.compression = picked;
+                    }
+
                     GUILayout.FlexibleSpace();
-                    GUILayout.EndHorizontal();
+                    EditorGUILayout.EndHorizontal();
                 }
-                
+
                 GUILayout.EndScrollView();
-            }
-            
-            GUILayout.EndVertical();
+            });
         }
 
         private void DrawAudioSettings()
         {
-            GUILayout.BeginVertical(GUI.skin.box);
-            
-            GUIStyle labelStyle = new GUIStyle(EditorStyles.boldLabel)
+            KawaiiStudioGUI.DrawSection(T("audio_compression"), () =>
             {
-                normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
-            };
-            GUILayout.Label($"🔊 {T("audio_compression")}", labelStyle);
-            
-            GUILayout.Space(5);
-            
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(T("load_type"), GUILayout.Width(150));
-            audioLoadType = (AudioClipLoadType)EditorGUILayout.EnumPopup(audioLoadType);
-            GUILayout.EndHorizontal();
-            
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(T("compression_format"), GUILayout.Width(150));
-            audioCompressionFormat = (AudioCompressionFormat)EditorGUILayout.EnumPopup(audioCompressionFormat);
-            GUILayout.EndHorizontal();
-            
-            GUILayout.BeginHorizontal();
-            GUILayout.Label($"{T("quality")} {(audioQuality * 100):F0}%", GUILayout.Width(150));
-            audioQuality = EditorGUILayout.Slider(audioQuality, 0.01f, 1f);
-            GUILayout.EndHorizontal();
-            
-            // Info sur le bitrate estimé
-            int estimatedBitrate = Mathf.RoundToInt(audioQuality * 320);
-            GUILayout.BeginHorizontal();
-            GUILayout.Space(20);
-            GUIStyle infoStyle = new GUIStyle(EditorStyles.miniLabel)
-            {
-                normal = { textColor = new Color(0f, 1f, 0.255f, 1f) }
-            };
-            GUILayout.Label($"≈ {estimatedBitrate} kbps", infoStyle);
-            GUILayout.EndHorizontal();
-            
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(T("sample_rate"), GUILayout.Width(150));
-            audioSampleRate = EditorGUILayout.IntPopup(audioSampleRate, 
-                new string[] { "8000 Hz", "11025 Hz", "22050 Hz", "44100 Hz", "48000 Hz" },
-                new int[] { 8000, 11025, 22050, 44100, 48000 });
-            GUILayout.EndHorizontal();
-            
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(T("force_to_mono"), GUILayout.Width(150));
-            forceToMono = EditorGUILayout.Toggle(forceToMono);
-            GUILayout.EndHorizontal();
-            
-            GUILayout.EndVertical();
+                EditorGUIUtility.labelWidth = 170f;
+
+                audioLoadType = (AudioClipLoadType)EditorGUILayout.EnumPopup(T("load_type"), audioLoadType);
+                audioCompressionFormat = (AudioCompressionFormat)EditorGUILayout.EnumPopup(
+                    T("compression_format"), audioCompressionFormat);
+
+                audioQuality = EditorGUILayout.Slider(T("quality"), audioQuality, 0.01f, 1f);
+
+                audioSampleRate = EditorGUILayout.IntPopup(T("sample_rate"), audioSampleRate,
+                    new[] { "8000 Hz", "11025 Hz", "22050 Hz", "44100 Hz", "48000 Hz" },
+                    new[] { 8000, 11025, 22050, 44100, 48000 });
+
+                forceToMono = EditorGUILayout.Toggle(T("force_to_mono"), forceToMono);
+
+                EditorGUIUtility.labelWidth = 0f;
+
+                GUILayout.Space(KawaiiStudioGUI.Space2);
+                KawaiiStudioGUI.KeyValueRow("Estimated bitrate",
+                    $"≈ {Mathf.RoundToInt(audioQuality * 320)} kbps",
+                    KawaiiStudioGUI.AccentColor);
+            });
         }
 
         private void DrawAudioList()
         {
-            GUILayout.BeginVertical(GUI.skin.box);
-            
-            GUIStyle labelStyle = new GUIStyle(EditorStyles.boldLabel)
+            KawaiiStudioGUI.DrawSection("Audio clips", () =>
             {
-                normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
-            };
-            
-            GUILayout.BeginHorizontal();
-            showAudio = EditorGUILayout.Foldout(showAudio, $"🔊 AUDIO CLIPS ({audioItems.Count})", true, labelStyle);
-            
-            if (audioItems.Count > 0)
-            {
-                if (GUILayout.Button(T("select_all"), GUILayout.Width(80)))
+                if (audioItems.Count == 0)
                 {
-                    foreach (var item in audioItems) item.selected = true;
+                    KawaiiStudioGUI.EmptyState("No audio clips found",
+                        "Only clips referenced by an AudioSource on this prefab are listed.");
+                    return;
                 }
-                if (GUILayout.Button(T("none"), GUILayout.Width(60)))
+
+                DrawSelectionToolbar(audioItems.Count, audioItems.Count(i => i.selected),
+                    on => { foreach (AudioItem i in audioItems) i.selected = on; });
+
+                DrawTableHeader(("", 20f), ("Clip", 180f), ("Length", 60f), ("Ch", 34f),
+                    ("Rate", 74f), ("Format", 90f), ("Size", 80f), ("Est.", 80f), ("Change", 70f));
+
+                audioScrollPosition = GUILayout.BeginScrollView(audioScrollPosition, GUILayout.Height(220f));
+
+                GUIStyle cell = KawaiiStudioGUI.Mono;
+                var goodStyle = new GUIStyle(EditorStyles.miniLabel)
                 {
-                    foreach (var item in audioItems) item.selected = false;
-                }
-            }
-            
-            GUILayout.EndHorizontal();
-            
-            if (showAudio && audioItems.Count > 0)
-            {
-                GUILayout.Space(5);
-                
-                // Header
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("", GUILayout.Width(20));
-                GUILayout.Label("Audio Clip", GUILayout.Width(200));
-                GUILayout.Label("Length", GUILayout.Width(80));
-                GUILayout.Label("Channels", GUILayout.Width(70));
-                GUILayout.Label("Frequency", GUILayout.Width(80));
-                GUILayout.Label("Format", GUILayout.Width(100));
-                GUILayout.Label("Original Size", GUILayout.Width(100));
-                GUILayout.Label("Estimated Size", GUILayout.Width(100));
-                GUILayout.Label("Reduction", GUILayout.Width(80));
-                GUILayout.EndHorizontal();
-                
-                EditorGUI.DrawRect(GUILayoutUtility.GetRect(position.width - 40, 1), new Color(0.486f, 0.227f, 0.929f, 1f));
-                
-                audioScrollPosition = GUILayout.BeginScrollView(audioScrollPosition, GUILayout.Height(200));
-                
-                GUIStyle audioStyle = new GUIStyle(EditorStyles.label)
-                {
-                    normal = { textColor = new Color(0f, 1f, 0.255f, 1f) }
-                };
-                
-                GUIStyle optimizedStyle = new GUIStyle(EditorStyles.label)
-                {
-                    normal = { textColor = new Color(1f, 0.647f, 0f, 1f) },
+                    normal = { textColor = KawaiiStudioGUI.SuccessColor },
                     fontStyle = FontStyle.Bold
                 };
-                
-                foreach (var item in audioItems)
+                var badStyle = new GUIStyle(EditorStyles.miniLabel)
                 {
-                    GUILayout.BeginHorizontal();
-                    
-                    item.selected = EditorGUILayout.Toggle(item.selected, GUILayout.Width(20));
-                    
-                    EditorGUILayout.ObjectField(item.audioClip, typeof(AudioClip), false, GUILayout.Width(200));
-                    
-                    GUILayout.Label($"{item.length:F2}s", audioStyle, GUILayout.Width(80));
-                    GUILayout.Label($"{item.channels}ch", audioStyle, GUILayout.Width(70));
-                    GUILayout.Label($"{item.frequency} Hz", audioStyle, GUILayout.Width(80));
-                    GUILayout.Label($"{item.compressionFormat}", audioStyle, GUILayout.Width(100));
-                    GUILayout.Label($"{FormatBytes(item.originalSize)}", audioStyle, GUILayout.Width(100));
-                    
-                    // Calculer la taille estimée après compression
-                    long estimatedSize = CalculateEstimatedAudioSize(item);
-                    GUILayout.Label($"{FormatBytes(estimatedSize)}", optimizedStyle, GUILayout.Width(100));
-                    
-                    // Afficher la réduction estimée
+                    normal = { textColor = KawaiiStudioGUI.WarningColor },
+                    fontStyle = FontStyle.Bold
+                };
+
+                foreach (AudioItem item in audioItems)
+                {
+                    EditorGUILayout.BeginHorizontal();
+
+                    item.selected = EditorGUILayout.Toggle(item.selected, GUILayout.Width(20f));
+                    EditorGUILayout.ObjectField(item.audioClip, typeof(AudioClip), false, GUILayout.Width(180f));
+
+                    GUILayout.Label($"{item.length:F1}s", cell, GUILayout.Width(60f));
+                    GUILayout.Label($"{item.channels}", cell, GUILayout.Width(34f));
+                    GUILayout.Label($"{item.frequency}", cell, GUILayout.Width(74f));
+                    GUILayout.Label(item.compressionFormat.ToString(), cell, GUILayout.Width(90f));
+                    GUILayout.Label(FormatBytes(item.originalSize), cell, GUILayout.Width(80f));
+
+                    long estimated = CalculateEstimatedAudioSize(item);
+                    GUILayout.Label(FormatBytes(estimated), cell, GUILayout.Width(80f));
+
                     if (item.originalSize > 0)
                     {
-                        float percentSaved = ((float)(item.originalSize - estimatedSize) / item.originalSize) * 100f;
-                        if (percentSaved > 0)
-                        {
-                            GUILayout.Label($"(-{percentSaved:F1}%)", optimizedStyle, GUILayout.Width(80));
-                        }
-                        else
-                        {
-                            GUILayout.Label("(+)", audioStyle, GUILayout.Width(80));
-                        }
+                        float pct = (item.originalSize - estimated) / (float)item.originalSize * 100f;
+                        if (pct > 0f) GUILayout.Label($"−{pct:F0}%", goodStyle, GUILayout.Width(70f));
+                        else GUILayout.Label($"+{-pct:F0}%", badStyle, GUILayout.Width(70f));
                     }
-                    
+                    else
+                    {
+                        GUILayout.Label("—", cell, GUILayout.Width(70f));
+                    }
+
                     GUILayout.FlexibleSpace();
-                    GUILayout.EndHorizontal();
+                    EditorGUILayout.EndHorizontal();
                 }
-                
+
                 GUILayout.EndScrollView();
-            }
-            
-            GUILayout.EndVertical();
+            });
         }
 
         private void DrawOptimizeButton()
         {
-            int selectedCount = textureItems.Count(t => t.selected) + meshItems.Count(m => m.selected) + audioItems.Count(a => a.selected);
-            GUI.enabled = selectedCount > 0;
-            
-            GUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
-            
-            if (GUILayout.Button($"⚡ {T("optimize")} ({selectedCount} items)", buttonStyle, GUILayout.Width(300)))
+            int selectedCount = textureItems.Count(t => t.selected)
+                              + meshItems.Count(m => m.selected)
+                              + audioItems.Count(a => a.selected);
+
+            GUILayout.Space(KawaiiStudioGUI.Space3);
+
+            // Inline explanation instead of a mysteriously dead button.
+            if (selectedCount == 0)
             {
-                OptimizeAvatar();
+                KawaiiStudioGUI.Banner(
+                    "Nothing selected. Tick at least one texture, mesh or audio clip to optimize.",
+                    KawaiiStudioGUI.MessageKind.Warning);
             }
-            
-            GUILayout.FlexibleSpace();
-            GUILayout.EndHorizontal();
-            
-            GUI.enabled = true;
+
+            using (new EditorGUI.DisabledScope(selectedCount == 0))
+            {
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+                if (KawaiiStudioGUI.PrimaryButton($"{T("optimize")}  ({selectedCount})", GUILayout.Width(280f)))
+                {
+                    OptimizeAvatar();
+                }
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.EndHorizontal();
+            }
+
+            GUILayout.Space(KawaiiStudioGUI.Space2);
         }
 
         private void DrawLogOutput()
         {
-            GUILayout.BeginVertical(GUI.skin.box);
-            
-            GUIStyle labelStyle = new GUIStyle(EditorStyles.boldLabel)
-            {
-                normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
-            };
-            GUILayout.Label($"📋 {T("log")}", labelStyle);
-            
-            GUILayout.Space(5);
-            
-            logScrollPosition = GUILayout.BeginScrollView(logScrollPosition, GUILayout.Height(150));
-            GUILayout.TextArea(logOutput, logStyle, GUILayout.ExpandHeight(true));
-            GUILayout.EndScrollView();
-            
-            GUILayout.EndVertical();
-        }
+            if (string.IsNullOrEmpty(logOutput)) return;
 
-        private void DrawFooter()
-        {
-            GUIStyle footerStyle = new GUIStyle(EditorStyles.boldLabel)
+            KawaiiStudioGUI.DrawSection(T("log"), () =>
             {
-                fontSize = 10,
-                alignment = TextAnchor.MiddleCenter,
-                normal = { textColor = new Color(1f, 0.278f, 0.341f, 1f) }
-            };
-            
-            EditorGUI.DrawRect(GUILayoutUtility.GetRect(position.width - 40, 1), new Color(0.486f, 0.227f, 0.929f, 1f));
-            GUILayout.Label("★ Kawaii Studio ★", footerStyle);
+                KawaiiStudioGUI.BeginWell();
+                logScrollPosition = GUILayout.BeginScrollView(logScrollPosition, GUILayout.Height(160f));
+
+                // SelectableLabel, not TextArea: the log is output, and TextArea let
+                // the user type into it while silently discarding the edit.
+                EditorGUILayout.SelectableLabel(
+                    logOutput,
+                    KawaiiStudioGUI.Mono,
+                    GUILayout.ExpandHeight(true),
+                    GUILayout.ExpandWidth(true));
+
+                GUILayout.EndScrollView();
+                KawaiiStudioGUI.EndWell();
+
+                GUILayout.Space(KawaiiStudioGUI.Space1);
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+                if (KawaiiStudioGUI.SecondaryButton("Copy log", GUILayout.Width(110f)))
+                {
+                    EditorGUIUtility.systemCopyBuffer = logOutput;
+                }
+                if (KawaiiStudioGUI.SecondaryButton("Clear", GUILayout.Width(80f)))
+                {
+                    ClearLog();
+                }
+                EditorGUILayout.EndHorizontal();
+            });
         }
 
         private void ClearLog()
@@ -1041,9 +839,8 @@ namespace KawaiiStudio
             AddLog("✅ Scan completed! Review and optimize.");
 
             scanned = true;
-            showTextures = true;
-            showMeshes = true;
-            showAudio = true;
+            // Land on the tab that actually has something in it.
+            resultsTab = textureItems.Count > 0 ? 0 : (meshItems.Count > 0 ? 1 : 2);
         }
 
         private void OptimizeAvatar()
@@ -1268,33 +1065,9 @@ namespace KawaiiStudio
             return item.hasOptimizationResult ? item.optimizedMemorySize : item.originalMemorySize;
         }
 
-        private static long GetFileSizeFromAssetPath(string assetPath)
-        {
-            string absolutePath = AssetPathToAbsolutePath(assetPath);
-            if (string.IsNullOrEmpty(absolutePath) || !File.Exists(absolutePath)) return 0;
-            return new FileInfo(absolutePath).Length;
-        }
-
-        private static string AssetPathToAbsolutePath(string assetPath)
-        {
-            if (string.IsNullOrWhiteSpace(assetPath)) return null;
-            if (Path.IsPathRooted(assetPath)) return assetPath;
-            if (!assetPath.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(assetPath, "Assets", StringComparison.OrdinalIgnoreCase))
-            {
-                // Package assets ("Packages/com.x.y/...") resolve through the CWD.
-                return Path.GetFullPath(assetPath);
-            }
-
-            string projectRoot = Directory.GetParent(Application.dataPath)?.FullName;
-            if (string.IsNullOrEmpty(projectRoot)) return null;
-
-            string relativePath = assetPath.Length > "Assets/".Length
-                ? assetPath.Substring("Assets/".Length)
-                : string.Empty;
-
-            return Path.Combine(projectRoot, "Assets", relativePath.Replace('/', Path.DirectorySeparatorChar));
-        }
+        // Shared with every other tool via KawaiiStudioUtil; also handles assets that
+        // live under Packages/ rather than Assets/.
+        private static long GetFileSizeFromAssetPath(string assetPath) => KawaiiStudioUtil.GetFileSize(assetPath);
 
         private bool OptimizeMesh(MeshItem item)
         {
@@ -1436,19 +1209,6 @@ namespace KawaiiStudio
             estimatedSize = (long)(estimatedSize * 1.05f);
             
             return estimatedSize;
-        }
-
-        private string FormatBytes(long bytes)
-        {
-            string[] sizes = { "B", "KB", "MB", "GB" };
-            double len = bytes;
-            int order = 0;
-            while (len >= 1024 && order < sizes.Length - 1)
-            {
-                order++;
-                len = len / 1024;
-            }
-            return $"{len:0.##} {sizes[order]}";
         }
 
         private string GetCompressionFormat(TextureImporter importer)

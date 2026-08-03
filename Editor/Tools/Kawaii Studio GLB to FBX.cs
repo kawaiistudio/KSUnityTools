@@ -25,7 +25,7 @@ namespace KawaiiStudio
     public class GLBtoFBXConverter : EditorWindow
     {
         // Version
-        private const string VERSION = "2.0";
+        private const string VERSION = KawaiiStudioVersion.Current;
         
         // Configuration
         private string blenderPath = "";
@@ -38,7 +38,8 @@ namespace KawaiiStudio
         private Process blenderProcess;
         
         // Language
-        private const string LANGUAGES_FOLDER = "Assets/Kawaii Studio/Languages";
+        // Resolved at runtime: the old hardcoded literal broke any install under Packages/.
+        private static string LANGUAGES_FOLDER => KawaiiStudioPaths.Languages;
         private const string PREFS_LANGUAGE = "KawaiiStudio.Language";
         private Dictionary<string, string> translations = new Dictionary<string, string>();
         private string currentLanguage = "en";
@@ -198,17 +199,10 @@ namespace KawaiiStudio
             stylesInitialized = true;
         }
 
-        private Texture2D MakeTex(int width, int height, Color col)
-        {
-            Color[] pix = new Color[width * height];
-            for (int i = 0; i < pix.Length; i++)
-                pix[i] = col;
-
-            Texture2D result = new Texture2D(width, height);
-            result.SetPixels(pix);
-            result.Apply();
-            return result;
-        }
+        // Shared cached implementation. The local copy allocated a brand new Texture2D
+        // on every style rebuild, without HideAndDontSave and without ever destroying
+        // it, so Unity reported leaked textures on each assembly reload.
+        private Texture2D MakeTex(int width, int height, Color col) => KawaiiStudioUtil.MakeTex(width, height, col);
 
         private void OnGUI()
         {

@@ -1,0 +1,29 @@
+{
+  "name": "KawaiiStudio.VRC.Editor",
+  "rootNamespace": "KawaiiStudio",
+  "references": [
+    "KawaiiStudio.Editor",
+    "VRC.SDKBase",
+    "VRC.SDKBase.Editor",
+    "VRC.SDK3A",
+    "VRC.SDK3A.Editor",
+    "VRC.SDK3.Dynamics.PhysBone",
+    "VRC.SDK3.Dynamics.Contact",
+    "VRC.SDK3.Dynamics.Constraint",
+    "VRCCore-Editor",
+    "VRCCore-Runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [
+    "VRC_SDK_VRCSDK3"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
