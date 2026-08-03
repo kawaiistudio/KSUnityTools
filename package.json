@@ -1,0 +1,29 @@
+{
+  "name": "com.kawaiistudio.ksunitytools",
+  "displayName": "KS Unity Tools",
+  "version": "3.0.0",
+  "unity": "2019.4",
+  "description": "Kawaii Studio editor toolset for Unity: Prefab Optimizer, Video Animator, GLB to FBX, Exporter, Obfuscator, NSFW Detector, Tail-to-PhysBones, Contact Scanner, Constraint Tool and custom shaders.",
+  "author": {
+    "name": "Kawaii Studio",
+    "url": "https://github.com/kawaiistudio"
+  },
+  "license": "See LICENSE",
+  "keywords": [
+    "vrchat",
+    "editor",
+    "tools",
+    "optimizer",
+    "avatar",
+    "shaders"
+  ],
+  "vpmDependencies": {
+    "com.vrchat.avatars": ">=3.5.0"
+  },
+  "url": "https://github.com/kawaiistudio/KSUnityTools/releases/download/3.0.0/com.kawaiistudio.ksunitytools-3.0.0.zip",
+  "legacyFolders": {
+    "Assets\\Kawaii Studio": ""
+  },
+  "changelogUrl": "https://github.com/kawaiistudio/KSUnityTools/blob/main/CHANGELOG.md",
+  "documentationUrl": "https://github.com/kawaiistudio/KSUnityTools#readme"
+}

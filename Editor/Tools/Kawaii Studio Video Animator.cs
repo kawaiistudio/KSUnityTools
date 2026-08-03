@@ -1,0 +1,2018 @@
+// Kawaii Studio - Video Animator v2.0
+// Convertissez vos vidéos en animations texturées Unity
+// Tout-en-un : Pas besoin de shaders externes !
+
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using UnityEditor;
+using UnityEditor.Animations;
+using UnityEngine;
+using UnityEngine.Networking;
+using Debug = UnityEngine.Debug;
+
+namespace KawaiiStudio
+{
+    [Serializable]
+    public struct VideoInfo
+    {
+        public float Duration;
+        public float FrameRate;
+        public Vector2Int FrameSize;
+        public bool IsValid;
+        public float AspectRatio;
+        public string Format;
+        public string VideoCodec;
+        public string AudioCodec;
+        public int AudioChannels;
+        public int AudioSampleRate;
+        public long Bitrate;
+        public bool HasAudio;
+        public int Width => FrameSize.x;
+        public int Height => FrameSize.y;
+
+        public VideoInfo(float duration, float frameRate, int width, int height)
+        {
+            Duration = duration;
+            FrameRate = frameRate;
+            FrameSize = new Vector2Int(width, height);
+            IsValid = true;
+            AspectRatio = (float)width / height;
+
+            // Init des nouveaux champs pour satisfaire CS0171 (structs doivent tout assigner)
+            Format = null;
+            VideoCodec = null;
+            AudioCodec = null;
+            AudioChannels = 0;
+            AudioSampleRate = 0;
+            Bitrate = 0;
+            HasAudio = false;
+        }
+    }
+
+    [Serializable]
+    public class CustomShaderTextures
+    {
+        public string[] Names = new string[0];
+        public string[] PropertyNames = new string[0];
+    }
+
+    // Helpers de parsing pour les sorties ffprobe
+    internal static class StringParseExtensions
+    {
+        public static int AsInt(this string s, int def = 0)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return def;
+            if (int.TryParse(s.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out int v)) return v;
+            if (float.TryParse(s.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out float f)) return Mathf.RoundToInt(f);
+            return def;
+        }
+
+        public static float AsFloat(this string s, float def = 0f)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return def;
+            if (float.TryParse(s.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out float v)) return v;
+            return def;
+        }
+
+        public static long AsLong(this string s, long def = 0L)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return def;
+            if (long.TryParse(s.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out long v)) return v;
+            if (double.TryParse(s.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double d)) return (long)Math.Round(d);
+            return def;
+        }
+    }
+
+    public class VideoAnimatorWindow : EditorWindow
+    {
+        // ========== CONFIGURATION ==========
+        const int MAX_TEXTURE_SIZE = 8192;
+        const int MAX_ATLAS_COUNT = 64;
+        const string DISCORD_URL = "https://discord.gg/xAeJrSAgqG";
+        const string LOGO_URL = "https://github.com/kawaiistudio/KSUnityTools/blob/main/logo_v2.png?raw=true";
+        const string SHADER_PATH = "Assets/Kawaii Studio/Shaders/KSVideoDecoder.shader";
+        const string DEFAULT_OUTPUT_PATH = "Assets/Kawaii Studio/Videos"; // MODIFIÉ
+        
+        // Variables principales
+        private string inputVideoPath = "";
+        private string outputDirectory = "";
+        private string ffmpegPath = "";
+        private AudioClip audioClip;
+        
+        // Info vidéo
+        private VideoInfo videoInfo = new VideoInfo();
+        private Vector2Int targetFrameSize = new Vector2Int(512, 512);
+        private float frameRate = 30f;
+        private float timeStart = 0f;
+        private float timeEnd = 0f;
+        private string timeStartStr = "Start position [00:00.000]";
+        private string timeEndStr = "End position [00:00.000]";
+        private int totalFrames = 0;
+        
+        // Paramètres atlas
+        private Vector2Int limitAtlasSize = new Vector2Int(4096, 4096);
+        private Vector2Int atlasSize;
+        private Vector2Int slices;
+        private Vector2Int actualFrameSize;
+        private int atlasCount = 1;
+        private int framesPerAtlas = 1;
+        private bool useSingleAtlas = false;
+        private bool useAtlasMode = true;
+        
+        // Paramètres de compression
+        private bool useCrunchCompression = true;
+        private bool saveAsJPEG = false;
+        private int jpegQuality = 90;
+        private bool loopAnimation = true;
+        private bool generateMipmaps = false;
+        
+        // Custom Material
+        private bool useCustomMaterial = false;
+        private Material customMaterial;
+        private int customShaderTexture = 0;
+        private CustomShaderTextures customShaderTextures = new CustomShaderTextures();
+        
+        // État
+        private bool isEncoding = false;
+        private int currentFrame = 0;
+        private int currentAtlas = 0;
+        private Process ffmpegProcess;
+        private Stream ffmpegStream;
+        private Texture2D outputTexture;
+        private Color32[] frameBuffer;
+        private byte[] imageDataBuffer;
+        private List<string> atlasPaths = new List<string>();
+        
+        // UI State
+        private Vector2 scrollPosition;
+        private Vector2 logScrollPosition;
+        private string logOutput = "";
+        private bool showAdvancedSettings = false;
+        private string lastOpenedDirectory = "";
+        private Texture2D logoTexture;
+        private bool isDownloadingLogo = false;
+        
+        // UI Styles
+        private GUIStyle headerStyle;
+        private GUIStyle subHeaderStyle;
+        private GUIStyle buttonStyle;
+        private GUIStyle logStyle;
+        private GUIStyle discordButtonStyle;
+        private Texture2D purpleTexture;
+        private Texture2D redTexture;
+        private Texture2D blackTexture;
+        private Texture2D greenTexture;
+        private Texture2D discordTexture;
+        private bool stylesInitialized = false;
+        
+        // ========== MENU UNITY ==========
+        [MenuItem("Kawaii Studio/Video Animator")]
+        public static void ShowWindow()
+        {
+            VideoAnimatorWindow window = GetWindow<VideoAnimatorWindow>("Video Animator v2.0");
+            window.minSize = new Vector2(500, 700);
+            window.Show();
+        }
+        
+        // ========== INITIALISATION ==========
+        private void OnEnable()
+        {
+            FindFFMPEG();
+            LoadPreferences();
+            DownloadLogo();
+        }
+        
+        private void OnDisable()
+        {
+            SavePreferences();
+            if (isEncoding)
+                StopEncoding();
+        }
+        
+        private void OnDestroy()
+        {
+            if (isEncoding)
+                StopEncoding();
+        }
+
+        private void DownloadLogo()
+        {
+            if (isDownloadingLogo || logoTexture != null) return;
+            
+            isDownloadingLogo = true;
+            
+            UnityWebRequest request = UnityWebRequestTexture.GetTexture(LOGO_URL);
+            var operation = request.SendWebRequest();
+            
+            operation.completed += (op) =>
+            {
+                if (request.result == UnityWebRequest.Result.Success)
+                {
+                    logoTexture = DownloadHandlerTexture.GetContent(request);
+                    Repaint();
+                }
+                else
+                {
+                    Debug.LogWarning("Failed to download logo: " + request.error);
+                }
+                isDownloadingLogo = false;
+                request.Dispose();
+            };
+        }
+        
+        private void InitializeStyles()
+        {
+            if (stylesInitialized) return;
+
+            purpleTexture = MakeTex(2, 2, new Color(0.486f, 0.227f, 0.929f, 1f));
+            redTexture = MakeTex(2, 2, new Color(1f, 0.278f, 0.341f, 1f));
+            blackTexture = MakeTex(2, 2, new Color(0.039f, 0.039f, 0.059f, 1f));
+            greenTexture = MakeTex(2, 2, new Color(0f, 1f, 0.255f, 1f));
+            discordTexture = MakeTex(2, 2, new Color(0.345f, 0.396f, 0.949f, 1f));
+
+            headerStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                fontSize = 20,
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
+            };
+
+            subHeaderStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                fontSize = 12,
+                normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
+            };
+
+            buttonStyle = new GUIStyle(GUI.skin.button)
+            {
+                fontSize = 14,
+                fontStyle = FontStyle.Bold,
+                normal = { background = redTexture, textColor = Color.white },
+                hover = { background = MakeTex(2, 2, new Color(1f, 0.42f, 0.506f, 1f)), textColor = Color.white },
+                active = { background = redTexture, textColor = Color.white },
+                padding = new RectOffset(20, 20, 10, 10),
+                fixedHeight = 40
+            };
+
+            discordButtonStyle = new GUIStyle(GUI.skin.button)
+            {
+                fontSize = 12,
+                fontStyle = FontStyle.Bold,
+                normal = { background = discordTexture, textColor = Color.white },
+                hover = { background = MakeTex(2, 2, new Color(0.4f, 0.45f, 1f, 1f)), textColor = Color.white },
+                active = { background = discordTexture, textColor = Color.white },
+                padding = new RectOffset(15, 15, 8, 8),
+                alignment = TextAnchor.MiddleCenter
+            };
+
+            logStyle = new GUIStyle(EditorStyles.textArea)
+            {
+                normal = { background = blackTexture, textColor = new Color(0f, 1f, 0.255f, 1f) },
+                fontSize = 10,
+                wordWrap = true
+            };
+
+            stylesInitialized = true;
+        }
+        
+        // Shared cached implementation; the local copy leaked a Texture2D per style rebuild.
+        private Texture2D MakeTex(int width, int height, Color col) => KawaiiStudioUtil.MakeTex(width, height, col);
+        
+        private void FindFFMPEG()
+        {
+            string[] guids = AssetDatabase.FindAssets("ffmpeg t:folder");
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (Directory.Exists(path))
+                {
+                    ffmpegPath = Path.GetFullPath(path);
+                    return;
+                }
+            }
+            
+            ffmpegPath = Path.Combine(Application.dataPath, "ThirdParty", "FFMPEG");
+        }
+        
+        // MODIFIÉ : Nouveau chemin par défaut avec création automatique du dossier
+        private void LoadPreferences()
+        {
+            lastOpenedDirectory = EditorPrefs.GetString("KawaiiStudio.VideoAnimator.LastDirectory", Application.dataPath);
+            outputDirectory = EditorPrefs.GetString("KawaiiStudio.VideoAnimator.OutputDirectory", DEFAULT_OUTPUT_PATH);
+            
+            // Créer le dossier par défaut s'il n'existe pas
+            if (!AssetDatabase.IsValidFolder(DEFAULT_OUTPUT_PATH))
+            {
+                // Créer "Assets/Kawaii Studio" si nécessaire
+                if (!AssetDatabase.IsValidFolder("Assets/Kawaii Studio"))
+                {
+                    AssetDatabase.CreateFolder("Assets", "Kawaii Studio");
+                }
+                
+                // Créer "Assets/Kawaii Studio/Videos"
+                AssetDatabase.CreateFolder("Assets/Kawaii Studio", "Videos");
+                
+                outputDirectory = DEFAULT_OUTPUT_PATH;
+                SavePreferences();
+            }
+        }
+        
+        private void SavePreferences()
+        {
+            EditorPrefs.SetString("KawaiiStudio.VideoAnimator.LastDirectory", lastOpenedDirectory);
+            EditorPrefs.SetString("KawaiiStudio.VideoAnimator.OutputDirectory", outputDirectory);
+        }
+        
+        // ========== INTERFACE GRAPHIQUE ==========
+        private void OnGUI()
+        {
+            InitializeStyles();
+            
+            EditorGUI.DrawRect(new Rect(0, 0, position.width, position.height), new Color(0.102f, 0.059f, 0.122f, 1f));
+            
+            DrawLogo();
+            
+            scrollPosition = GUILayout.BeginScrollView(scrollPosition);
+            GUILayout.BeginVertical();
+            GUILayout.Space(10);
+            
+            DrawHeader();
+            GUILayout.Space(15);
+            
+            using (new EditorGUI.DisabledGroupScope(isEncoding))
+            {
+                DrawVideoInputSection();
+                DrawAudioSection();
+                DrawFrameSizeSection();
+                DrawTimeSection();
+                DrawFrameRateSection();
+                DrawAdvancedSettings();
+                DrawStatsSection();
+                DrawOutputSection();
+            }
+            
+            GUILayout.Space(15);
+            DrawActionButtons();
+            
+            if (isEncoding)
+            {
+                GUILayout.Space(10);
+                DrawProgressBar();
+            }
+            
+            GUILayout.Space(10);
+            DrawLog();
+            GUILayout.Space(10);
+            DrawFooter();
+            
+            GUILayout.EndVertical();
+            GUILayout.EndScrollView();
+        }
+
+        private void DrawLogo()
+        {
+            if (logoTexture != null)
+            {
+                Rect logoRect = new Rect(10, 10, 60, 60);
+                GUI.DrawTexture(logoRect, logoTexture, ScaleMode.ScaleToFit);
+                
+                Rect discordRect = new Rect(80, 20, 120, 40);
+                if (GUI.Button(discordRect, "💬 Discord", discordButtonStyle))
+                {
+                    Application.OpenURL(DISCORD_URL);
+                }
+            }
+        }
+        
+        private void DrawHeader()
+        {
+            GUILayout.Space(logoTexture != null ? 50 : 0);
+            GUILayout.Label("⚡ VIDEO ANIMATOR v2.0 ⚡", headerStyle);
+            
+            GUIStyle subtitleStyle = new GUIStyle(EditorStyles.label)
+            {
+                fontSize = 11,
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = new Color(1f, 0.278f, 0.341f, 1f) }
+            };
+            GUILayout.Label("Convert Videos to Unity Texture Animations", subtitleStyle);
+            
+            EditorGUI.DrawRect(GUILayoutUtility.GetRect(position.width - 40, 2), new Color(0.486f, 0.227f, 0.929f, 1f));
+        }
+        
+        private void DrawVideoInputSection()
+        {
+            GUILayout.BeginHorizontal();
+            EditorGUI.BeginChangeCheck();
+            inputVideoPath = EditorGUILayout.TextField("Video", inputVideoPath);
+            if (EditorGUI.EndChangeCheck() && File.Exists(inputVideoPath))
+            {
+                AnalyzeVideo();
+            }
+            
+            if (GUILayout.Button("...", GUILayout.Width(30), GUILayout.Height(18)))
+            {
+                BrowseVideoFile();
+            }
+            GUILayout.EndHorizontal();
+            
+            if (videoInfo.IsValid)
+            {
+                GUIStyle infoStyle = new GUIStyle(EditorStyles.miniLabel)
+                {
+                    normal = { textColor = new Color(0f, 1f, 0.255f, 1f) }
+                };
+                GUILayout.Label($"✓ Duration: {videoInfo.Duration:F1}s | {videoInfo.FrameRate:F1} fps | {videoInfo.FrameSize.x}x{videoInfo.FrameSize.y}", infoStyle);
+                if (!string.IsNullOrEmpty(videoInfo.Format))
+                    GUILayout.Label($"Format: {videoInfo.Format}", infoStyle);
+                if (videoInfo.Bitrate > 0)
+                    GUILayout.Label($"Bitrate: {FormatBitsPerSecond(videoInfo.Bitrate)}", infoStyle);
+                if (!string.IsNullOrEmpty(videoInfo.VideoCodec))
+                    GUILayout.Label($"Video: {videoInfo.VideoCodec}", infoStyle);
+                if (videoInfo.HasAudio)
+                {
+                    string audioLine = $"Audio: {videoInfo.AudioCodec}";
+                    if (videoInfo.AudioChannels > 0 || videoInfo.AudioSampleRate > 0)
+                    {
+                        string ch = videoInfo.AudioChannels > 0 ? $" {videoInfo.AudioChannels}ch" : string.Empty;
+                        string sr = videoInfo.AudioSampleRate > 0 ? $" @ {videoInfo.AudioSampleRate} Hz" : string.Empty;
+                        audioLine += ch + sr;
+                    }
+                    GUILayout.Label(audioLine, infoStyle);
+                }
+            }
+        }
+        
+        private void DrawAudioSection()
+        {
+            audioClip = (AudioClip)EditorGUILayout.ObjectField("Audio", audioClip, typeof(AudioClip), false);
+        }
+        
+        private void DrawFrameSizeSection()
+        {
+            targetFrameSize = EditorGUILayout.Vector2IntField("Frame size", targetFrameSize);
+            if (videoInfo.IsValid)
+            {
+                targetFrameSize.x = Mathf.Clamp(targetFrameSize.x, 32, videoInfo.FrameSize.x);
+                targetFrameSize.y = Mathf.Clamp(targetFrameSize.y, 32, videoInfo.FrameSize.y);
+            }
+        }
+        
+        private void DrawTimeSection()
+        {
+            if (!videoInfo.IsValid) return;
+            
+            EditorGUILayout.MinMaxSlider("Time", ref timeStart, ref timeEnd, 0f, videoInfo.Duration);
+            
+            TimeSpan t1 = TimeSpan.FromSeconds(timeStart);
+            TimeSpan t2 = TimeSpan.FromSeconds(timeEnd);
+            timeStartStr = $"Start position [{t1.Minutes:D2}:{t1.Seconds:D2}.{t1.Milliseconds:D3}]";
+            timeEndStr = $"End position [{t2.Minutes:D2}:{t2.Seconds:D2}.{t2.Milliseconds:D3}]";
+            
+            timeStart = EditorGUILayout.FloatField(timeStartStr, timeStart);
+            timeEnd = EditorGUILayout.FloatField(timeEndStr, timeEnd);
+        }
+        
+        private void DrawFrameRateSection()
+        {
+            if (videoInfo.IsValid)
+            {
+                frameRate = EditorGUILayout.Slider("Frame rate", frameRate, 1f, videoInfo.FrameRate);
+            }
+            else
+            {
+                frameRate = EditorGUILayout.Slider("Frame rate", frameRate, 1f, 60f);
+            }
+        }
+        
+        private void DrawAdvancedSettings()
+        {
+            showAdvancedSettings = EditorGUILayout.Foldout(showAdvancedSettings, "Advanced settings", true);
+            if (showAdvancedSettings)
+            {
+                EditorGUI.indentLevel++;
+                
+                loopAnimation = EditorGUILayout.Toggle("Loop animation", loopAnimation);
+                useCrunchCompression = EditorGUILayout.Toggle("Crunch compression", useCrunchCompression);
+                
+                useCustomMaterial = EditorGUILayout.Toggle("Use custom material", useCustomMaterial);
+                if (useCustomMaterial)
+                {
+                    EditorGUI.indentLevel++;
+                    
+                    EditorGUI.BeginChangeCheck();
+                    customMaterial = (Material)EditorGUILayout.ObjectField("Material", customMaterial, typeof(Material), false);
+                    if (EditorGUI.EndChangeCheck())
+                    {
+                        customShaderTextures = GetCustomShaderTextures(customMaterial);
+                        customShaderTexture = 0;
+                    }
+                    
+                    if (customMaterial == null)
+                    {
+                        EditorGUILayout.HelpBox("If there is no custom material, KSVideoDecoder shader will be used", MessageType.Info);
+                    }
+                    else if (customShaderTextures.Names.Length == 0)
+                    {
+                        EditorGUILayout.HelpBox("Shader has not 2D textures, KSVideoDecoder shader will be used", MessageType.Warning);
+                    }
+                    else
+                    {
+                        customShaderTexture = EditorGUILayout.Popup("Texture2D", customShaderTexture, customShaderTextures.Names);
+                    }
+                    
+                    EditorGUI.indentLevel--;
+                }
+                
+                saveAsJPEG = EditorGUILayout.Toggle("Save in JPEG", saveAsJPEG);
+                if (saveAsJPEG)
+                {
+                    EditorGUI.indentLevel++;
+                    jpegQuality = EditorGUILayout.IntSlider("Quality", jpegQuality, 1, 100);
+                    EditorGUI.indentLevel--;
+                }
+                
+                useAtlasMode = EditorGUILayout.Toggle("Use atlases", useAtlasMode);
+                
+                EditorGUI.BeginDisabledGroup(!useAtlasMode);
+                useSingleAtlas = EditorGUILayout.Toggle("Single atlas", useSingleAtlas);
+                limitAtlasSize = EditorGUILayout.Vector2IntField("Limit Atlas size", limitAtlasSize);
+                limitAtlasSize.x = Mathf.Clamp(limitAtlasSize.x, 512, MAX_TEXTURE_SIZE);
+                limitAtlasSize.y = Mathf.Clamp(limitAtlasSize.y, 512, MAX_TEXTURE_SIZE);
+                EditorGUI.EndDisabledGroup();
+                
+                EditorGUI.indentLevel--;
+            }
+            
+            CalculateAtlasLayout();
+        }
+        
+        private void DrawStatsSection()
+        {
+            GUIStyle statsStyle = new GUIStyle(EditorStyles.label)
+            {
+                normal = { textColor = new Color(0f, 1f, 0.255f, 1f) }
+            };
+            
+            EditorGUILayout.LabelField($"Total frames = {totalFrames}", statsStyle);
+            
+            if (useAtlasMode)
+            {
+                EditorGUILayout.LabelField($"Columns|Rows = {slices.x}x{slices.y}", statsStyle);
+                EditorGUILayout.LabelField($"Result frame size = {actualFrameSize.x}x{actualFrameSize.y}", statsStyle);
+                EditorGUILayout.LabelField($"Atlas size = {atlasSize.x}x{atlasSize.y}x{atlasCount}", statsStyle);
+            }
+            
+            long vram = (long)atlasSize.x * atlasSize.y * atlasCount / 2;
+            float vramMB = vram / (1024f * 1024f);
+            EditorGUILayout.LabelField($"Using VRAM = {FormatBytes(vram)}", statsStyle);
+            
+            if (vramMB > 512f)
+            {
+                EditorGUILayout.HelpBox("Too much memory use. May cause performance drop on some systems. Try to reduce frame size, frame rate or length of strip", MessageType.Warning);
+            }
+            
+            if (atlasCount > MAX_ATLAS_COUNT && !useCustomMaterial)
+            {
+                EditorGUILayout.HelpBox("Too much textures (max 64). Consider using custom material or reducing video length.", MessageType.Warning);
+            }
+        }
+        
+        private void DrawOutputSection()
+        {
+            GUILayout.BeginHorizontal();
+            outputDirectory = EditorGUILayout.TextField("Output folder", outputDirectory);
+            if (GUILayout.Button("...", GUILayout.Width(30), GUILayout.Height(18)))
+            {
+                BrowseOutputFolder();
+            }
+            GUILayout.EndHorizontal();
+        }
+        
+        private void DrawActionButtons()
+        {
+            bool canProcess = videoInfo.IsValid && totalFrames > 0 && !isEncoding;
+            
+            using (new EditorGUI.DisabledGroupScope(!canProcess))
+            {
+                GUILayout.BeginHorizontal();
+                
+                if (GUILayout.Button("Preview", buttonStyle, GUILayout.Width(120)))
+                {
+                    PreviewVideo();
+                }
+                
+                if (GUILayout.Button("Create animation", buttonStyle, GUILayout.Width(150)))
+                {
+                    StartConversion();
+                }
+                
+                GUILayout.EndHorizontal();
+            }
+        }
+        
+        private void DrawProgressBar()
+        {
+            Rect rect = GUILayoutUtility.GetRect(position.width - 40, 24);
+            float progress = totalFrames > 0 ? (float)(currentFrame + 1) / totalFrames : 0f;
+            int percents = Mathf.FloorToInt(progress * 100f);
+            EditorGUI.ProgressBar(rect, progress, $"{percents}% Frame {currentFrame + 1}/{totalFrames}");
+        }
+        
+        private void DrawLog()
+        {
+            GUIStyle logLabelStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
+            };
+            GUILayout.Label("[ CONVERSION LOG ]", logLabelStyle);
+            
+            logScrollPosition = GUILayout.BeginScrollView(logScrollPosition, GUILayout.Height(120));
+            GUILayout.Label(logOutput, logStyle);
+            GUILayout.EndScrollView();
+        }
+        
+        private void DrawFooter()
+        {
+            GUIStyle footerStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                fontSize = 10,
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = new Color(1f, 0.278f, 0.341f, 1f) }
+            };
+            
+            EditorGUI.DrawRect(GUILayoutUtility.GetRect(position.width - 40, 1), new Color(0.486f, 0.227f, 0.929f, 1f));
+            GUILayout.Label("★ Kawaii Studio ★", footerStyle);
+        }
+        
+        // ========== LOGIQUE ==========
+        private void AddLog(string message)
+        {
+            logOutput += message + "\n";
+            logScrollPosition = new Vector2(0, float.MaxValue);
+            Repaint();
+        }
+        
+        private void BrowseVideoFile()
+        {
+            string path = EditorUtility.OpenFilePanel("Select Video", lastOpenedDirectory, "mp4,m4v,webm,mkv,mov,ogv,swf,flv,3gp,mjpeg,avi,ts,gif");
+            if (!string.IsNullOrEmpty(path))
+            {
+                inputVideoPath = path;
+                lastOpenedDirectory = Path.GetDirectoryName(path);
+                AnalyzeVideo();
+            }
+        }
+        
+        private void BrowseOutputFolder()
+        {
+            string folder = EditorUtility.SaveFolderPanel("Save to", string.IsNullOrEmpty(outputDirectory) ? "Assets" : outputDirectory, "");
+            if (!string.IsNullOrEmpty(folder))
+            {
+                if (folder.StartsWith(Application.dataPath))
+                {
+                    outputDirectory = "Assets" + folder.Substring(Application.dataPath.Length);
+                }
+                else
+                {
+                    EditorUtility.DisplayDialog("Invalid folder path", "Selected folder must be in unity assets", "Ok");
+                }
+            }
+        }
+        
+        private void AnalyzeVideo()
+        {
+            if (!File.Exists(inputVideoPath))
+                return;
+            
+            AddLog("╔════════════════════════════════════");
+            AddLog("🔍 Analyzing video...");
+            
+            videoInfo = GetVideoInfo(inputVideoPath);
+            
+            if (videoInfo.IsValid)
+            {
+                timeStart = 0f;
+                timeEnd = videoInfo.Duration;
+                frameRate = Mathf.Min(30f, videoInfo.FrameRate);
+                
+                // MODIFIÉ : Créer le chemin dans Assets/Kawaii Studio/Videos/NomVideo
+                string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
+                outputDirectory = DEFAULT_OUTPUT_PATH + "/" + videoName;
+                
+                AddLog($"✓ Video: {videoInfo.Width}x{videoInfo.Height}");
+                AddLog($"✓ Duration: {videoInfo.Duration:F2}s");
+                AddLog($"✓ Frame Rate: {videoInfo.FrameRate:F2} FPS");
+                AddLog($"📁 Output: {outputDirectory}");
+                AddLog("╚════════════════════════════════════");
+            }
+            else
+            {
+                AddLog("✗ Failed to analyze video!");
+                AddLog("╚════════════════════════════════════");
+            }
+        }
+        
+        private VideoInfo GetVideoInfo(string filename)
+        {
+            string ffprobePath = ResolveFFProbe();
+            if (string.IsNullOrEmpty(ffprobePath))
+            {
+                AddLog("✗ ffprobe not found! Please install FFmpeg/ffprobe or add it to PATH.");
+                return new VideoInfo();
+            }
+
+            // 1) Infos vidéo (stream v:0)
+            string argsVideo = $"-v error -select_streams v:0 -show_entries stream=width,height,r_frame_rate,duration,codec_name -of default=noprint_wrappers=1:nokey=0 \"{filename}\"";
+            // 2) Infos audio (stream a:0)
+            string argsAudio = $"-v error -select_streams a:0 -show_entries stream=codec_name,channels,sample_rate -of default=noprint_wrappers=1:nokey=0 \"{filename}\"";
+            // 3) Infos format global
+            string argsFormat = $"-v error -show_entries format=format_name,bit_rate,duration -of default=noprint_wrappers=1:nokey=0 \"{filename}\"";
+
+            string outVideo = RunTool(ffprobePath, argsVideo, out string errVideo, 6000);
+            string outAudio = RunTool(ffprobePath, argsAudio, out string errAudio, 4000);
+            string outFormat = RunTool(ffprobePath, argsFormat, out string errFormat, 4000);
+
+            if (!string.IsNullOrEmpty(errVideo)) AddLog($"ffprobe v: {errVideo}");
+            if (!string.IsNullOrEmpty(errAudio)) AddLog($"ffprobe a: {errAudio}");
+            if (!string.IsNullOrEmpty(errFormat)) AddLog($"ffprobe f: {errFormat}");
+
+            // Parse vidéo
+            int width = GetValueFromKv(outVideo, "width").AsInt();
+            int height = GetValueFromKv(outVideo, "height").AsInt();
+            string rr = GetValueFromKv(outVideo, "r_frame_rate");
+            float fps = ParseFps(rr);
+            float durationV = GetValueFromKv(outVideo, "duration").AsFloat();
+            string vcodec = GetValueFromKv(outVideo, "codec_name");
+
+            // Parse format
+            float durationF = GetValueFromKv(outFormat, "duration").AsFloat();
+            string fmt = GetValueFromKv(outFormat, "format_name");
+            long br = GetValueFromKv(outFormat, "bit_rate").AsLong();
+
+            // Parse audio
+            string acodec = GetValueFromKv(outAudio, "codec_name");
+            int ach = GetValueFromKv(outAudio, "channels").AsInt();
+            int asr = GetValueFromKv(outAudio, "sample_rate").AsInt();
+
+            float duration = durationV > 0 ? durationV : durationF;
+
+            if (width > 0 && height > 0 && fps > 0 && duration > 0)
+            {
+                var info = new VideoInfo(duration, fps, width, height)
+                {
+                    Format = fmt,
+                    VideoCodec = vcodec,
+                    AudioCodec = acodec,
+                    AudioChannels = ach,
+                    AudioSampleRate = asr,
+                    Bitrate = br,
+                    HasAudio = !string.IsNullOrEmpty(acodec) || ach > 0 || asr > 0
+                };
+                return info;
+            }
+
+            AddLog($"✗ Could not parse video info (w={width},h={height},fps={fps},dur={duration}).");
+            return new VideoInfo();
+        }
+
+        private string ResolveFFProbe()
+        {
+            try
+            {
+                var candidates = new List<string>();
+                if (!string.IsNullOrEmpty(ffmpegPath))
+                {
+                    candidates.Add(Path.Combine(ffmpegPath, "ffprobe.exe"));
+                    candidates.Add(Path.Combine(ffmpegPath, "bin", "ffprobe.exe"));
+                    candidates.Add(Path.Combine(ffmpegPath, "ffprobe"));
+                    candidates.Add(Path.Combine(ffmpegPath, "bin", "ffprobe"));
+                }
+                foreach (var c in candidates)
+                {
+                    if (File.Exists(c)) return c;
+                }
+                // where ffprobe (PATH)
+                var psi = new ProcessStartInfo("cmd.exe", "/c where ffprobe")
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                using (var p = Process.Start(psi))
+                {
+                    string output = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit(2000);
+                    var line = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+                    if (!string.IsNullOrEmpty(line) && File.Exists(line)) return line.Trim();
+                }
+            }
+            catch { }
+            return "ffprobe"; // laisser l'OS résoudre (échec si non présent)
+        }
+
+        private string RunTool(string fileName, string arguments, out string stderr, int timeoutMs)
+        {
+            stderr = null;
+            try
+            {
+                var psi = new ProcessStartInfo(fileName, arguments)
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                using (var p = Process.Start(psi))
+                {
+                    if (p == null)
+                    {
+                        stderr = $"Could not start '{fileName}'.";
+                        return string.Empty;
+                    }
+
+                    // Drain stderr asynchronously while stdout is read on this thread.
+                    // Reading stdout to completion first and only then stderr deadlocks as
+                    // soon as the child fills the ~4 KB stderr pipe buffer: it blocks writing
+                    // stderr, therefore never closes stdout, so ReadToEnd() never returns and
+                    // the WaitForExit timeout below is never reached - the editor hangs for good.
+                    StringBuilder errorBuilder = new StringBuilder();
+                    p.ErrorDataReceived += (s, e) => { if (e.Data != null) errorBuilder.AppendLine(e.Data); };
+                    p.BeginErrorReadLine();
+
+                    string stdout = p.StandardOutput.ReadToEnd();
+
+                    if (!p.WaitForExit(timeoutMs))
+                    {
+                        try { p.Kill(); } catch (Exception) { }
+                        errorBuilder.AppendLine("(timeout)");
+                    }
+                    else
+                    {
+                        // Lets the async stderr handler flush; the process has already exited.
+                        p.WaitForExit();
+                    }
+
+                    stderr = errorBuilder.ToString();
+                    return stdout;
+                }
+            }
+            catch (Exception e)
+            {
+                stderr = e.Message;
+                return string.Empty;
+            }
+        }
+
+        private string GetValueFromKv(string output, string key)
+        {
+            if (string.IsNullOrEmpty(output)) return null;
+            // lignes de type: key=value
+            using (var sr = new StringReader(output))
+            {
+                string line;
+                while ((line = sr.ReadLine()) != null)
+                {
+                    int eq = line.IndexOf('=');
+                    if (eq <= 0) continue;
+                    string k = line.Substring(0, eq).Trim();
+                    if (!string.Equals(k, key, StringComparison.OrdinalIgnoreCase)) continue;
+                    return line.Substring(eq + 1).Trim();
+                }
+            }
+            return null;
+        }
+
+        private float ParseFps(string fraction)
+        {
+            if (string.IsNullOrEmpty(fraction)) return 0f;
+            if (fraction.Contains("/"))
+            {
+                var parts = fraction.Split('/');
+                if (parts.Length == 2 && float.TryParse(parts[0], NumberStyles.Any, CultureInfo.InvariantCulture, out float num) && float.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out float den) && den != 0)
+                    return num / den;
+            }
+            if (float.TryParse(fraction, NumberStyles.Any, CultureInfo.InvariantCulture, out float v)) return v;
+            return 0f;
+        }
+
+        private string GetFFMPEGExecutable(string name)
+        {
+            string exePath = Path.Combine(ffmpegPath, name + ".exe");
+            if (File.Exists(exePath))
+                return exePath;
+            
+            string unixPath = Path.Combine(ffmpegPath, name);
+            if (File.Exists(unixPath))
+                return unixPath;
+            
+            return exePath;
+        }
+        
+        private float ParseFloatFromJson(string json, string key)
+        {
+            string pattern = $"\"{key}\"\\s*:\\s*\"?([0-9\\.]+)\"?";
+            System.Text.RegularExpressions.Match match = System.Text.RegularExpressions.Regex.Match(json, pattern);
+            if (match.Success)
+            {
+                return float.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+            }
+            return 0f;
+        }
+
+        private float ParseFrameRateFromJson(string json)
+        {
+            string pattern = "\"r_frame_rate\"\\s*:\\s*\"([0-9]+)/([0-9]+)\"";
+            System.Text.RegularExpressions.Match match = System.Text.RegularExpressions.Regex.Match(json, pattern);
+            if (match.Success)
+            {
+                float numerator = float.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+                float denominator = float.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+                return numerator / denominator;
+            }
+            return 0f;
+        }
+        
+        private int ParseIntFromJson(string json, string key)
+        {
+            string pattern = $"\"{key}\"\\s*:\\s*([0-9]+)";
+            System.Text.RegularExpressions.Match match = System.Text.RegularExpressions.Regex.Match(json, pattern);
+            if (match.Success)
+            {
+                return int.Parse(match.Groups[1].Value);
+            }
+            return 0;
+        }
+
+        private string ParseStringFromJson(string json, string key)
+        {
+            string pattern = $"\"{key}\"\\s*:\\s*\"([^\"]+)\"";
+            var match = System.Text.RegularExpressions.Regex.Match(json, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (match.Success) return match.Groups[1].Value;
+            return null;
+        }
+
+        private long ParseLongFromJson(string json, string key)
+        {
+            string pattern = $"\"{key}\"\\s*:\\s*\"?([0-9]+)\"?";
+            var match = System.Text.RegularExpressions.Regex.Match(json, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (match.Success && long.TryParse(match.Groups[1].Value, out long val)) return val;
+            return 0;
+        }
+
+        private string ExtractStreamValue(string json, string streamType, string key)
+        {
+            // Cherche un bloc de stream contenant codec_type: streamType puis extrait la clé demandée
+            string pattern = $"\"codec_type\"\\s*:\\s*\"{streamType}\"[\\s\\S]*?\"{key}\"\\s*:\\s*\"?([^\\\",\\}}\\n]+)\"?";
+            var match = System.Text.RegularExpressions.Regex.Match(json, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (match.Success) return match.Groups[1].Value;
+            return null;
+        }
+
+        private int ParseIntFromStream(string json, string streamType, string key)
+        {
+            var s = ExtractStreamValue(json, streamType, key);
+            if (string.IsNullOrEmpty(s)) return 0;
+            // sample_rate peut être string
+            if (int.TryParse(s, out int val)) return val;
+            return 0;
+        }
+
+        private string FormatBitsPerSecond(long bps)
+        {
+            if (bps >= 1_000_000)
+                return $"{(bps / 1_000_000f):0.##} Mb/s";
+            if (bps >= 1_000)
+                return $"{(bps / 1_000f):0.##} kb/s";
+            return bps + " b/s";
+        }
+
+        private string Truncate(string s, int max)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            if (s.Length <= max) return s;
+            return s.Substring(0, max) + "\n...";
+        }
+        
+        private void CalculateAtlasLayout()
+        {
+            if (!videoInfo.IsValid)
+                return;
+            
+            timeStart = Mathf.Clamp(timeStart, 0f, videoInfo.Duration);
+            timeEnd = Mathf.Clamp(timeEnd, timeStart, videoInfo.Duration);
+            totalFrames = Mathf.CeilToInt((timeEnd - timeStart) * frameRate);
+            
+            if (totalFrames <= 0 || targetFrameSize.x <= 0 || targetFrameSize.y <= 0)
+                return;
+            
+            if (!useAtlasMode)
+            {
+                actualFrameSize = AlignToMultipleOf4(targetFrameSize);
+                atlasCount = totalFrames;
+                slices = Vector2Int.one;
+                atlasSize = actualFrameSize;
+                framesPerAtlas = 1;
+                return;
+            }
+            
+            if (useSingleAtlas)
+            {
+                atlasCount = 1;
+                actualFrameSize = PackSingleAtlas(targetFrameSize, limitAtlasSize, totalFrames, out slices);
+            }
+            else
+            {
+                actualFrameSize = ComputePackedFrameSize(targetFrameSize, limitAtlasSize, totalFrames, out slices, out atlasCount);
+            }
+            
+            atlasSize = Vector2Int.Scale(slices, actualFrameSize);
+            framesPerAtlas = slices.x * slices.y;
+        }
+        
+        private Vector2Int PackSingleAtlas(Vector2Int frameSize, Vector2Int limitAtlasSize, int frames, out Vector2Int slices)
+        {
+            float aspect = (float)frameSize.x / frameSize.y;
+            slices = Vector2Int.zero;
+
+            // A frame larger than the atlas limit yields 0 slices, which then divides by
+            // zero below. One slice is the only meaningful floor.
+            slices.x = Mathf.Max(1, limitAtlasSize.x / frameSize.x);
+            slices.y = Mathf.Max(1, limitAtlasSize.y / frameSize.y);
+            int framesPerAtlas = slices.x * slices.y;
+
+            if (frames > framesPerAtlas)
+            {
+                slices.x = Mathf.Max(1, Mathf.RoundToInt(Mathf.Sqrt(frames / aspect)));
+                slices.y = Mathf.Max(1, Mathf.CeilToInt((float)frames / slices.x));
+
+                frameSize.x = limitAtlasSize.x / slices.x;
+                frameSize.y = limitAtlasSize.y / slices.y;
+            }
+            else
+            {
+                int minPerimeter = int.MaxValue;
+                int minEmptySprites = int.MaxValue;
+                Vector2Int bestCounts = Vector2Int.one;
+
+                int minColumns = (frames - 1) / slices.y + 1;
+                for (int x = minColumns; x <= slices.x; x++)
+                {
+                    int y = (frames - 1) / x + 1;
+                    int emptySprites = x * y - frames;
+                    int perimeter = x * frameSize.x + y * frameSize.y;
+                    if (emptySprites < minEmptySprites || (emptySprites == minEmptySprites && perimeter < minPerimeter))
+                    {
+                        bestCounts.x = x;
+                        bestCounts.y = y;
+                        minEmptySprites = emptySprites;
+                        minPerimeter = perimeter;
+                    }
+                }
+                slices = bestCounts;
+            }
+            
+            int strideX = LCM(slices.x, 4);
+            int strideY = LCM(slices.y, 4);
+
+            frameSize.x = frameSize.x * slices.x / strideX * strideX / slices.x;
+            frameSize.y = frameSize.y * slices.y / strideY * strideY / slices.y;
+
+            return frameSize;
+        }
+        
+        private Vector2Int ComputePackedFrameSize(Vector2Int frameSize, Vector2Int limitAtlasSize, int totalFrames, out Vector2Int slices, out int atlases)
+        {
+            slices = Vector2Int.zero;
+            // Same guard as PackSingleAtlas: a frame bigger than the atlas limit gave
+            // framesPerAtlas == 0 and threw DivideByZeroException on the next line.
+            slices.x = Mathf.Max(1, limitAtlasSize.x / frameSize.x);
+            slices.y = Mathf.Max(1, limitAtlasSize.y / frameSize.y);
+            int framesPerAtlas = slices.x * slices.y;
+            atlases = (totalFrames - 1) / framesPerAtlas + 1;
+
+            if (atlases <= 8)
+            {
+                int minPerimeter = int.MaxValue;
+                int minEmptySprites = int.MaxValue;
+                int bestAtlasCount = int.MaxValue;
+                Vector2Int bestCounts = Vector2Int.one;
+                
+                for (int s = atlases; s <= 8; s++)
+                {
+                    int frames = (totalFrames - 1) / s + 1;
+                    int minColumns = (frames - 1) / slices.y + 1;
+                    for (int x = minColumns; x <= slices.x; x++)
+                    {
+                        int y = (frames - 1) / x + 1;
+                        int emptySprites = x * y * s - totalFrames;
+                        int perimeter = x * frameSize.x + y * frameSize.y + s * frameSize.x * frameSize.y;
+                        if (emptySprites < minEmptySprites || (emptySprites == minEmptySprites && perimeter < minPerimeter))
+                        {
+                            bestCounts.x = x;
+                            bestCounts.y = y;
+                            bestAtlasCount = s;
+                            minEmptySprites = emptySprites;
+                            minPerimeter = perimeter;
+                        }
+                    }
+                }
+                atlases = bestAtlasCount;
+                slices = bestCounts;
+            }
+            
+            int strideX = LCM(slices.x, 4);
+            int strideY = LCM(slices.y, 4);
+
+            frameSize.x = frameSize.x * slices.x / strideX * strideX / slices.x;
+            frameSize.y = frameSize.y * slices.y / strideY * strideY / slices.y;
+
+            return frameSize;
+        }
+        
+        private Vector2Int AlignToMultipleOf4(Vector2Int size)
+        {
+            return new Vector2Int(
+                Mathf.RoundToInt(size.x / 4.0f) * 4,
+                Mathf.RoundToInt(size.y / 4.0f) * 4
+            );
+        }
+        
+        private int GCD(int x, int y)
+        {
+            // The subtractive form looped forever whenever either argument was 0 or
+            // negative (GCD(0,4) never terminates), hard-freezing the editor.
+            x = Mathf.Abs(x);
+            y = Mathf.Abs(y);
+            while (y != 0)
+            {
+                int remainder = x % y;
+                x = y;
+                y = remainder;
+            }
+            return x;
+        }
+
+        private int LCM(int x, int y)
+        {
+            int gcd = GCD(x, y);
+            // Callers divide by the result, so never return 0.
+            if (gcd == 0) return 1;
+            return Mathf.Max(1, Mathf.Abs(x * y) / gcd);
+        }
+        
+        private void PreviewVideo()
+        {
+            string ffplayPath = GetFFMPEGExecutable("ffplay");
+            
+            if (!File.Exists(ffplayPath))
+            {
+                AddLog("✗ ffplay not found!");
+                EditorUtility.DisplayDialog("Preview Error", 
+                    $"ffplay not found at:\n{ffmpegPath}\n\nMake sure FFMPEG is installed correctly.", 
+                    "OK");
+                return;
+            }
+            
+            string filename = EscapeFilterGraph(EscapeFilterOption(inputVideoPath));
+            string arguments;
+            
+            if (audioClip != null)
+            {
+                string audioFilename = EscapeFilterGraph(EscapeFilterOption(AssetDatabase.GetAssetPath(audioClip)));
+                arguments = string.Format(CultureInfo.InvariantCulture,
+                    "-window_title Preview -volume 25 -f lavfi \"movie={0}:sp={1}, fps={5}:round=down, scale={3}x{4}, loop=-1:size={2}, setpts=N/({5}*TB)[out0]; amovie=filename={6}:loop=0, asetpts=N/SR/TB[out1]\"",
+                    filename, timeStart, totalFrames, actualFrameSize.x, actualFrameSize.y, frameRate, audioFilename);
+            }
+            else
+            {
+                arguments = string.Format(CultureInfo.InvariantCulture,
+                    "-window_title Preview -volume 25 -f lavfi \"movie={0}:sp={1}, fps={5}:round=down, scale={3}x{4}, loop=-1:size={2}, setpts=N/({5}*TB)\"",
+                    filename, timeStart, totalFrames, actualFrameSize.x, actualFrameSize.y, frameRate);
+            }
+            
+            try
+            {
+                Process ffplay = new Process();
+                ffplay.StartInfo.FileName = ffplayPath;
+                ffplay.StartInfo.Arguments = arguments;
+                ffplay.StartInfo.WorkingDirectory = Environment.CurrentDirectory;
+                ffplay.StartInfo.UseShellExecute = false;
+                ffplay.StartInfo.CreateNoWindow = true;
+                ffplay.Start();
+                
+                AddLog("▶ Preview started!");
+            }
+            catch (Exception ex)
+            {
+                AddLog($"✗ Preview error: {ex.Message}");
+            }
+        }
+        
+        private void StartConversion()
+        {
+            if (!videoInfo.IsValid)
+            {
+                EditorUtility.DisplayDialog("Error", "Please select a valid video file first!", "OK");
+                return;
+            }
+            
+            if (string.IsNullOrEmpty(outputDirectory))
+            {
+                EditorUtility.DisplayDialog("Error", "Please select a valid output folder in Assets!", "OK");
+                return;
+            }
+            
+            AddLog("╔════════════════════════════════════");
+            AddLog("🚀 Starting video conversion...");
+            AddLog($"🎹 Input: {Path.GetFileName(inputVideoPath)}");
+            AddLog($"⏱️ Duration: {FormatTime(timeEnd - timeStart)}");
+            AddLog($"📊 Frames: {totalFrames} @ {frameRate} fps");
+            AddLog("╚════════════════════════════════════");
+            
+            SetupConversion();
+            
+            if (useAtlasMode)
+            {
+                StartAtlasConversion();
+            }
+            else
+            {
+                StartFrameConversion();
+            }
+        }
+        
+        private void SetupConversion()
+        {
+            string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
+            
+            // MODIFIÉ : S'assurer que outputDirectory pointe vers Assets/Kawaii Studio/Videos/NomVideo
+            if (!outputDirectory.Contains(videoName))
+            {
+                outputDirectory = DEFAULT_OUTPUT_PATH + "/" + videoName;
+            }
+            
+            // Créer le dossier de sortie si nécessaire
+            if (!AssetDatabase.IsValidFolder(outputDirectory))
+            {
+                string[] folders = outputDirectory.Replace("Assets/", "").Replace("Assets", "").Split('/');
+                string currentPath = "Assets";
+                
+                foreach (string folder in folders)
+                {
+                    if (string.IsNullOrEmpty(folder)) continue;
+                    
+                    string newPath = currentPath + "/" + folder;
+                    if (!AssetDatabase.IsValidFolder(newPath))
+                    {
+                        AssetDatabase.CreateFolder(currentPath, folder);
+                    }
+                    currentPath = newPath;
+                }
+                outputDirectory = currentPath;
+            }
+            
+            // MODIFIÉ : Les fichiers sont maintenant dans le dossier de la vidéo
+            string basePath = outputDirectory + "/" + videoName;
+            
+            // Créer les textures placeholder
+            atlasPaths.Clear();
+            string extension = saveAsJPEG ? "jpg" : "png";
+            byte[] placeholderBytes = saveAsJPEG ? Texture2D.blackTexture.EncodeToJPG(jpegQuality) : Texture2D.blackTexture.EncodeToPNG();
+            
+            for (int i = 0; i < atlasCount; i++)
+            {
+                string atlasPath = $"{basePath} Atlas {i}.{extension}";
+                File.WriteAllBytes(atlasPath, placeholderBytes);
+                atlasPaths.Add(atlasPath);
+            }
+            
+            AssetDatabase.Refresh();
+            
+            // Configurer les importeurs de texture
+            AssetDatabase.StartAssetEditing();
+            try
+            {
+                foreach (string path in atlasPaths)
+                {
+                    TextureImporter importer = (TextureImporter)AssetImporter.GetAtPath(path);
+                    if (importer != null)
+                    {
+                        importer.alphaSource = TextureImporterAlphaSource.None;
+                        importer.npotScale = TextureImporterNPOTScale.None;
+                        importer.wrapMode = TextureWrapMode.Clamp;
+                        importer.maxTextureSize = MAX_TEXTURE_SIZE;
+                        importer.crunchedCompression = useCrunchCompression;
+                        importer.compressionQuality = 100;
+                        importer.mipmapEnabled = generateMipmaps;
+                        importer.SaveAndReimport();
+                    }
+                }
+            }
+            finally
+            {
+                AssetDatabase.StopAssetEditing();
+            }
+        }
+        
+        private void StartAtlasConversion()
+        {
+            string ffmpegExe = GetFFMPEGExecutable("ffmpeg");
+            if (!File.Exists(ffmpegExe))
+            {
+                AddLog("✗ ffmpeg not found!");
+                return;
+            }
+            
+            string arguments = string.Format(CultureInfo.InvariantCulture,
+                "-nostdin -ss {1} -to {2} -i \"{0}\" -filter_complex \"fps=fps={5}, format=pix_fmts=rgb24, scale={3}x{4}:flags=area:out_range=full, vflip\" -f rawvideo -frames {6} pipe:1",
+                inputVideoPath, timeStart, timeEnd, actualFrameSize.x, actualFrameSize.y, frameRate, totalFrames);
+            
+            try
+            {
+                ffmpegProcess = new Process();
+                ffmpegProcess.StartInfo.FileName = ffmpegExe;
+                ffmpegProcess.StartInfo.Arguments = arguments;
+                ffmpegProcess.StartInfo.CreateNoWindow = true;
+                ffmpegProcess.StartInfo.UseShellExecute = false;
+                ffmpegProcess.StartInfo.RedirectStandardOutput = true;
+                ffmpegProcess.StartInfo.RedirectStandardError = true;
+                ffmpegProcess.StartInfo.WorkingDirectory = Environment.CurrentDirectory;
+                ffmpegProcess.EnableRaisingEvents = true;
+                ffmpegProcess.ErrorDataReceived += OnFFMPEGError;
+                ffmpegProcess.Exited += OnFFMPEGExited;
+                
+                ffmpegProcess.Start();
+                ffmpegProcess.BeginErrorReadLine();
+                
+                ffmpegStream = ffmpegProcess.StandardOutput.BaseStream;
+                
+                outputTexture = new Texture2D(atlasSize.x, atlasSize.y, TextureFormat.RGB24, false);
+                ClearCurrentAtlas();
+                
+                frameBuffer = new Color32[actualFrameSize.x * actualFrameSize.y];
+                imageDataBuffer = new byte[actualFrameSize.x * actualFrameSize.y * 3];
+                
+                isEncoding = true;
+                currentAtlas = 0;
+                currentFrame = -1;
+                
+                EditorApplication.update += UpdateFFMPEGEncoding;
+                
+                AddLog("▶ Atlas conversion started...");
+            }
+            catch (Exception ex)
+            {
+                AddLog($"✗ FFMPEG error: {ex.Message}");
+                StopEncoding();
+            }
+        }
+        
+        private void StartFrameConversion()
+        {
+            string ffmpegExe = GetFFMPEGExecutable("ffmpeg");
+            string extension = saveAsJPEG ? "jpg" : "png";
+            string quality = saveAsJPEG ? $"-qscale:v {QualityToQScale(jpegQuality)}" : "";
+            
+            string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
+            string arguments = string.Format(CultureInfo.InvariantCulture,
+                "-nostdin -y -ss {1} -to {2} -i \"{0}\" -filter_complex \"fps=fps={5}, format=pix_fmts=rgb24, scale={3}x{4}:flags=area:out_range=full\" -f image2 -start_number 0 -frames {6} {7} \"{8}/{9} Atlas %d.{10}\"",
+                inputVideoPath, timeStart, timeEnd, actualFrameSize.x, actualFrameSize.y, frameRate, totalFrames, quality, outputDirectory, videoName, extension);
+            
+            try
+            {
+                ffmpegProcess = new Process();
+                ffmpegProcess.StartInfo.FileName = ffmpegExe;
+                ffmpegProcess.StartInfo.Arguments = arguments;
+                ffmpegProcess.StartInfo.CreateNoWindow = true;
+                ffmpegProcess.StartInfo.UseShellExecute = false;
+                ffmpegProcess.StartInfo.RedirectStandardOutput = true;
+                ffmpegProcess.StartInfo.RedirectStandardError = true;
+                ffmpegProcess.StartInfo.WorkingDirectory = Environment.CurrentDirectory;
+                ffmpegProcess.EnableRaisingEvents = true;
+                ffmpegProcess.ErrorDataReceived += OnFFMPEGError;
+                ffmpegProcess.Exited += OnFFMPEGFrameExited;
+                
+                ffmpegProcess.Start();
+                ffmpegProcess.BeginErrorReadLine();
+                
+                isEncoding = true;
+                
+                AddLog("▶ Frame conversion started...");
+            }
+            catch (Exception ex)
+            {
+                AddLog($"✗ FFMPEG error: {ex.Message}");
+                StopEncoding();
+            }
+        }
+        
+        private void UpdateFFMPEGEncoding()
+        {
+            if (!isEncoding || ffmpegProcess == null || ffmpegStream == null)
+                return;
+            
+            int bytesPerFrame = imageDataBuffer.Length;
+            float updateStartTime = Time.realtimeSinceStartup;
+            
+            do
+            {
+                int position = 0;
+                int bytes = 0;
+                
+                try
+                {
+                    while (position < bytesPerFrame)
+                    {
+                        bytes = ffmpegStream.Read(imageDataBuffer, position, bytesPerFrame - position);
+                        if (bytes == 0)
+                            break;
+                        position += bytes;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AddLog($"✗ Stream read error: {ex.Message}");
+                    StopEncoding();
+                    return;
+                }
+                
+                bool endOfStream = bytes == 0;
+                bool flushAtlas = false;
+                
+                if (position == bytesPerFrame)
+                {
+                    currentFrame++;
+                    
+                    for (int i = 0, j = 0; j < bytesPerFrame; i++, j += 3)
+                    {
+                        frameBuffer[i].r = imageDataBuffer[j];
+                        frameBuffer[i].g = imageDataBuffer[j + 1];
+                        frameBuffer[i].b = imageDataBuffer[j + 2];
+                        frameBuffer[i].a = 255;
+                    }
+                    
+                    endOfStream = endOfStream || (currentFrame + 1) >= totalFrames;
+                    
+                    int frameIndex = currentFrame % framesPerAtlas;
+                    int column = frameIndex % slices.x;
+                    int row = slices.y - 1 - frameIndex / slices.x;
+                    
+                    outputTexture.SetPixels32(column * actualFrameSize.x, row * actualFrameSize.y, actualFrameSize.x, actualFrameSize.y, frameBuffer, 0);
+                    
+                    flushAtlas = (frameIndex + 1) % framesPerAtlas == 0;
+                }
+                
+                if (flushAtlas || endOfStream)
+                {
+                    FlushCurrentAtlas(endOfStream);
+                }
+                
+                if (endOfStream)
+                {
+                    return;
+                }
+                
+            } while ((Time.realtimeSinceStartup - updateStartTime) < 1f / 20f);
+            
+            Repaint();
+        }
+        
+        private void FlushCurrentAtlas(bool endOfStream)
+        {
+            try
+            {
+                outputTexture.Apply();
+                
+                byte[] bytes;
+                if (saveAsJPEG)
+                {
+                    bytes = outputTexture.EncodeToJPG(jpegQuality);
+                }
+                else
+                {
+                    bytes = outputTexture.EncodeToPNG();
+                }
+                
+                File.WriteAllBytes(atlasPaths[currentAtlas], bytes);
+                AddLog($"✓ Atlas {currentAtlas + 1}/{atlasCount} saved");
+                
+                if (endOfStream)
+                {
+                    StopEncoding();
+                    EditorApplication.delayCall += () =>
+                    {
+                        AssetDatabase.Refresh();
+                        AddLog("✅ Atlas conversion completed!");
+                        FinalizeConversion();
+                    };
+                }
+                else
+                {
+                    ClearCurrentAtlas();
+                    currentAtlas++;
+                }
+            }
+            catch (Exception ex)
+            {
+                AddLog($"✗ Error flushing atlas: {ex.Message}");
+                StopEncoding();
+            }
+        }
+        
+        private void ClearCurrentAtlas()
+        {
+            RenderTexture tempRT = RenderTexture.GetTemporary(atlasSize.x, atlasSize.y, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+            RenderTexture.active = tempRT;
+            Graphics.DrawTexture(new Rect(Vector2.zero, atlasSize), Texture2D.blackTexture);
+            outputTexture.ReadPixels(new Rect(Vector2.zero, atlasSize), 0, 0);
+            RenderTexture.active = null;
+            RenderTexture.ReleaseTemporary(tempRT);
+        }
+        
+        private void StopEncoding()
+        {
+            isEncoding = false;
+            currentFrame = 0;
+            
+            EditorApplication.update -= UpdateFFMPEGEncoding;
+            
+            if (ffmpegProcess != null)
+            {
+                try
+                {
+                    if (!ffmpegProcess.HasExited)
+                        ffmpegProcess.Kill();
+                    ffmpegProcess.Dispose();
+                }
+                catch { }
+                ffmpegProcess = null;
+            }
+            
+            if (ffmpegStream != null)
+            {
+                try
+                {
+                    ffmpegStream.Dispose();
+                }
+                catch { }
+                ffmpegStream = null;
+            }
+            
+            if (outputTexture != null)
+            {
+                DestroyImmediate(outputTexture);
+                outputTexture = null;
+            }
+        }
+        
+        private void OnFFMPEGError(object sender, DataReceivedEventArgs e)
+        {
+            if (e.Data != null && !string.IsNullOrEmpty(e.Data))
+            {
+                if (e.Data.Contains("Error") || e.Data.Contains("Invalid") || e.Data.Contains("failed"))
+                {
+                    AddLog($"⚠️ FFMPEG: {e.Data}");
+                }
+            }
+        }
+        
+        private void OnFFMPEGExited(object sender, EventArgs e)
+        {
+            EditorApplication.delayCall += () =>
+            {
+                if (isEncoding)
+                {
+                    StopEncoding();
+                    AddLog("✅ FFMPEG process completed.");
+                }
+            };
+        }
+        
+        private void OnFFMPEGFrameExited(object sender, EventArgs e)
+        {
+            // Process.Exited fires on a threadpool thread. StopEncoding() touches
+            // EditorApplication.update and DestroyImmediate, which are main-thread only,
+            // so it has to run inside delayCall - exactly like OnFFMPEGExited above.
+            EditorApplication.delayCall += () =>
+            {
+                StopEncoding();
+                AssetDatabase.Refresh();
+                AddLog("✅ Frame conversion completed!");
+                FinalizeConversion();
+            };
+        }
+        
+        private void FinalizeConversion()
+        {
+            try
+            {
+                string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
+                string basePath = outputDirectory + "/" + videoName;
+                
+                AddLog("📦 Creating animation assets...");
+                
+                AnimationClip animClip = CreateAnimationClip(basePath);
+                GameObject videoPrefab = CreateVideoPrefab(basePath, animClip);
+                
+                Selection.activeObject = videoPrefab;
+                
+                AddLog($"🎉 Conversion finished! Prefab created at: {basePath}.prefab");
+                EditorUtility.DisplayDialog("Success! 🎉", "Video conversion completed successfully!\n\nPrefab: " + basePath + ".prefab", "OK");
+            }
+            catch (Exception ex)
+            {
+                AddLog($"✗ Error finalizing: {ex.Message}");
+                EditorUtility.DisplayDialog("Error", "Failed to finalize conversion: " + ex.Message, "OK");
+            }
+        }
+        
+        private AnimationClip CreateAnimationClip(string basePath)
+        {
+            string animPath = basePath + ".anim";
+            AnimationClip anim = AssetDatabase.LoadAssetAtPath<AnimationClip>(animPath);
+            
+            if (anim == null)
+            {
+                anim = new AnimationClip();
+                AssetDatabase.CreateAsset(anim, animPath);
+            }
+            
+            anim.ClearCurves();
+            anim.frameRate = frameRate;
+            
+            if (useCustomMaterial && customMaterial != null && customShaderTextures.Names.Length > 0)
+            {
+                AnimateCustomMaterial(anim, basePath);
+            }
+            else
+            {
+                AnimateKSVideoDecoder(anim, basePath);
+            }
+            
+            // Apply loop settings last to ensure they persist and affect all curves
+            float timeLength = Mathf.Max(0.0001f, totalFrames / Mathf.Max(1f, frameRate));
+            AnimationClipSettings settings = AnimationUtility.GetAnimationClipSettings(anim);
+            settings.startTime = 0f;
+            settings.stopTime = timeLength;
+            settings.loopTime = loopAnimation;
+            AnimationUtility.SetAnimationClipSettings(anim, settings);
+            anim.legacy = false;
+            anim.wrapMode = loopAnimation ? WrapMode.Loop : WrapMode.Once;
+            
+            EditorUtility.SetDirty(anim);
+            AssetDatabase.SaveAssets();
+            
+            return anim;
+        }
+        
+        private void AnimateCustomMaterial(AnimationClip anim, string basePath)
+        {
+            if (atlasCount == 1)
+            {
+                AnimateSingleAtlasUV(anim);
+            }
+            else
+            {
+                AnimateMultiAtlasMaterial(anim, basePath);
+                if (framesPerAtlas > 1)
+                {
+                    AnimateMultiAtlasUV(anim);
+                }
+            }
+        }
+        
+        private void AnimateKSVideoDecoder(AnimationClip anim, string basePath)
+        {
+            Shader decoderShader = AssetDatabase.LoadAssetAtPath<Shader>(SHADER_PATH);
+            if (decoderShader == null)
+            {
+                AddLog("✗ KSVideoDecoder shader not found at: " + SHADER_PATH);
+                return;
+            }
+            
+            string matPath = basePath + ".mat";
+            Material mat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
+            if (mat == null)
+            {
+                mat = new Material(decoderShader);
+                AssetDatabase.CreateAsset(mat, matPath);
+            }
+            else
+            {
+                mat.shader = decoderShader;
+            }
+            
+            mat.SetFloat("_FrameRate", frameRate);
+            mat.SetFloat("_AtlasSizeX", slices.x);
+            mat.SetFloat("_AtlasSizeY", slices.y);
+            
+            for (int i = 0; i < atlasCount && i < MAX_ATLAS_COUNT; i++)
+            {
+                string texProp = i == 0 ? "_MainTex" : $"_MainTex{i}";
+                Texture2D tex = AssetDatabase.LoadAssetAtPath<Texture2D>(atlasPaths[i]);
+                if (tex != null)
+                {
+                    mat.SetTexture(texProp, tex);
+                }
+            }
+            
+            float timeLength = totalFrames / frameRate;
+            AnimationCurve timeCurve = AnimationCurve.Linear(0, 0, timeLength, timeLength);
+            anim.SetCurve("", typeof(MeshRenderer), "material._CustomTime", timeCurve);
+            
+            EditorUtility.SetDirty(mat);
+        }
+        
+        private GameObject CreateVideoPrefab(string basePath, AnimationClip anim)
+        {
+            string prefabPath = basePath + ".prefab";
+            string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
+            
+            GameObject tempObj = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            tempObj.name = videoName + " Video";
+            tempObj.transform.localScale = new Vector3(videoInfo.AspectRatio, 1, 1);
+            
+            DestroyImmediate(tempObj.GetComponent<MeshCollider>());
+            
+            MeshRenderer renderer = tempObj.GetComponent<MeshRenderer>();
+            if (useCustomMaterial && customMaterial != null)
+            {
+                renderer.sharedMaterial = customMaterial;
+            }
+            else
+            {
+                renderer.sharedMaterial = AssetDatabase.LoadAssetAtPath<Material>(basePath + ".mat");
+            }
+            
+            Animator animator = tempObj.AddComponent<Animator>();
+            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            
+            if (audioClip != null)
+            {
+                AudioSource audioSource = tempObj.AddComponent<AudioSource>();
+                audioSource.clip = audioClip;
+                audioSource.loop = loopAnimation;
+                audioSource.playOnAwake = true;
+                audioSource.dopplerLevel = 0;
+            }
+            
+            string controllerPath = basePath + ".controller";
+            AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
+            if (controller == null)
+            {
+                controller = AnimatorController.CreateAnimatorControllerAtPath(controllerPath);
+                AnimatorStateMachine stateMachine = controller.layers[0].stateMachine;
+                AnimatorState state = stateMachine.AddState("Play");
+                state.motion = anim;
+                state.writeDefaultValues = false;
+                
+                // Set default state to loop the animation
+                stateMachine.defaultState = state;
+            }
+            else
+            {
+                if (controller.layers.Length > 0)
+                {
+                    AnimatorStateMachine stateMachine = controller.layers[0].stateMachine;
+                    if (stateMachine.states.Length > 0)
+                    {
+                        AnimatorState state = stateMachine.states[0].state;
+                        state.motion = anim;
+                        
+                        // Ensure the state is set as default
+                        stateMachine.defaultState = state;
+                    }
+                }
+            }
+            
+            animator.runtimeAnimatorController = controller;
+            
+            GameObject prefab = PrefabUtility.SaveAsPrefabAsset(tempObj, prefabPath);
+            DestroyImmediate(tempObj);
+            
+            return prefab;
+        }
+        
+        private void AnimateSingleAtlasUV(AnimationClip anim)
+        {
+            float timeLength = totalFrames / frameRate;
+            Vector2 tileSize = new Vector2(1f / slices.x, 1f / slices.y);
+            Vector2 frameSize = new Vector2(actualFrameSize.x, actualFrameSize.y);
+            Vector2 pixelSize = new Vector2(1f / atlasSize.x, 1f / atlasSize.y);
+            
+            tileSize.x *= (frameSize.x - 1f) / frameSize.x;
+            tileSize.y *= (frameSize.y - 1f) / frameSize.y;
+            
+            AnimationCurve scaleX = AnimationCurve.Constant(0, timeLength, tileSize.x);
+            AnimationCurve scaleY = AnimationCurve.Constant(0, timeLength, tileSize.y);
+            AnimationCurve offsetX = AnimationCurve.Linear(0, 0, timeLength, 1);
+            AnimationCurve offsetY = AnimationCurve.Linear(0, 0, timeLength, 1);
+            
+            Keyframe[] offsetXKeys = new Keyframe[totalFrames];
+            Keyframe[] offsetYKeys = new Keyframe[(totalFrames - 1) / slices.x + 1];
+            Keyframe k = new Keyframe();
+            
+            int frameX = 0;
+            int frameY = 0;
+            
+            for (int y = slices.y - 1; y >= 0 && frameX < totalFrames; y--, frameY++)
+            {
+                float pixelOffsetY = y * frameSize.y + 0.5f;
+                float offsetYValue = pixelOffsetY * pixelSize.y;
+                k.time = frameY * slices.x / frameRate;
+                k.value = offsetYValue;
+                offsetYKeys[frameY] = k;
+                
+                for (int x = 0; x < slices.x && frameX < totalFrames; x++, frameX++)
+                {
+                    float pixelOffsetX = x * frameSize.x + 0.5f;
+                    float offsetXValue = pixelOffsetX * pixelSize.x;
+                    k.time = frameX / frameRate;
+                    k.value = offsetXValue;
+                    offsetXKeys[frameX] = k;
+                }
+            }
+            
+            offsetX.keys = offsetXKeys;
+            offsetY.keys = offsetYKeys;
+            
+            for (int i = 0; i < offsetX.keys.Length; i++)
+            {
+                AnimationUtility.SetKeyLeftTangentMode(offsetX, i, AnimationUtility.TangentMode.Constant);
+                AnimationUtility.SetKeyRightTangentMode(offsetX, i, AnimationUtility.TangentMode.Constant);
+            }
+            for (int i = 0; i < offsetY.keys.Length; i++)
+            {
+                AnimationUtility.SetKeyLeftTangentMode(offsetY, i, AnimationUtility.TangentMode.Constant);
+                AnimationUtility.SetKeyRightTangentMode(offsetY, i, AnimationUtility.TangentMode.Constant);
+            }
+            
+            string property = customShaderTextures.PropertyNames[customShaderTexture];
+            string stProperty = property + "_ST";
+            
+            anim.SetCurve("", typeof(MeshRenderer), $"material.{stProperty}.x", scaleX);
+            anim.SetCurve("", typeof(MeshRenderer), $"material.{stProperty}.y", scaleY);
+            anim.SetCurve("", typeof(MeshRenderer), $"material.{stProperty}.z", offsetX);
+            anim.SetCurve("", typeof(MeshRenderer), $"material.{stProperty}.w", offsetY);
+        }
+        
+        private void AnimateMultiAtlasMaterial(AnimationClip anim, string basePath)
+        {
+            string property = customShaderTextures.PropertyNames[customShaderTexture];
+            ObjectReferenceKeyframe[] matKeyframes = new ObjectReferenceKeyframe[atlasCount];
+            
+            AssetDatabase.StartAssetEditing();
+            try
+            {
+                for (int i = 0; i < atlasCount; i++)
+                {
+                    string matPath = basePath + $" Mat {i}.mat";
+                    Material mat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
+                    if (mat == null)
+                    {
+                        mat = new Material(customMaterial);
+                        AssetDatabase.CreateAsset(mat, matPath);
+                    }
+                    
+                    Texture2D tex = AssetDatabase.LoadAssetAtPath<Texture2D>(atlasPaths[i]);
+                    mat.SetTexture(property, tex);
+                    
+                    matKeyframes[i].time = i * framesPerAtlas / frameRate;
+                    matKeyframes[i].value = mat;
+                }
+            }
+            finally
+            {
+                AssetDatabase.StopAssetEditing();
+            }
+            
+            EditorCurveBinding binding = EditorCurveBinding.PPtrCurve("", typeof(MeshRenderer), "m_Materials.Array.data[0]");
+            AnimationUtility.SetObjectReferenceCurve(anim, binding, matKeyframes);
+        }
+        
+        private void AnimateMultiAtlasUV(AnimationClip anim)
+        {
+            float timeLength = totalFrames / frameRate;
+            Vector2 tileSize = new Vector2(1f / slices.x, 1f / slices.y);
+            Vector2 frameSize = new Vector2(actualFrameSize.x, actualFrameSize.y);
+            Vector2 pixelSize = new Vector2(1f / atlasSize.x, 1f / atlasSize.y);
+            
+            tileSize.x *= (frameSize.x - 1f) / frameSize.x;
+            tileSize.y *= (frameSize.y - 1f) / frameSize.y;
+            
+            AnimationCurve scaleX = AnimationCurve.Constant(0, timeLength, tileSize.x);
+            AnimationCurve scaleY = AnimationCurve.Constant(0, timeLength, tileSize.y);
+            AnimationCurve offsetX = AnimationCurve.Linear(0, 0, timeLength, 1);
+            AnimationCurve offsetY = AnimationCurve.Linear(0, 0, timeLength, 1);
+            
+            List<Keyframe> offsetXKeysList = new List<Keyframe>();
+            List<Keyframe> offsetYKeysList = new List<Keyframe>();
+            
+            int globalFrame = 0;
+            for (int atlasIdx = 0; atlasIdx < atlasCount && globalFrame < totalFrames; atlasIdx++)
+            {
+                int frameY = 0;
+                for (int y = slices.y - 1; y >= 0 && globalFrame < totalFrames; y--, frameY++)
+                {
+                    float pixelOffsetY = y * frameSize.y + 0.5f;
+                    float offsetYValue = pixelOffsetY * pixelSize.y;
+                    
+                    Keyframe kY = new Keyframe();
+                    kY.time = globalFrame / frameRate;
+                    kY.value = offsetYValue;
+                    offsetYKeysList.Add(kY);
+                    
+                    for (int x = 0; x < slices.x && globalFrame < totalFrames; x++, globalFrame++)
+                    {
+                        float pixelOffsetX = x * frameSize.x + 0.5f;
+                        float offsetXValue = pixelOffsetX * pixelSize.x;
+                        
+                        Keyframe kX = new Keyframe();
+                        kX.time = globalFrame / frameRate;
+                        kX.value = offsetXValue;
+                        offsetXKeysList.Add(kX);
+                    }
+                }
+            }
+            
+            offsetX.keys = offsetXKeysList.ToArray();
+            offsetY.keys = offsetYKeysList.ToArray();
+            
+            for (int i = 0; i < offsetX.keys.Length; i++)
+            {
+                AnimationUtility.SetKeyLeftTangentMode(offsetX, i, AnimationUtility.TangentMode.Constant);
+                AnimationUtility.SetKeyRightTangentMode(offsetX, i, AnimationUtility.TangentMode.Constant);
+            }
+            for (int i = 0; i < offsetY.keys.Length; i++)
+            {
+                AnimationUtility.SetKeyLeftTangentMode(offsetY, i, AnimationUtility.TangentMode.Constant);
+                AnimationUtility.SetKeyRightTangentMode(offsetY, i, AnimationUtility.TangentMode.Constant);
+            }
+            
+            string property = customShaderTextures.PropertyNames[customShaderTexture];
+            string stProperty = property + "_ST";
+            
+            anim.SetCurve("", typeof(MeshRenderer), $"material.{stProperty}.x", scaleX);
+            anim.SetCurve("", typeof(MeshRenderer), $"material.{stProperty}.y", scaleY);
+            anim.SetCurve("", typeof(MeshRenderer), $"material.{stProperty}.z", offsetX);
+            anim.SetCurve("", typeof(MeshRenderer), $"material.{stProperty}.w", offsetY);
+        }
+        
+        private CustomShaderTextures GetCustomShaderTextures(Material mat)
+        {
+            CustomShaderTextures textures = new CustomShaderTextures();
+            if (mat == null || mat.shader == null)
+                return textures;
+            
+            int propCount = ShaderUtil.GetPropertyCount(mat.shader);
+            List<string> names = new List<string>();
+            List<string> propNames = new List<string>();
+            
+            for (int i = 0; i < propCount; i++)
+            {
+                if (ShaderUtil.GetPropertyType(mat.shader, i) == ShaderUtil.ShaderPropertyType.TexEnv &&
+                    ShaderUtil.GetTexDim(mat.shader, i) == UnityEngine.Rendering.TextureDimension.Tex2D)
+                {
+                    names.Add(ShaderUtil.GetPropertyDescription(mat.shader, i));
+                    propNames.Add(ShaderUtil.GetPropertyName(mat.shader, i));
+                }
+            }
+            
+            textures.Names = names.ToArray();
+            textures.PropertyNames = propNames.ToArray();
+            
+            return textures;
+        }
+        
+        private string EscapeFilterGraph(string str)
+        {
+            return str.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace(",", "\\,").Replace(";", "\\;").Replace("[", "\\[").Replace("]", "\\]");
+        }
+        
+        private string EscapeFilterOption(string str)
+        {
+            return str.Replace("'", "\\'").Replace(":", "\\:");
+        }
+        
+        private float QualityToQScale(float quality)
+        {
+            float q = 0.025f * quality - 1.68f;
+            return -9.07557f * q - 5.37507f * q * q - 0.135614f * q * q * q + 9.78417f * q * q * q * q + 8.71064f;
+        }
+        
+        private string FormatTime(float seconds)
+        {
+            TimeSpan t = TimeSpan.FromSeconds(seconds);
+            return $"{t.Minutes:D2}:{t.Seconds:D2}.{t.Milliseconds:D3}";
+        }
+        
+        private string FormatBytes(long bytes) => KawaiiStudioUtil.FormatBytes(bytes);
+    }
+}
