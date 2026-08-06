@@ -37,7 +37,7 @@ namespace KawaiiStudio
         public const int RadiusLg = 12;
 
         public const float ButtonHeight = 32f;
-        public const float BannerHeight = 96f;
+        public const float BannerHeight = 140f;
 
         private static bool Pro => EditorGUIUtility.isProSkin;
 
@@ -283,12 +283,22 @@ namespace KawaiiStudio
 
             if (Event.current != null && Event.current.type == EventType.Repaint)
             {
+                // Rounded card underneath, so the corners stay soft even behind the art.
                 GUI.DrawTexture(banner, GetRoundedTexture(BoxBackground, BorderColor, RadiusLg, 1), ScaleMode.StretchToFill, true);
 
                 if (bannerBg != null)
                 {
-                    GUI.DrawTexture(banner, bannerBg, ScaleMode.ScaleAndCrop);
-                    EditorGUI.DrawRect(banner, Fade(Pro ? Color.black : Color.white, 0.55f));
+                    // Show the artwork itself, filling the header. Instead of the old flat
+                    // 55% black veil (which dimmed the art into a muddy sliver), lay a
+                    // horizontal gradient over it: near-opaque on the leading edge so the
+                    // logo/title/subtitle stay crisp, fading to clear on the trailing edge
+                    // so the art reads at full strength on the right.
+                    Rect inner = new Rect(banner.x + 1f, banner.y + 1f, banner.width - 2f, banner.height - 2f);
+                    GUI.DrawTexture(inner, bannerBg, ScaleMode.ScaleAndCrop);
+
+                    Color shade = Pro ? new Color(0.05f, 0.04f, 0.07f) : new Color(0.10f, 0.09f, 0.13f);
+                    GUI.DrawTexture(inner, GetHorizontalGradient(Fade(shade, 0.92f), Fade(shade, 0f)),
+                        ScaleMode.StretchToFill, true);
                 }
                 else
                 {
@@ -302,26 +312,30 @@ namespace KawaiiStudio
                 EditorGUI.DrawRect(new Rect(banner.x, banner.y + RadiusLg, 3f, banner.height - RadiusLg * 2f), AccentColor);
             }
 
+            const float LogoSize = 76f;
             float textX = banner.x + Space5;
 
             if (logo != null)
             {
-                Rect logoRect = new Rect(banner.x + Space4, banner.y + (BannerHeight - 56f) * 0.5f, 56f, 56f);
+                Rect logoRect = new Rect(banner.x + Space5, banner.y + (BannerHeight - LogoSize) * 0.5f, LogoSize, LogoSize);
                 GUI.DrawTexture(logoRect, logo, ScaleMode.ScaleToFit);
                 textX = logoRect.xMax + Space4;
             }
 
             float textW = Mathf.Max(40f, banner.xMax - textX - Space4);
 
-            GUI.Label(new Rect(textX, banner.y + 24f, textW, 26f), title ?? string.Empty, H1);
+            // Vertically centre the title + subtitle block within the taller banner.
+            float blockH = string.IsNullOrEmpty(subtitle) ? 30f : 54f;
+            float blockY = banner.y + (BannerHeight - blockH) * 0.5f;
+            GUI.Label(new Rect(textX, blockY, textW, 30f), title ?? string.Empty, H1);
             if (!string.IsNullOrEmpty(subtitle))
-                GUI.Label(new Rect(textX, banner.y + 50f, textW, 20f), subtitle, SubTitleStyle);
+                GUI.Label(new Rect(textX, blockY + 30f, textW, 20f), subtitle, SubTitleStyle);
 
             if (!string.IsNullOrEmpty(version))
             {
                 var content = new GUIContent("v" + version);
                 Vector2 size = PillStyle.CalcSize(content);
-                Rect pill = new Rect(banner.xMax - size.x - Space4, banner.y + Space3, size.x + Space2, 16f);
+                Rect pill = new Rect(banner.xMax - size.x - Space4, banner.y + Space3, size.x + Space2, 18f);
                 DrawPill(pill, content.text, AccentColor);
             }
 

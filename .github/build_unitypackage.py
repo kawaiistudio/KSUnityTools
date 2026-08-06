@@ -47,12 +47,12 @@ EXCLUDED_FILES = {
     # package.json is the UPM/VCC manifest. Inside Assets/ it would make Unity treat the
     # folder as an embedded package, so it must stay out of the .unitypackage.
     "package.json",
+    # logo_v2.png is landing-page art at the repo root, not a Unity asset.
     "logo_v2.png",
-    # README/landing-page art, not Unity assets. banner.png alone is 13 MB and the tools
-    # treat it as optional (KawaiiStudioBranding: "Older installs shipped a 13 MB
-    # banner.png; it is no longer required") -- shipping it would make the one-click
-    # download 28x bigger for nothing. References/logo.png IS used and stays.
-    "banner.png",
+    # References/banner.png IS a Unity asset -- every tool's header draws it via
+    # KawaiiStudioBranding.Banner. It must ship in the .unitypackage too, or unitypackage
+    # installs get the flat procedural fallback while VCC installs get the real art. It's
+    # been resized from 4096px/13 MB down to 1024px/~0.7 MB so shipping it is cheap.
 }
 
 # Importer block per extension. Getting this right avoids a re-import dance on the user's

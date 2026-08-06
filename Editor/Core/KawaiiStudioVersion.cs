@@ -18,6 +18,6 @@ namespace KawaiiStudio
     /// </summary>
     public static class KawaiiStudioVersion
     {
-        public const string Current = "3.0.4";
+        public const string Current = "3.1.0";
     }
 }

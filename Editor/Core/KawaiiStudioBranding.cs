@@ -13,9 +13,11 @@ namespace KawaiiStudio
     /// Public rather than internal: the VRChat-dependent tools may compile into a
     /// separate assembly, and internal would not reach across it.
     ///
-    /// The banner is optional. Older installs shipped a 13 MB banner.png; it is no
-    /// longer bundled, and <see cref="KawaiiStudioGUI.DrawBanner"/> falls back to a
-    /// generated accent gradient when this returns null.
+    /// The banner ships in every install (both the .unitypackage and the VCC zip),
+    /// resized to 1024px so it costs under a megabyte. <see cref="Banner"/> still
+    /// tolerates it being absent -- <see cref="KawaiiStudioGUI.DrawBanner"/> falls back
+    /// to a generated accent gradient -- so a stripped install degrades instead of
+    /// throwing.
     /// </summary>
     public static class KawaiiStudioBranding
     {
@@ -35,15 +37,16 @@ namespace KawaiiStudio
             }
         }
 
-        /// <summary>Optional background art; null on current installs.</summary>
+        /// <summary>Header background art. Present in normal installs; may be null if
+        /// the file was stripped, in which case the header uses its gradient fallback.</summary>
         public static Texture2D Banner
         {
             get
             {
                 if (_banner != null) return _banner;
 
-                // Probe once. A missing banner is the normal case now, so this must
-                // not hit the AssetDatabase on every repaint.
+                // Probe once so a stripped install doesn't hit the AssetDatabase on
+                // every repaint looking for a file that isn't there.
                 if (_bannerProbed) return null;
                 _bannerProbed = true;
                 _banner = LoadTexture(BannerPath);

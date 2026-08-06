@@ -2,6 +2,30 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.1.0]
+
+Visual pass. The tools worked but looked flat, and the Studio Manager was doing a job it
+shouldn't. This restores the branding and turns the Manager into a proper hub.
+
+### Banner is back
+- Every tool's header draws the Kawaii Studio artwork again. It had two problems: the
+  `.unitypackage` didn't ship `banner.png` at all (so those installs fell back to a plain
+  gradient), and even where it was present the header cropped it to a 96px sliver and
+  dimmed it under a flat 55% veil. The header is now 140px, the art shows at full strength
+  on the right, and a left-to-right shade keeps the logo/title/subtitle crisp on the left.
+- `banner.png` ships in **both** the `.unitypackage` and the VCC zip, so the two installs
+  look identical. It was resized from 4096px/13 MB to 1024px/~0.7 MB, so shipping it
+  everywhere is cheap.
+
+### Studio Manager is a hub, not an installer
+- It used to download individual `.cs` files from raw.githubusercontent and overwrite them
+  in place to "update" tools -- fragile, and redundant now that VCC handles updates. All of
+  that is gone. The Manager is a launcher: it lists every tool, opens it, shows the shared
+  version, and links out.
+- It now uses the shared design system (the same cards, buttons and header as the tools),
+  so it stops looking like a different, older app. VRChat tools are detected and greyed out
+  with a note when the SDK isn't installed, instead of failing silently.
+
 ## [3.0.4]
 
 Unity still refused the 3.0.3 package. The archive layout was wrong in two ways that only

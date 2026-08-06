@@ -358,7 +358,10 @@ namespace KawaiiStudio
                     try
                     {
                         string jsonContent = File.ReadAllText(jsonPath);
-                        TranslationFile translationFile = JsonUtility.FromJson<TranslationFile>(jsonContent);
+                        // Shared localization model. It used to live in the Studio Manager
+                        // (as TranslationFile); that file is now a pure launcher, so this
+                        // reads the canonical KSTranslationFile from the Core layer.
+                        KSTranslationFile translationFile = JsonUtility.FromJson<KSTranslationFile>(jsonContent);
                         if (translationFile != null && translationFile.entries != null)
                         {
                             Dictionary<string, string> langDict = new Dictionary<string, string>();
