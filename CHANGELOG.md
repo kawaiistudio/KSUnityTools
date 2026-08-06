@@ -2,6 +2,18 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.0.2]
+
+Ships the package 3.0.1 was supposed to ship. The 3.0.1 build worked, but CI writes the
+VCC zip into `build/` before generating the `.unitypackage`, and that directory was not
+excluded — so the 16 MB zip ended up packed inside the package as
+`Assets/Kawaii Studio/build/…`, turning a 0.5 MB download into 17 MB. It never showed up
+in local testing because a fresh checkout has no `build/` directory.
+
+### Fixed
+- `build/` (and `obj`, `Temp`, `Library`) are excluded from the `.unitypackage`, so no
+  build output can leak into it. Download is back to ~0.5 MB.
+
 ## [3.0.1]
 
 Fixes the `.unitypackage`. The one attached to 3.0.0 was built by hand from an older

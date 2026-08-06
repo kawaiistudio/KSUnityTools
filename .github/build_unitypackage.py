@@ -37,7 +37,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UNITY_ROOT = "Assets/Kawaii Studio"
 
 # Repo-only metadata, docs and site sources: never shipped inside Assets/.
-EXCLUDED_DIRS = {".git", ".github", "Website~", "Documentation~", "screenshots"}
+# "build" matters more than it looks: CI writes the VCC zip there BEFORE this script runs,
+# so without it the 16 MB zip gets packed inside the .unitypackage as
+# Assets/Kawaii Studio/build/... (exactly what happened on the first 3.0.1 build). It never
+# shows up locally, because a clean checkout has no build/ directory yet.
+EXCLUDED_DIRS = {".git", ".github", "Website~", "Documentation~", "screenshots", "build", "obj", "Temp", "Library"}
 EXCLUDED_FILES = {
     ".gitignore",
     # package.json is the UPM/VCC manifest. Inside Assets/ it would make Unity treat the
