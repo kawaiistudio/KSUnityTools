@@ -292,23 +292,32 @@ def main() -> int:
 
     mtime = int(os.environ.get("SOURCE_DATE_EPOCH", time.time()))
 
+    # Match what Unity itself writes, verified against a Unity-authored .unitypackage:
+    # every asset is a real tar DIRECTORY entry (type 5, mode 0777) followed by its files
+    # in alphabetical order -- asset, asset.meta, pathname. Emitting the files without the
+    # directory entry, or putting pathname first, produces an archive Unity silently
+    # refuses to import even though every byte of content is correct.
     def ti(name: str, data: bytes) -> tuple[tarfile.TarInfo, io.BytesIO]:
         t = tarfile.TarInfo(name)
         t.size = len(data)
         t.mtime = mtime
-        t.mode = 0o644
+        t.mode = 0o777
         return t, io.BytesIO(data)
+
+    def dir_entry(name: str) -> tarfile.TarInfo:
+        t = tarfile.TarInfo(name)
+        t.type = tarfile.DIRTYPE
+        t.size = 0
+        t.mtime = mtime
+        t.mode = 0o777
+        return t
 
     n_files = n_dirs = 0
     with tarfile.open(out, "w:gz") as tar:
         for unity_path, disk in entries:
             guid = guid_for(unity_path)
             meta = meta_for(unity_path, disk is None).encode("utf-8")
-            # ENTRY ORDER MATTERS: pathname, asset, asset.meta -- byte-for-byte the order
-            # Unity itself writes. Its importer reads the tar as a stream, and emitting
-            # asset.meta before the asset makes it refuse the package outright ("won't
-            # import"), even though every entry is present and well-formed.
-            tar.addfile(*ti(f"{guid}/pathname", unity_path.encode("utf-8")))
+            tar.addfile(dir_entry(guid))
             if disk is not None:
                 with open(disk, "rb") as f:
                     tar.addfile(*ti(f"{guid}/asset", f.read()))
@@ -316,6 +325,7 @@ def main() -> int:
             else:
                 n_dirs += 1
             tar.addfile(*ti(f"{guid}/asset.meta", meta))
+            tar.addfile(*ti(f"{guid}/pathname", unity_path.encode("utf-8")))
 
     size = os.path.getsize(out)
     print(f"{out}: {n_files} file(s), {n_dirs} folder(s), {size:,} bytes")

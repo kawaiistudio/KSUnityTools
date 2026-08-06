@@ -2,6 +2,21 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.0.4]
+
+Unity still refused the 3.0.3 package. The archive layout was wrong in two ways that only
+became visible by comparing against a `.unitypackage` Unity had written itself, rather
+than against the previous release (which turned out to be malformed the same way).
+
+Unity writes each asset as a real tar **directory entry** (type 5, mode 0777) followed by
+its files in alphabetical order — `asset`, `asset.meta`, `pathname`. The generator wrote
+no directory entries at all and led with `pathname`, so the importer rejected the archive
+even though every byte of content was correct.
+
+### Fixed
+- Each asset now gets its tar directory entry, files follow in Unity's own order, and
+  every entry uses mode 0777 — matching a Unity-authored package entry for entry.
+
 ## [3.0.3]
 
 Unity refused to import the 3.0.2 package. Every entry was present and well-formed, but
