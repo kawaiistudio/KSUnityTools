@@ -200,6 +200,47 @@ INDEX_HTML = """<!doctype html>
 """
 
 
+# One-click bounce page. The README button can't link to vcc:// directly -- GitHub
+# strips custom URL schemes from markdown -- so it links here instead, and this page
+# fires the vcc:// hand-off itself the moment it loads. That makes it a single click from
+# GitHub to "VCC is opening", with a visible fallback button in case the browser wants an
+# explicit gesture before launching an external protocol.
+ADD_HTML = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Opening VRChat Creator Companion…</title>
+<style>
+  body {{ font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #16121c;
+         color: #efeaf5; display: flex; min-height: 100vh; margin: 0; align-items: center;
+         justify-content: center; text-align: center; }}
+  .card {{ max-width: 30rem; padding: 2rem 1.5rem; }}
+  h1 {{ font-size: 1.4rem; margin: 0 0 .75rem; }}
+  p {{ color: #c5b9dc; line-height: 1.6; margin: .4rem 0 1.5rem; }}
+  a.button {{ display: inline-block; padding: .85rem 1.5rem; border-radius: .6rem;
+              text-decoration: none; font-weight: 700; background: linear-gradient(135deg,#8b46f0,#c05cf5);
+              color: #fff; box-shadow: 0 6px 20px rgba(140,70,240,.32); }}
+  a.plain {{ color: #c05cf5; display: inline-block; margin-top: 1.25rem; font-size: .9rem; }}
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Opening VRChat Creator Companion…</h1>
+    <p>Your browser should be handing off to VCC now. If nothing happened, click the button.</p>
+    <a class="button" id="go" href="vcc://vpm/addRepo?url={listing_url_enc}">Add to VRChat Creator Companion</a>
+    <div><a class="plain" href="./">More install options</a></div>
+  </div>
+  <script>
+    // Fire the hand-off on load. The click that brought the user here counts as the
+    // user gesture most browsers require before launching an external protocol.
+    setTimeout(function () {{ window.location.href = document.getElementById("go").href; }}, 300);
+  </script>
+</body>
+</html>
+"""
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", required=True, help="owner/name")
@@ -221,14 +262,18 @@ def main():
     os.makedirs(args.out, exist_ok=True)
     with open(os.path.join(args.out, "index.json"), "w", encoding="utf-8") as handle:
         json.dump(listing, handle, indent=2)
+    listing_url_enc = urllib.parse.quote(listing_url, safe="")
     with open(os.path.join(args.out, "index.html"), "w", encoding="utf-8") as handle:
         handle.write(INDEX_HTML.format(
             listing_url=listing_url,
-            listing_url_enc=urllib.parse.quote(listing_url, safe=""),
+            listing_url_enc=listing_url_enc,
             repo_url=f"https://github.com/{args.repo}",
             unitypackage_url=(f"https://github.com/{args.repo}/releases/latest/download/"
                               "KSUnityTools.unitypackage"),
         ))
+    # One-click bounce page for the README's "Add to VCC" button.
+    with open(os.path.join(args.out, "add.html"), "w", encoding="utf-8") as handle:
+        handle.write(ADD_HTML.format(listing_url_enc=listing_url_enc))
 
     print(f"Wrote {args.out}/index.json with {total} version(s).")
     return 0

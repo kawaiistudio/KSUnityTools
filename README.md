@@ -15,7 +15,7 @@
 
 ## ⬇️ Install in one click
 
-[![Add to VCC](https://img.shields.io/badge/ADD%20TO-VRCHAT%20CREATOR%20COMPANION-00ff41?style=for-the-badge&labelColor=1a1a2e)](https://kawaiistudio.github.io/KSUnityTools/)
+[![Add to VCC](https://img.shields.io/badge/ADD%20TO-VRCHAT%20CREATOR%20COMPANION-00ff41?style=for-the-badge&labelColor=1a1a2e)](https://kawaiistudio.github.io/KSUnityTools/add.html)
 [![Download unitypackage](https://img.shields.io/badge/OR%20DOWNLOAD-.UNITYPACKAGE-7c3aed?style=for-the-badge&labelColor=1a1a2e)](https://github.com/kawaiistudio/KSUnityTools/releases/latest/download/KSUnityTools.unitypackage)
 
 [Features](#-features) · [Install](#-installation) · [Usage](#-usage) · [Security](#-security) · [Contributing](#-contributing)
@@ -233,16 +233,19 @@ Every release is scanned on VirusTotal before publishing.
 
 ### Method 1 — VRChat Creator Companion (Recommended)
 
-**[➜ Add to VCC](https://kawaiistudio.github.io/KSUnityTools/)** — opens the install page, then click the green button and VCC takes over.
+[![Add to VCC](https://img.shields.io/badge/⬇%20ADD%20TO%20VCC-ONE%20CLICK-00ff41?style=for-the-badge&labelColor=1a1a2e)](https://kawaiistudio.github.io/KSUnityTools/add.html)
 
-1. Click the link above (or open <https://kawaiistudio.github.io/KSUnityTools/>)
-2. Click **Add to VRChat Creator Companion** — VCC opens and adds the Kawaii Studio listing
-3. In VCC, open your project, find **KS Unity Tools** in the package list and hit **Add**
+**Click the button** — VCC opens and adds the Kawaii Studio listing on its own. Then open
+your project in VCC, find **KS Unity Tools** in the package list and hit **Add**.
 
-Updates then show up in VCC on their own: every new release is published to the listing,
-so the package simply offers an **Update** button. Nothing to download by hand.
+Updates then show up in VCC automatically: every new release is published to the listing,
+so the package just offers an **Update** button. Nothing to download by hand.
 
-> Adding the repository manually instead? Paste this URL into VCC → Settings → Packages → Add Repository:
+> The button can't be a raw `vcc://` link — GitHub strips those from READMEs — so it points
+> at a tiny page that hands off to VCC the instant it loads. If your browser asks first,
+> confirm the "Open VRChat Creator Companion" prompt.
+>
+> Prefer to add it by hand? In VCC → Settings → Packages → Add Repository, paste:
 > `https://kawaiistudio.github.io/KSUnityTools/index.json`
 
 ### Method 2 — .unitypackage (no VCC needed)
