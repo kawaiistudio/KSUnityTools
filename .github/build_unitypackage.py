@@ -44,6 +44,11 @@ EXCLUDED_FILES = {
     # folder as an embedded package, so it must stay out of the .unitypackage.
     "package.json",
     "logo_v2.png",
+    # README/landing-page art, not Unity assets. banner.png alone is 13 MB and the tools
+    # treat it as optional (KawaiiStudioBranding: "Older installs shipped a 13 MB
+    # banner.png; it is no longer required") -- shipping it would make the one-click
+    # download 28x bigger for nothing. References/logo.png IS used and stays.
+    "banner.png",
 }
 
 # Importer block per extension. Getting this right avoids a re-import dance on the user's

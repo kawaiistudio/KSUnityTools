@@ -2,7 +2,36 @@
 
 All notable changes to KS Unity Tools are documented here.
 
-## [3.0.0] - unreleased
+## [3.0.1]
+
+Fixes the `.unitypackage`. The one attached to 3.0.0 was built by hand from an older
+source layout and could not work: it contained neither assembly definition and it
+flattened `Editor/Tools/VRC/` into `Editor/Tools/`.
+
+Losing the assembly definitions is what actually broke it. The VRChat tools are meant to
+compile only when the VRChat SDK is installed — `KawaiiStudio.VRC.Editor` is constrained
+on `VRC_SDK_VRCSDK3`. Dropped into `Assembly-CSharp-Editor` instead, they compiled
+unconditionally, so in a project without the SDK every editor script failed to compile
+and nothing in the package worked.
+
+### Fixed
+- The `.unitypackage` is now generated from the repository by CI, so it can never drift
+  from the source tree again. The build fails outright if fewer than two `.asmdef` files
+  make it in.
+- Both assembly definitions and the real `Editor/Tools/VRC/` folder are shipped, so the
+  VRChat tools stay gated behind the SDK and the rest of the toolset compiles on its own.
+- Asset GUIDs are pinned to the ones published in 3.0.0. A GUID is an asset's identity in
+  Unity, so regenerating one turns an update into delete-and-add and silently breaks every
+  material, prefab and scene reference in your project. The five tools that moved into
+  `Editor/Tools/VRC/` keep their 3.0.0 GUIDs, so Unity moves them instead of duplicating.
+- The 13 MB `banner.png` is no longer inside the package (the tools already treat it as
+  optional), bringing the one-click download back down to ~0.5 MB.
+
+### Known issue
+- `Materials/EYE SHADER.mat` references a third-party eye shader that has never been part
+  of this toolset, so it imports without a shader. It was equally broken in 3.0.0.
+
+## [3.0.0]
 
 Merge of the two lines that had drifted apart: the published .unitypackage (12 tools,
 product version 1.4) and the git repository (4 tools, versioned 2.0/2.2). The result is
