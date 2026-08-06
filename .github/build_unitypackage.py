@@ -303,14 +303,19 @@ def main() -> int:
     with tarfile.open(out, "w:gz") as tar:
         for unity_path, disk in entries:
             guid = guid_for(unity_path)
+            meta = meta_for(unity_path, disk is None).encode("utf-8")
+            # ENTRY ORDER MATTERS: pathname, asset, asset.meta -- byte-for-byte the order
+            # Unity itself writes. Its importer reads the tar as a stream, and emitting
+            # asset.meta before the asset makes it refuse the package outright ("won't
+            # import"), even though every entry is present and well-formed.
             tar.addfile(*ti(f"{guid}/pathname", unity_path.encode("utf-8")))
-            tar.addfile(*ti(f"{guid}/asset.meta", meta_for(unity_path, disk is None).encode("utf-8")))
-            if disk is None:
+            if disk is not None:
+                with open(disk, "rb") as f:
+                    tar.addfile(*ti(f"{guid}/asset", f.read()))
+                n_files += 1
+            else:
                 n_dirs += 1
-                continue
-            with open(disk, "rb") as f:
-                tar.addfile(*ti(f"{guid}/asset", f.read()))
-            n_files += 1
+            tar.addfile(*ti(f"{guid}/asset.meta", meta))
 
     size = os.path.getsize(out)
     print(f"{out}: {n_files} file(s), {n_dirs} folder(s), {size:,} bytes")

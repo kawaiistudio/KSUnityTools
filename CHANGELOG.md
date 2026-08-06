@@ -2,6 +2,22 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.0.3]
+
+Unity refused to import the 3.0.2 package. Every entry was present and well-formed, but
+they were written in the wrong order inside the archive.
+
+A `.unitypackage` is a tar in which each asset is a GUID-named directory holding
+`pathname`, `asset` and `asset.meta`. Unity reads that tar as a stream and expects the
+order it writes itself — `pathname`, `asset`, `asset.meta`. The generator emitted
+`asset.meta` before `asset`, and the importer rejected the package outright rather than
+reordering.
+
+### Fixed
+- Entries are now written in Unity's own order, matching a known-good package
+  byte-pattern for byte-pattern (folders: `pathname` + `asset.meta`; files: `pathname` +
+  `asset` + `asset.meta`).
+
 ## [3.0.2]
 
 Ships the package 3.0.1 was supposed to ship. The 3.0.1 build worked, but CI writes the
