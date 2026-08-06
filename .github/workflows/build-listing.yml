@@ -1,7 +1,18 @@
 name: Build VPM Listing
 
-# Regenerates the VPM listing whenever a release is published, and on demand.
+# Regenerates the VPM listing whenever a release changes, and on demand.
+#
+# The `release` trigger alone is not enough: our releases are created by the "Build
+# Release" workflow using the default GITHUB_TOKEN, and GitHub deliberately does NOT let
+# events raised by GITHUB_TOKEN trigger further workflow runs (anti-recursion). So a
+# tag-driven release would publish but the listing would never rebuild, leaving VCC one
+# version behind. The `workflow_run` trigger closes that gap: when "Build Release"
+# finishes, this runs and picks up the new version. (The plain `release` trigger still
+# covers manual releases created in the GitHub UI.)
 on:
+  workflow_run:
+    workflows: ["Build Release"]
+    types: [completed]
   release:
     types: [published, edited, deleted]
   workflow_dispatch:
