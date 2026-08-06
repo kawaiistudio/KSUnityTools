@@ -47,6 +47,17 @@ jobs:
             -x ".git/*" ".github/*" "build/*" "Website~/*" "Documentation~/*" "*.md.meta"
           ls -la build/
 
+      # The .unitypackage is the one-click path for users who don't use VCC/UPM: import it
+      # and everything lands under Assets/Kawaii Studio with its assembly definitions, so
+      # the VRC tools stay gated behind VRC_SDK_VRCSDK3 and nothing else fails to compile.
+      # It used to be built by hand from an older layout (no .asmdef, Editor/Tools/VRC
+      # flattened), which is exactly why 3.0.0 shipped broken. Generated here now so it can
+      # never drift from the repo again.
+      - name: Build .unitypackage
+        run: |
+          python .github/build_unitypackage.py "build/KSUnityTools.unitypackage"
+          ls -la build/
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
@@ -55,4 +66,5 @@ jobs:
           body_path: CHANGELOG.md
           files: |
             build/${{ env.PACKAGE_NAME }}-${{ steps.version.outputs.version }}.zip
+            build/KSUnityTools.unitypackage
             package.json
