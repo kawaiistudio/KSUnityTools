@@ -18,10 +18,12 @@ Usage:
 """
 
 import argparse
+import hashlib
 import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 LISTING_NAME = "Kawaii Studio"
@@ -47,6 +49,19 @@ def download_json(url, token):
         request.add_header("Authorization", f"Bearer {token}")
     with urllib.request.urlopen(request) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def sha256_of(url, token):
+    """SHA-256 of a release asset, streamed so a large zip never lands in memory."""
+    request = urllib.request.Request(url)
+    request.add_header("Accept", "application/octet-stream")
+    if token:
+        request.add_header("Authorization", f"Bearer {token}")
+    digest = hashlib.sha256()
+    with urllib.request.urlopen(request) as response:
+        for chunk in iter(lambda: response.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def collect_releases(repo, token):
@@ -96,6 +111,16 @@ def build(repo, listing_url, token):
         # Point the manifest at the actual downloadable asset for this release.
         manifest["url"] = zip_asset["browser_download_url"]
 
+        # zipSHA256 is what VCC uses to invalidate its cached copy of a package
+        # ("Currently, the zipSHA256 property is only used for cache invalidation"
+        # -- vcc.docs.vrchat.com/vpm/packages). Without it, a user who already pulled a
+        # version can keep being served the stale zip. It belongs in the LISTING entry,
+        # not in the in-repo package.json.
+        try:
+            manifest["zipSHA256"] = sha256_of(zip_asset["url"], token)
+        except (urllib.error.URLError, OSError) as exc:
+            print(f"  !! {name} {version}: cannot hash zip ({exc}); shipping without zipSHA256")
+
         packages.setdefault(name, {"versions": {}})["versions"][version] = manifest
         print(f"  + {name} {version}")
 
@@ -109,26 +134,67 @@ def build(repo, listing_url, token):
     }
 
 
+# The vcc:// URL is percent-encoded exactly like VRChat's own listing template does it
+# (its Website/app.js calls encodeURIComponent on the listing URL). Passing the raw URL
+# leaves an unescaped "://" and "/" sitting inside a query parameter.
+#
+# This page exists because GitHub strips custom URL schemes from README markdown: a vcc://
+# link there renders as plain text with no anchor at all (verified against GitHub's own
+# markdown API). So the README links here, and the real one-click button lives on this page.
 INDEX_HTML = """<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kawaii Studio - VPM Listing</title>
+<title>KS Unity Tools &mdash; Install</title>
+<meta name="description" content="Add KS Unity Tools to the VRChat Creator Companion in one click.">
 <style>
-  body {{ font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem;
-         background: #16121c; color: #efeaf5; line-height: 1.6; }}
-  a.button {{ display: inline-block; background: #7c3aed; color: #fff; padding: .75rem 1.25rem;
-              border-radius: .5rem; text-decoration: none; font-weight: 600; }}
-  code {{ background: #241d2e; padding: .15rem .4rem; border-radius: .25rem; }}
+  * {{ box-sizing: border-box; }}
+  body {{ font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: 46rem;
+         margin: 0 auto; padding: 3rem 1.25rem 4rem; background: #16121c; color: #efeaf5;
+         line-height: 1.65; }}
+  h1 {{ font-size: 2.1rem; margin: 0 0 .25rem; letter-spacing: -.02em; }}
+  .sub {{ color: #b9a9d4; margin: 0 0 2.25rem; }}
+  .card {{ background: #1e1828; border: 1px solid #33294a; border-radius: .85rem;
+           padding: 1.5rem; margin: 0 0 1.15rem; }}
+  .card h2 {{ font-size: 1.02rem; margin: 0 0 .3rem; text-transform: uppercase;
+              letter-spacing: .08em; color: #c9b8e8; }}
+  .card p {{ margin: .35rem 0 1rem; color: #cfc3e4; font-size: .95rem; }}
+  a.button {{ display: inline-block; padding: .8rem 1.4rem; border-radius: .55rem;
+              text-decoration: none; font-weight: 700; letter-spacing: .02em; }}
+  a.primary {{ background: linear-gradient(135deg,#8b46f0,#c05cf5); color: #fff;
+               box-shadow: 0 6px 20px rgba(140,70,240,.32); }}
+  a.secondary {{ background: #2b2338; color: #efeaf5; border: 1px solid #443359; }}
+  code {{ background: #120f18; border: 1px solid #33294a; padding: .55rem .7rem;
+          border-radius: .4rem; display: block; word-break: break-all; font-size: .86rem;
+          color: #d9c9f5; margin-top: .5rem; }}
+  ol {{ margin: .5rem 0 0; padding-left: 1.15rem; color: #cfc3e4; font-size: .95rem; }}
+  footer {{ margin-top: 2.5rem; color: #8b7ba8; font-size: .85rem; }}
+  a.plain {{ color: #c05cf5; }}
 </style>
 </head>
 <body>
-<h1>Kawaii Studio</h1>
-<p>Unity editor tools for VRChat creators.</p>
-<p><a class="button" href="vcc://vpm/addRepo?url={listing_url}">Add to VRChat Creator Companion</a></p>
-<p>Or add this URL manually in VCC &rarr; Settings &rarr; Packages &rarr; Add Repository:</p>
-<p><code>{listing_url}</code></p>
+<h1>KS Unity Tools</h1>
+<p class="sub">Unity editor tools for VRChat creators &mdash; Kawaii Studio.</p>
+
+<div class="card">
+  <h2>Creator Companion &mdash; recommended</h2>
+  <p>One click. VCC opens, adds the listing, and every future release shows up as an update automatically.</p>
+  <p><a class="button primary" href="vcc://vpm/addRepo?url={listing_url_enc}">Add to VRChat Creator Companion</a></p>
+  <p style="margin-top:1.15rem">Prefer to add it by hand? In VCC go to <em>Settings &rarr; Packages &rarr; Add Repository</em> and paste:</p>
+  <code>{listing_url}</code>
+</div>
+
+<div class="card">
+  <h2>No VCC? Use the .unitypackage</h2>
+  <p>Double-click it with your Unity project open. Everything installs under <em>Assets/Kawaii Studio</em>; the VRChat tools switch on by themselves when the SDK is present.</p>
+  <p><a class="button secondary" href="{unitypackage_url}">Download .unitypackage</a></p>
+</div>
+
+<footer>
+  <a class="plain" href="{repo_url}">View on GitHub</a> &middot;
+  <a class="plain" href="{listing_url}">index.json</a>
+</footer>
 </body>
 </html>
 """
@@ -156,7 +222,13 @@ def main():
     with open(os.path.join(args.out, "index.json"), "w", encoding="utf-8") as handle:
         json.dump(listing, handle, indent=2)
     with open(os.path.join(args.out, "index.html"), "w", encoding="utf-8") as handle:
-        handle.write(INDEX_HTML.format(listing_url=listing_url))
+        handle.write(INDEX_HTML.format(
+            listing_url=listing_url,
+            listing_url_enc=urllib.parse.quote(listing_url, safe=""),
+            repo_url=f"https://github.com/{args.repo}",
+            unitypackage_url=(f"https://github.com/{args.repo}/releases/latest/download/"
+                              "KSUnityTools.unitypackage"),
+        ))
 
     print(f"Wrote {args.out}/index.json with {total} version(s).")
     return 0

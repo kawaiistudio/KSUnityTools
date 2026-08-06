@@ -6,12 +6,17 @@
 
 ### Professional VRChat Avatar & Content Creation Suite
 
-![Version](https://img.shields.io/badge/version-2.0-7c3aed?style=for-the-badge)
+[![Version](https://img.shields.io/github/v/release/kawaiistudio/KSUnityTools?style=for-the-badge&color=7c3aed&label=version)](https://github.com/kawaiistudio/KSUnityTools/releases/latest)
 ![Unity](https://img.shields.io/badge/Unity-2019.4+-ff4757?style=for-the-badge)
 ![VRChat](https://img.shields.io/badge/VRChat-SDK_3.0+-00ff41?style=for-the-badge)
 ![License](https://img.shields.io/badge/license-MIT-7c3aed?style=for-the-badge)
 
 **A complete toolkit for optimizing, converting, securing and exporting VRChat avatars — all from within Unity.**
+
+## ⬇️ Install in one click
+
+[![Add to VCC](https://img.shields.io/badge/ADD%20TO-VRCHAT%20CREATOR%20COMPANION-00ff41?style=for-the-badge&labelColor=1a1a2e)](https://kawaiistudio.github.io/KSUnityTools/)
+[![Download unitypackage](https://img.shields.io/badge/OR%20DOWNLOAD-.UNITYPACKAGE-7c3aed?style=for-the-badge&labelColor=1a1a2e)](https://github.com/kawaiistudio/KSUnityTools/releases/latest/download/KSUnityTools.unitypackage)
 
 [Features](#-features) · [Install](#-installation) · [Usage](#-usage) · [Security](#-security) · [Contributing](#-contributing)
 
@@ -226,19 +231,32 @@ Every release is scanned on VirusTotal before publishing.
 
 ## Installation
 
-### Method 1 — In-Editor Updater (Recommended)
-1. Open `Kawaii Studio > Studio Manager`
-2. Go to **LATEST RELEASE** then **Check for updates**
-3. Click **Download & Install (.unitypackage)**
+### Method 1 — VRChat Creator Companion (Recommended)
 
-### Method 2 — Unity Package Manager
+**[➜ Add to VCC](https://kawaiistudio.github.io/KSUnityTools/)** — opens the install page, then click the green button and VCC takes over.
+
+1. Click the link above (or open <https://kawaiistudio.github.io/KSUnityTools/>)
+2. Click **Add to VRChat Creator Companion** — VCC opens and adds the Kawaii Studio listing
+3. In VCC, open your project, find **KS Unity Tools** in the package list and hit **Add**
+
+Updates then show up in VCC on their own: every new release is published to the listing,
+so the package simply offers an **Update** button. Nothing to download by hand.
+
+> Adding the repository manually instead? Paste this URL into VCC → Settings → Packages → Add Repository:
+> `https://kawaiistudio.github.io/KSUnityTools/index.json`
+
+### Method 2 — .unitypackage (no VCC needed)
+
+**[➜ Download KSUnityTools.unitypackage](https://github.com/kawaiistudio/KSUnityTools/releases/latest/download/KSUnityTools.unitypackage)**
+
+Double-click it with your project open and import. Everything installs under
+`Assets/Kawaii Studio`. The VRChat-specific tools activate on their own when the VRChat
+SDK is present, and stay out of the way when it isn't — so the package is safe to import
+into any project.
+
+### Method 3 — Unity Package Manager (git URL)
 1. `Window > Package Manager` then `+` then **Add package from git URL**
 2. Paste: `https://github.com/kawaiistudio/KSUnityTools.git`
-
-### Method 3 — Manual
-1. Download the latest [Release](https://github.com/kawaiistudio/KSUnityTools/releases)
-2. Copy `Kawaii Studio/` into your project's `Assets/` folder
-3. Final path: `Assets/Kawaii Studio/Editor/`
 
 ---
 
