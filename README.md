@@ -53,14 +53,14 @@
 ---
 
 ### Prefab Optimizer
-> Reduce avatar file size by 50-80% while maintaining visual quality.
+> Make an avatar lighter without breaking it: Light, Balanced or Maximum, or three sliders in %.
 
-- **Textures** — Max size control (32-8192), DXT1/DXT5 Crunch compression, mipmap toggle
-- **Meshes** — FBX mesh compression (Low/Medium/High) with vertex & polygon optimization
-- **Audio** — Vorbis/ADPCM compression, sample rate override, force-to-mono
-- Per-asset selection with real-time before/after VRAM comparison
-- Progress bar with detailed logging
-- Alpha-aware format detection (DXT5/BC3 vs DXT1/BC1)
+- **Polygons** — real polygon reduction that only folds edges onto existing vertices: faces and blendshapes, UV seams, open borders and material edges are never touched, and a mesh stops before its shape would change
+- **Textures** — size as a % of the source image, compression for uncompressed ones, crunch for a smaller download; ramps, lookup tables and small textures left alone
+- **Audio** — Vorbis at the chosen quality, mono 22 / 11 kHz for the lighter levels, only ever smaller
+- **Unused blendshapes** removed (visemes, eyelids, animated, weighted, MMD and `vrc.` ones always kept)
+- Live texture memory / triangles / audio, before → after, and a per-item list where every texture, mesh and sound can be set on its own
+- Never overwrites your avatar: lighter meshes are new files used by a copy named "… (Optimized)", and texture / sound settings can be restored
 
 <div align="center">
 <img src="screenshots/prefab-optimizer.png" alt="Prefab Optimizer" width="700"/>

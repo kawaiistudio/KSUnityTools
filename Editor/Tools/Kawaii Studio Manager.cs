@@ -34,7 +34,7 @@ namespace KawaiiStudio
         // Core tools compile without the VRChat SDK.
         private static readonly Tool[] CoreTools =
         {
-            new Tool("Prefab Optimizer", "Compress textures, meshes and audio on a prefab or avatar",
+            new Tool("Prefab Optimizer", "Make an avatar lighter without breaking it: textures, audio, polygons",
                 "Kawaii Studio/Prefab Optimizer"),
             new Tool("Video Animator", "Turn a video into a looping animated texture sheet",
                 "Kawaii Studio/Video Animator"),

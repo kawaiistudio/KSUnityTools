@@ -2,6 +2,26 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.3.0]
+
+**Prefab Optimizer, rebuilt**: real compression and real polygon reduction, without breaking your avatar.
+
+### Simple
+- Presets: **Light** (no visible change), **Balanced** (recommended), **Maximum** (smallest).
+- Three sliders in %: texture size, audio quality, polygons. Plus "remove unused blendshapes".
+- Live numbers: texture memory, triangles and audio, before → after.
+- Every texture, mesh and sound listed with its own estimated before → after and its own setting (Auto, or forced).
+
+### Faithful
+- Polygon reduction only folds edges onto existing vertices: every vertex left keeps its exact position, normals, UVs, skin weights and blendshape deltas. Faces and everything a blendshape moves, UV seams, open borders and material edges are never touched, and a mesh stops before its shape would change.
+- Textures: size is a % of the source image (never halved twice), uncompressed ones get compressed, crunch makes the download smaller. Ramps, lookup tables and small textures are left alone.
+- Audio: Vorbis at the chosen quality, mono 22 / 11 kHz for Medium / Low. Only ever smaller.
+- Nothing of yours is overwritten: the lighter meshes are new files in `Assets/Kawaii Studio Optimized/`, used by a copy of your avatar named "… (Optimized)". "Restore settings" puts texture and sound settings back.
+
+Tested on a 170k-triangle avatar: Balanced gives 128k triangles and halved textures, and it looks the same in Unity.
+
+Translated into all seven languages.
+
 ## [3.2.0]
 
 New tool: **Menu Colorizer** (`Kawaii Studio > VRC > Menu Colorizer`).
