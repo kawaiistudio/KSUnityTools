@@ -40,6 +40,18 @@
 
 ---
 
+### Menu Colorizer `NEW in 3.2`
+> Colourful VRChat Expressions Menus in one click: gradients, rainbow text, bold and size, with a live preview of the radial menu.
+
+- **One click** — pick a look (Rainbow, Candy, Neon, Sunset, Ocean, Sakura, Fire, Ice, Galaxy, Toxic, Gold, Pastel) and every button of every sub-menu gets coloured
+- **Live radial preview** drawn like VRChat's menu — click a button to edit it, double-click a sub-menu to open it
+- Per button: solid colour, two-colour gradient, rainbow, bold, italic, text size, multi-line labels
+- Only button names are written (TextMeshPro rich text) — parameters, icons and sub-menu links are never touched
+- One Ctrl+Z undoes everything; **Remove all colours** brings back the plain names
+- Right-click any Expressions Menu asset → **Kawaii Studio → Colorize VRChat Menu**
+
+---
+
 ### Prefab Optimizer
 > Reduce avatar file size by 50-80% while maintaining visual quality.
 

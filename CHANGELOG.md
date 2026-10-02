@@ -2,6 +2,38 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.2.0]
+
+New tool: **Menu Colorizer** (`Kawaii Studio > VRC > Menu Colorizer`).
+
+VRChat draws expression-menu labels with TextMeshPro, so a button name can carry rich-text
+tags. A gradient, though, is one `<color>` tag per letter, which nobody wants to type by
+hand. The Menu Colorizer writes the tags for you.
+
+### Added
+- **One-click looks**: Rainbow, Candy, Neon, Sunset, Ocean, Sakura, Fire, Ice, Galaxy, Toxic,
+  Gold and Pastel. One button colours every label of the root menu and all of its
+  sub-menus, each button in its own colours, with bold, italic and size options.
+- **Live radial preview** drawn like VRChat's own menu. Click a button to edit it,
+  double-click a sub-menu to open it.
+- **Per-button editor**: text (multi-line), solid colour, two-colour gradient, rainbow, bold,
+  italic and size, plus "same style on this whole page". Gradients blend in HSV, so the
+  middle letters stay as vivid as the ends instead of going grey.
+- Puppet labels (two- and four-axis) are coloured too.
+- An existing label opens in the editor with the style it was written with. "Remove all
+  colours" brings back the plain names.
+- Right-click any Expressions Menu asset: `Kawaii Studio > Colorize VRChat Menu`.
+- Translated into all seven languages.
+
+### Safe by design
+- Only label text is written. Parameters, control types, icons and sub-menu links are never
+  touched.
+- Every operation is a single undo step.
+- Menus inside read-only packages are detected and skipped, with a warning, instead of
+  silently failing to save.
+- Emoji with skin tones, flags and accented letters are coloured as one character and never
+  split.
+
 ## [3.1.0]
 
 Visual pass. The tools worked but looked flat, and the Studio Manager was doing a job it

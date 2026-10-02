@@ -47,6 +47,8 @@ namespace KawaiiStudio
         // These live in the VRChat-gated assembly; their menu items only exist when the SDK is.
         private static readonly Tool[] VrcTools =
         {
+            new Tool("Menu Colorizer", "Gradient, rainbow and bold labels for your VRChat menu",
+                "Kawaii Studio/VRC/Menu Colorizer"),
             new Tool("Ultimate Constraint Tool", "Batch-manage VRC constraints across a hierarchy",
                 "Kawaii Studio/✨ Ultimate Constraint Tool"),
             new Tool("Tail to PhysBones", "Convert Tail Animator setups to VRC PhysBones",
