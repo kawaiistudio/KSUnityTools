@@ -92,13 +92,13 @@ namespace KawaiiStudio
                 KawaiiStudioBranding.Logo,
                 KawaiiStudioBranding.Banner);
 
-            KawaiiStudioGUI.DrawSection("Tools", () =>
+            KawaiiStudioGUI.DrawSection("Tools", KawaiiStudioGUI.AccentCyan, () =>
             {
                 foreach (var tool in CoreTools)
                     DrawToolRow(tool, true);
             });
 
-            KawaiiStudioGUI.DrawSection("VRChat Tools", () =>
+            KawaiiStudioGUI.DrawSection("VRChat Tools", KawaiiStudioGUI.AccentPink, () =>
             {
                 if (!_sdkPresent)
                     KawaiiStudioGUI.Banner(
@@ -109,7 +109,7 @@ namespace KawaiiStudio
                     DrawToolRow(tool, _sdkPresent);
             });
 
-            KawaiiStudioGUI.DrawSection("Updates", () =>
+            KawaiiStudioGUI.DrawSection("Updates", KawaiiStudioGUI.AccentOrange, () =>
             {
                 KawaiiStudioGUI.Banner(
                     "Updates are handled by the VRChat Creator Companion. When a new version " +
@@ -124,7 +124,7 @@ namespace KawaiiStudio
                 EditorGUILayout.EndHorizontal();
             });
 
-            KawaiiStudioGUI.DrawSection("Community", () =>
+            KawaiiStudioGUI.DrawSection("Community", KawaiiStudioGUI.AccentGreen, () =>
             {
                 EditorGUILayout.BeginHorizontal();
                 if (KawaiiStudioGUI.PrimaryButton("Discord"))

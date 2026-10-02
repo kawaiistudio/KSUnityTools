@@ -83,6 +83,29 @@ namespace KawaiiStudio
         /// <summary>Readable foreground on top of the accent colour.</summary>
         public static Color OnAccent => Color.white;
 
+        // ── Vivid per-section accents ─────────────────────────────────────
+        // The signature "colour-coded section" look: each section can carry its own
+        // accent (header tint + rail + button), so a window reads as a set of distinct,
+        // labelled panels rather than one flat purple wall. Tuned vivid for the dark skin
+        // and pulled a little darker on the light skin so they hold contrast on white.
+        public static Color AccentPink   => Pro ? Hex(0xE85DA1) : Hex(0xC93A80);
+        public static Color AccentCyan   => Pro ? Hex(0x5FD0EE) : Hex(0x1C93B8);
+        public static Color AccentGreen  => Pro ? Hex(0x39C46B) : Hex(0x0E9E52);
+        public static Color AccentOrange => Pro ? Hex(0xF6A93B) : Hex(0xC9720C);
+        public static Color AccentBlue   => Pro ? Hex(0x5B8DEF) : Hex(0x2C5FD0);
+        public static Color AccentPurple => AccentColor;
+
+        /// <summary>Rotation of accents for auto-colouring successive sections.</summary>
+        public static Color[] AccentPalette => new[]
+            { AccentPurple, AccentCyan, AccentPink, AccentGreen, AccentOrange, AccentBlue };
+
+        /// <summary>Pick a stable accent from the rotation (e.g. by section index).</summary>
+        public static Color AccentAt(int index)
+        {
+            var p = AccentPalette;
+            return p[((index % p.Length) + p.Length) % p.Length];
+        }
+
         public static Color Lighten(Color c, float amount) => Color.Lerp(c, Color.white, Mathf.Clamp01(amount));
         public static Color Darken(Color c, float amount) => Color.Lerp(c, Color.black, Mathf.Clamp01(amount));
         public static Color Fade(Color c, float alpha) => new Color(c.r, c.g, c.b, alpha);
@@ -343,34 +366,43 @@ namespace KawaiiStudio
         }
 
         /// <summary>
-        /// A titled container. This is the workhorse layout primitive; the tools
-        /// call it 21 times, so the signature is preserved exactly.
+        /// A titled container. The workhorse layout primitive; tools call it ~21 times,
+        /// so both existing signatures are preserved. The header is a tinted, accent-railed
+        /// bar (the colour-coded look) rather than a bare label.
         /// </summary>
         public static void DrawSection(string title, Action content, Texture2D icon = null)
+            => DrawSectionCore(title, AccentColor, icon, content);
+
+        /// <summary>Section with its own accent colour, for the colour-coded panel look.</summary>
+        public static void DrawSection(string title, Color accent, Action content)
+            => DrawSectionCore(title, accent, null, content);
+
+        private static void DrawSectionCore(string title, Color accent, Texture2D icon, Action content)
         {
             Initialize();
             EditorGUILayout.BeginVertical(SectionStyle);
 
             if (!string.IsNullOrEmpty(title))
             {
-                EditorGUILayout.BeginHorizontal();
-
-                Rect bar = GUILayoutUtility.GetRect(3f, 16f, GUILayout.Width(3f));
+                Rect header = GUILayoutUtility.GetRect(0, 26f, GUILayout.ExpandWidth(true));
                 if (Event.current != null && Event.current.type == EventType.Repaint)
-                    EditorGUI.DrawRect(new Rect(bar.x, bar.y + 2f, 3f, 12f), AccentColor);
-
-                GUILayout.Space(Space2);
-
-                if (icon != null)
                 {
-                    Rect ic = GUILayoutUtility.GetRect(14f, 14f, GUILayout.Width(14f));
-                    GUI.DrawTexture(new Rect(ic.x, ic.y + 1f, 14f, 14f), icon, ScaleMode.ScaleToFit);
-                    GUILayout.Space(Space1);
+                    // Tinted header fill + a solid accent rail down the leading edge.
+                    GUI.DrawTexture(header,
+                        GetRoundedTexture(Fade(accent, Pro ? 0.20f : 0.13f), Color.clear, RadiusSm, 0),
+                        ScaleMode.StretchToFill, true);
+                    EditorGUI.DrawRect(new Rect(header.x, header.y + 3f, 4f, header.height - 6f), accent);
                 }
 
-                GUILayout.Label(title, H2);
-                GUILayout.FlexibleSpace();
-                EditorGUILayout.EndHorizontal();
+                float textX = header.x + Space3 + 4f;
+                if (icon != null)
+                {
+                    GUI.DrawTexture(new Rect(header.x + Space3 + 4f, header.y + 6f, 14f, 14f), icon, ScaleMode.ScaleToFit);
+                    textX += 18f;
+                }
+
+                GUI.Label(new Rect(textX, header.y + 4f, header.width - (textX - header.x) - Space2, 18f),
+                    title, SectionHeaderStyle);
 
                 GUILayout.Space(Space3);
             }
@@ -379,6 +411,23 @@ namespace KawaiiStudio
 
             EditorGUILayout.EndVertical();
             GUILayout.Space(Space1);
+        }
+
+        private static GUIStyle _sectionHeader;
+        private static GUIStyle SectionHeaderStyle
+        {
+            get
+            {
+                Initialize();
+                if (_sectionHeader == null)
+                    _sectionHeader = new GUIStyle(EditorStyles.boldLabel)
+                    {
+                        fontSize = 12,
+                        normal = { textColor = TextColor }
+                    };
+                _sectionHeader.normal.textColor = TextColor;
+                return _sectionHeader;
+            }
         }
 
         /// <summary>Labelled checkbox; the label is clickable too.</summary>
@@ -466,6 +515,58 @@ namespace KawaiiStudio
         {
             Initialize();
             return GUILayout.Button(label, TintedButton(ErrorColor, Color.white, Color.clear), options);
+        }
+
+        /// <summary>
+        /// Big filled action button in an arbitrary accent — the primary "do the thing"
+        /// control (scan, convert, generate). Defaults to a 40px tall button; pass layout
+        /// options to override. Carries the same hover/active feedback as the other buttons.
+        /// </summary>
+        public static bool ActionButton(string label, Color accent, params GUILayoutOption[] options)
+        {
+            Initialize();
+            if (options == null || options.Length == 0)
+                options = new[] { GUILayout.Height(40f) };
+            return GUILayout.Button(label, TintedButton(accent, OnAccent, Color.clear), options);
+        }
+
+        /// <summary>
+        /// Full-width verdict/status panel: a bold title over an optional subtitle on a
+        /// solid accent field. For scan results and pass/fail outcomes (the big green
+        /// "SAFE" / red "NOT SAFE" style).
+        /// </summary>
+        public static void StatusBanner(string title, string subtitle, Color accent)
+        {
+            Initialize();
+            bool hasSub = !string.IsNullOrEmpty(subtitle);
+
+            Rect r = EditorGUILayout.BeginVertical();
+            GUILayout.Space(hasSub ? 60f : 44f);
+            EditorGUILayout.EndVertical();
+
+            if (Event.current != null && Event.current.type == EventType.Repaint)
+                GUI.DrawTexture(r,
+                    GetRoundedTexture(accent, Fade(Lighten(accent, 0.25f), 0.55f), RadiusMd, 2),
+                    ScaleMode.StretchToFill, true);
+
+            GUI.Label(new Rect(r.x, r.y + (hasSub ? 12f : 10f), r.width, 26f), title,
+                new GUIStyle(EditorStyles.boldLabel)
+                {
+                    fontSize = 17,
+                    alignment = TextAnchor.MiddleCenter,
+                    normal = { textColor = Color.white }
+                });
+
+            if (hasSub)
+                GUI.Label(new Rect(r.x, r.y + 38f, r.width, 18f), subtitle,
+                    new GUIStyle(EditorStyles.label)
+                    {
+                        fontSize = 11,
+                        alignment = TextAnchor.MiddleCenter,
+                        normal = { textColor = new Color(1f, 1f, 1f, 0.9f) }
+                    });
+
+            GUILayout.Space(Space2);
         }
 
         private static readonly Dictionary<string, GUIStyle> TintedButtons = new Dictionary<string, GUIStyle>();

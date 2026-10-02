@@ -34,6 +34,17 @@ hand. The Menu Colorizer writes the tags for you.
 - Emoji with skin tones, flags and accented letters are coloured as one character and never
   split.
 
+### Colour-coded tools
+The design system gains per-section accents, so a window reads as a set of distinct,
+labelled panels instead of one flat purple wall.
+- New shared building blocks: vivid section accents (pink, cyan, green, orange, blue,
+  purple), sections with a tinted header and an accent rail, a big `ActionButton` for the
+  main action and a `StatusBanner` for verdicts.
+- The Studio Manager, GLB to FBX Converter, Video Animator and Menu Colorizer use them.
+  The GLB and Video Animator windows also get the Kawaii Studio banner. Only the layout
+  changed; every field and the conversion pipelines are untouched.
+- Empty consoles now say "No output yet." instead of showing a blank box.
+
 ## [3.1.0]
 
 Visual pass. The tools worked but looked flat, and the Studio Manager was doing a job it

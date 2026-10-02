@@ -332,45 +332,65 @@ namespace KawaiiStudio
         private void OnGUI()
         {
             InitializeStyles();
-            
-            EditorGUI.DrawRect(new Rect(0, 0, position.width, position.height), new Color(0.102f, 0.059f, 0.122f, 1f));
-            
-            DrawLogo();
-            
+
+            // Visual shell only -- every field binding and logic call below is the
+            // original code, just re-housed in the shared design system's colour-coded
+            // sections. The conversion pipeline is untouched.
+            KawaiiStudioGUI.DrawWindowBackground(position);
+
             scrollPosition = GUILayout.BeginScrollView(scrollPosition);
-            GUILayout.BeginVertical();
-            GUILayout.Space(10);
-            
-            DrawHeader();
-            GUILayout.Space(15);
-            
+
+            KawaiiStudioGUI.DrawBanner(
+                "VIDEO ANIMATOR",
+                "Convert videos into Unity texture animations",
+                KawaiiStudioVersion.Current,
+                KawaiiStudioBranding.Logo,
+                KawaiiStudioBranding.Banner);
+
             using (new EditorGUI.DisabledGroupScope(isEncoding))
             {
-                DrawVideoInputSection();
-                DrawAudioSection();
-                DrawFrameSizeSection();
-                DrawTimeSection();
-                DrawFrameRateSection();
-                DrawAdvancedSettings();
-                DrawStatsSection();
-                DrawOutputSection();
+                KawaiiStudioGUI.DrawSection("SOURCE", KawaiiStudioGUI.AccentCyan, () =>
+                {
+                    DrawVideoInputSection();
+                    DrawAudioSection();
+                });
+
+                KawaiiStudioGUI.DrawSection("FRAME & TIMING", KawaiiStudioGUI.AccentPink, () =>
+                {
+                    DrawFrameSizeSection();
+                    DrawTimeSection();
+                    DrawFrameRateSection();
+                });
+
+                KawaiiStudioGUI.DrawSection("ADVANCED", KawaiiStudioGUI.AccentPurple, () =>
+                {
+                    DrawAdvancedSettings();
+                });
+
+                KawaiiStudioGUI.DrawSection("OUTPUT", KawaiiStudioGUI.AccentOrange, () =>
+                {
+                    DrawStatsSection();
+                    DrawOutputSection();
+                });
             }
-            
-            GUILayout.Space(15);
-            DrawActionButtons();
-            
-            if (isEncoding)
+
+            KawaiiStudioGUI.DrawSection("ACTIONS", KawaiiStudioGUI.AccentGreen, () =>
             {
-                GUILayout.Space(10);
-                DrawProgressBar();
-            }
-            
-            GUILayout.Space(10);
-            DrawLog();
-            GUILayout.Space(10);
-            DrawFooter();
-            
-            GUILayout.EndVertical();
+                DrawActionButtons();
+                if (isEncoding)
+                {
+                    GUILayout.Space(6);
+                    DrawProgressBar();
+                }
+            });
+
+            KawaiiStudioGUI.DrawSection("CONVERSION LOG", KawaiiStudioGUI.AccentBlue, () =>
+            {
+                DrawLog();
+            });
+
+            KawaiiStudioGUI.DrawFooter();
+
             GUILayout.EndScrollView();
         }
 
@@ -601,17 +621,17 @@ namespace KawaiiStudio
             using (new EditorGUI.DisabledGroupScope(!canProcess))
             {
                 GUILayout.BeginHorizontal();
-                
-                if (GUILayout.Button("Preview", buttonStyle, GUILayout.Width(120)))
+
+                if (KawaiiStudioGUI.SecondaryButton("Preview", GUILayout.Width(120), GUILayout.Height(40)))
                 {
                     PreviewVideo();
                 }
-                
-                if (GUILayout.Button("Create animation", buttonStyle, GUILayout.Width(150)))
+
+                if (KawaiiStudioGUI.ActionButton("▶  Create Animation", KawaiiStudioGUI.AccentPink))
                 {
                     StartConversion();
                 }
-                
+
                 GUILayout.EndHorizontal();
             }
         }
@@ -626,14 +646,9 @@ namespace KawaiiStudio
         
         private void DrawLog()
         {
-            GUIStyle logLabelStyle = new GUIStyle(EditorStyles.boldLabel)
-            {
-                normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
-            };
-            GUILayout.Label("[ CONVERSION LOG ]", logLabelStyle);
-            
+            // Header now comes from the enclosing coloured section; just the log body here.
             logScrollPosition = GUILayout.BeginScrollView(logScrollPosition, GUILayout.Height(120));
-            GUILayout.Label(logOutput, logStyle);
+            GUILayout.Label(string.IsNullOrEmpty(logOutput) ? "No output yet." : logOutput, logStyle);
             GUILayout.EndScrollView();
         }
         

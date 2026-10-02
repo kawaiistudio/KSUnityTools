@@ -675,11 +675,11 @@ namespace KawaiiStudio
 
             SyncSelection();
 
-            KawaiiStudioGUI.DrawSection(L("mc_section_avatar", "1 · AVATAR"), DrawSource);
+            KawaiiStudioGUI.DrawSection(L("mc_section_avatar", "1 · AVATAR"), KawaiiStudioGUI.AccentCyan, DrawSource);
             if (RootMenu != null)
             {
-                KawaiiStudioGUI.DrawSection(L("mc_section_quick", "2 · ONE-CLICK STYLE"), DrawQuickStyle);
-                KawaiiStudioGUI.DrawSection(L("mc_section_preview", "3 · PREVIEW & FINE-TUNE"), DrawPreviewAndEditor);
+                KawaiiStudioGUI.DrawSection(L("mc_section_quick", "2 · ONE-CLICK STYLE"), KawaiiStudioGUI.AccentPink, DrawQuickStyle);
+                KawaiiStudioGUI.DrawSection(L("mc_section_preview", "3 · PREVIEW & FINE-TUNE"), KawaiiStudioGUI.AccentOrange, DrawPreviewAndEditor);
             }
 
             KawaiiStudioGUI.DrawFooter();
@@ -795,7 +795,7 @@ namespace KawaiiStudio
             DrawThemeSample();
             GUILayout.Space(KawaiiStudioGUI.Space2);
 
-            if (KawaiiStudioGUI.PrimaryButton("✨ " + L("mc_apply_all", "COLOUR MY WHOLE MENU"), GUILayout.Height(40f)))
+            if (KawaiiStudioGUI.ActionButton("✨ " + L("mc_apply_all", "COLOUR MY WHOLE MENU"), KawaiiStudioGUI.AccentPink))
                 Defer(ApplyThemeToAll);
             if (KawaiiStudioGUI.SecondaryButton(L("mc_clear_all", "Remove all colours")))
                 Defer(ClearAll);

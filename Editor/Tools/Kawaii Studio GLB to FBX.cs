@@ -208,52 +208,35 @@ namespace KawaiiStudio
         {
             InitializeStyles();
 
-            // Background
-            EditorGUI.DrawRect(new Rect(0, 0, position.width, position.height), new Color(0.102f, 0.059f, 0.122f, 1f));
+            // Visual shell only. Each Draw*Section below is the original field binding and
+            // logic call (browse, auto-detect, convert), just re-housed in the shared
+            // design system. The Blender conversion pipeline is untouched.
+            KawaiiStudioGUI.DrawWindowBackground(position);
 
             scrollPosition = GUILayout.BeginScrollView(scrollPosition);
-            GUILayout.BeginVertical();
-            GUILayout.Space(10);
 
-            // Header
-            DrawHeader();
-            
-            GUILayout.Space(20);
+            KawaiiStudioGUI.DrawBanner(
+                "GLB → FBX CONVERTER",
+                "Material processing & auto-setup",
+                KawaiiStudioVersion.Current,
+                KawaiiStudioBranding.Logo,
+                KawaiiStudioBranding.Banner);
 
-            // Blender Path Section
-            DrawBlenderPathSection();
+            KawaiiStudioGUI.DrawSection("BLENDER", KawaiiStudioGUI.AccentCyan, () => DrawBlenderPathSection());
+            KawaiiStudioGUI.DrawSection("INPUT", KawaiiStudioGUI.AccentPink, () => DrawGLBFileSection());
+            KawaiiStudioGUI.DrawSection("OUTPUT", KawaiiStudioGUI.AccentOrange, () => DrawOutputFolderSection());
 
-            GUILayout.Space(10);
+            KawaiiStudioGUI.DrawSection("CONVERT", KawaiiStudioGUI.AccentGreen, () =>
+            {
+                DrawConvertButton();
+                GUILayout.Space(4);
+                DrawStatus();
+            });
 
-            // GLB File Selection
-            DrawGLBFileSection();
+            KawaiiStudioGUI.DrawSection("CONSOLE", KawaiiStudioGUI.AccentBlue, () => DrawConsole());
 
-            GUILayout.Space(10);
+            KawaiiStudioGUI.DrawFooter();
 
-            // Output Folder Selection
-            DrawOutputFolderSection();
-
-            GUILayout.Space(20);
-
-            // Convert Button
-            DrawConvertButton();
-
-            GUILayout.Space(10);
-
-            // Status
-            DrawStatus();
-
-            GUILayout.Space(10);
-
-            // Console Output
-            DrawConsole();
-
-            GUILayout.Space(10);
-
-            // Footer
-            DrawFooter();
-
-            GUILayout.EndVertical();
             GUILayout.EndScrollView();
         }
 
@@ -380,21 +363,16 @@ namespace KawaiiStudio
 
         private void DrawConvertButton()
         {
-            GUI.enabled = !isConverting && !string.IsNullOrEmpty(blenderPath) && 
-                          !string.IsNullOrEmpty(glbFilePath) && !string.IsNullOrEmpty(outputFolder);
-            
-            GUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
-            
-            if (GUILayout.Button($"🚀 {T("convert_glb")}", buttonStyle, GUILayout.Width(400)))
+            bool canConvert = !isConverting && !string.IsNullOrEmpty(blenderPath) &&
+                              !string.IsNullOrEmpty(glbFilePath) && !string.IsNullOrEmpty(outputFolder);
+
+            using (new EditorGUI.DisabledGroupScope(!canConvert))
             {
-                StartConversion();
+                if (KawaiiStudioGUI.ActionButton($"🚀 {T("convert_glb")}", KawaiiStudioGUI.AccentGreen))
+                {
+                    StartConversion();
+                }
             }
-            
-            GUILayout.FlexibleSpace();
-            GUILayout.EndHorizontal();
-            
-            GUI.enabled = true;
         }
 
         private void DrawStatus()
@@ -409,14 +387,9 @@ namespace KawaiiStudio
 
         private void DrawConsole()
         {
-            GUIStyle consoleLabelStyle = new GUIStyle(EditorStyles.boldLabel)
-            {
-                normal = { textColor = new Color(0.486f, 0.227f, 0.929f, 1f) }
-            };
-            GUILayout.Label($"[ {T("console_output")} ]", consoleLabelStyle);
-            
+            // Header now comes from the enclosing coloured section; just the body here.
             consoleScrollPosition = GUILayout.BeginScrollView(consoleScrollPosition, consoleStyle, GUILayout.Height(250));
-            GUILayout.Label(consoleOutput, consoleStyle);
+            GUILayout.Label(string.IsNullOrEmpty(consoleOutput) ? "No output yet." : consoleOutput, consoleStyle);
             GUILayout.EndScrollView();
         }
 
