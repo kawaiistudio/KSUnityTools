@@ -53,14 +53,14 @@
 ---
 
 ### Prefab Optimizer
-> Make an avatar lighter without breaking it: Light, Balanced or Maximum, or three sliders in %.
+> Make an avatar lighter without anyone noticing: Light, Balanced or Maximum, with a **Visual impact** badge (none / slight / noticeable, and why) before anything runs.
 
-- **Polygons** — real polygon reduction that only folds edges onto existing vertices: faces and blendshapes, UV seams, open borders and material edges are never touched, and a mesh stops before its shape would change
-- **Textures** — size as a % of the source image, compression for uncompressed ones, crunch for a smaller download; ramps, lookup tables and small textures left alone
-- **Audio** — Vorbis at the chosen quality, mono 22 / 11 kHz for the lighter levels, only ever smaller
-- **Unused blendshapes** removed (visemes, eyelids, animated, weighted, MMD and `vrc.` ones always kept)
-- Live texture memory / triangles / audio, before → after, and a per-item list where every texture, mesh and sound can be set on its own
-- Never overwrites your avatar: lighter meshes are new files used by a copy named "… (Optimized)", and texture / sound settings can be restored
+- **Textures by role** — main colour and normal maps stay at 2048 in Balanced (what avatars ship with); masks, details and other secondary maps go to 1024; uncompressed images get compressed; crunch 90, never on a normal map. Size always derives from the source image (never halved twice, never enlarged); 256 px and smaller, ramps, lookup tables, matcaps and sprites are left alone
+- **Polygons** — reduction that only folds edges onto existing vertices: faces and blendshapes, UV seams, open borders and material edges are never touched, a tight error ceiling (0.15 % of the mesh at 75 %) stops a mesh before its shape would change, meshes under Cloth are skipped, and **every reduced mesh is verified** against its source before it is used. The triangle counts shown are the real ones
+- **Audio** — Vorbis at the chosen quality; Balanced keeps channels and rate; only ever smaller
+- **Unused blendshapes** — proven unused by every controller and clip referenced anywhere on the avatar (Modular Avatar, VRCFury, Gesture Manager included); visemes, eyelids, animated, weighted, MMD and `vrc.` ones always kept
+- Live tiles (texture memory, download, triangles, audio), role badges, search and "changed only" in the per-item list, per-item overrides
+- Never overwrites your avatar: lighter meshes are new files used by a copy named "… (Optimized)"; texture / sound import settings (project-wide) are saved first and can be restored
 
 <div align="center">
 <img src="screenshots/prefab-optimizer.png" alt="Prefab Optimizer" width="700"/>

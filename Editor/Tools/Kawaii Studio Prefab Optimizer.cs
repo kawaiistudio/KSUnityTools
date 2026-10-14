@@ -11,65 +11,94 @@ using System.Text;
 namespace KawaiiStudio
 {
     /// <summary>
-    /// Prefab Optimizer 4 — the same optimizer as the Kawaii Studio editor, for a prefab or avatar in your project.
+    /// Prefab Optimizer 5 — make an avatar lighter without anyone noticing.
     ///
-    /// Simple on top: Light / Balanced / Maximum, three sliders in % (texture size, audio quality, polygons), one switch
-    /// (unused blendshapes), the texture memory, triangles and audio it gives shown live, and a per-item list where every
-    /// texture, mesh and sound can be set on its own.
+    /// The rule above every other: nothing breaks, and what the eye sees stays the same. So the tool never reasons in
+    /// blanket percentages any more; it reasons in ROLES and in what is visible:
     ///
-    /// Faithful underneath:
-    ///  - Textures: the importer's max size becomes a % of the SOURCE image (never twice), uncompressed ones get
-    ///    compressed, crunch makes the download smaller. Ramps, lookup tables and small textures (256 px and less) are
-    ///    left alone.
-    ///  - Audio: Vorbis at the chosen quality / rate (mono for Medium and Low), only ever lower than it is now.
-    ///  - Meshes: polygon reduction that never invents a vertex (each step folds an edge onto an existing vertex, so
-    ///    every vertex left keeps its exact position, normal, UVs, skin weights and blendshape deltas). Faces and
-    ///    everything a blendshape moves, UV seams, open borders and material edges are never touched, and a mesh stops
-    ///    before its shape would change. Unused blendshapes (not animated, not a viseme / eyelid, no weight, not "vrc."
-    ///    nor MMD) can go too.
-    ///  - Nothing of yours is overwritten: the reduced meshes are new assets in "Assets/Kawaii Studio/Optimized/…",
-    ///    used by a COPY of the avatar named "… (Optimized)". Texture / audio import settings are saved first and
-    ///    "Restore settings" puts them back.
+    ///  - Textures are classed by what the shader uses them for: main colour (albedo), normal map, emission, or a
+    ///    secondary map (masks, metallic / smoothness, occlusion, detail, outline…). "Smart" keeps main and normal maps
+    ///    at 2048 (the size avatars ship with), brings secondary maps to 1024 — a change the eye does not pick up — turns
+    ///    uncompressed images into compressed ones, and crunches at quality 90 (never a normal map: crunch makes those
+    ///    shade wrong). The importer's max size is always derived from the SOURCE image, so a texture is never halved
+    ///    twice, never enlarged, and 256 px and smaller, ramps, lookup tables, matcaps and sprites are never touched.
+    ///  - Audio: Vorbis at the chosen quality; "High" keeps the channels and the rate. Only ever smaller.
+    ///  - Polygons: the reduction folds edges onto EXISTING vertices (positions, normals, UVs, skin weights, blendshape
+    ///    deltas are copied, never recomputed), never touches a vertex a blendshape moves, a UV seam, an open border or a
+    ///    material boundary, and refuses any collapse that would move the surface further than a tight ceiling
+    ///    (0.15 % of the mesh's size at 75 %). Meshes under Cloth are left alone. Every reduced mesh is verified
+    ///    against its source before it is used.
+    ///  - Unused blendshapes: proven unused only. Every animator, animation clip and controller referenced ANYWHERE on
+    ///    the avatar is read (the descriptor's layers, Modular Avatar, VRCFury, Gesture Manager…), plus visemes,
+    ///    eyelids, mouth-open, non-zero weights, "vrc." and MMD names. No source of animation found = nothing removed.
+    ///  - Nothing of yours is overwritten: reduced meshes are new assets in "Assets/Kawaii Studio/Optimized/…", used by
+    ///    a COPY of the avatar named "… (Optimized)". Texture / audio import settings — which are project-wide — are
+    ///    saved before the first change and "Restore settings" puts them back.
+    ///
+    /// A "Visual impact" badge tells, before anything runs, whether the chosen settings are invisible, slight or
+    /// noticeable, and why.
     /// </summary>
     public class PrefabOptimizer : EditorWindow
     {
         private const string VERSION = KawaiiStudioVersion.Current;
-        // the workspace's Optimized folder (3.4.0; was the stray "Assets/Kawaii Studio Optimized")
         private static string OutRoot => KawaiiStudioPaths.Optimized;
         private const int TextureFloor = 256;
+        private const int Shown = 40;
 
-        private static readonly string[] TextureLabels = { "100 %", "50 %", "25 %", "12.5 %" };
-        private static readonly float[] TextureScales = { 1f, 0.5f, 0.25f, 0.125f };
+        // ---- texture policy: what each role is capped at, per step, and the crunch quality
+        private enum TexRole { Main, Normal, Emission, Other }
+        private static readonly string[] TextureLabels = { "Keep sizes", "Smart", "Smaller", "Smallest" };
+        private static readonly int[,] TexCaps =
+        {
+            //  Main   Normal  Emission  Other
+            { 99999, 99999, 99999, 99999 },   // Keep sizes: only uncompressed images get compressed
+            {  2048,  2048,  1024,  1024 },   // Smart: what avatars ship with, secondary maps one step down
+            {  1024,  1024,   512,   512 },   // Smaller
+            {   512,   512,   256,   256 },   // Smallest
+        };
+        private static readonly int[] CrunchQuality = { 0, 90, 75, 50 };
+        private static readonly int[] CrunchQualityNormal = { 0, 0, 90, 75 };
+        private static readonly string[] TexOverrideLabels = { "Keep", "2048", "1024", "512", "256" };
+        private static readonly int[] TexOverrideCaps = { 99999, 2048, 1024, 512, 256 };
+
         private static readonly string[] MeshLabels = { "100 %", "75 %", "50 %", "25 %" };
         private static readonly float[] MeshKeeps = { 1f, 0.75f, 0.5f, 0.25f };
+        // the most a collapse may move the surface, as a fraction of the mesh's bounding diagonal (1.6 m avatar: 2.4 mm at 75 %)
+        private static readonly double[] MeshMaxError = { 0, 0.0015, 0.004, 0.01 };
         private static readonly string[] AudioLabels = { "Original", "High", "Medium", "Low" };
 
         private enum Preset { Light, Balanced, Maximum }
+        private enum Impact { None, Slight, Noticeable }
 
         // ---- settings
         private GameObject prefab;
-        private int texStep = 1, audioStep = 2, meshStep = 1;
+        private int texStep = 1, audioStep = 1, meshStep = 1;
         private bool removeShapes = true;
 
         // ---- scan
         private bool scanned;
         private bool shapeSourcesFound;
+        private int shapeSourceCount;
+        private int rendererCount, materialCount;
         private readonly List<TexItem> textures = new List<TexItem>();
         private readonly List<MeshItem> meshes = new List<MeshItem>();
         private readonly List<ClipItem> clips = new List<ClipItem>();
 
         // ---- ui
         private int itemTab;
-        private bool showAllItems, showLog;
+        private bool showAllItems, showLog, changedOnly;
+        private string search = "";
         private Vector2 scroll, logScroll;
         private readonly StringBuilder log = new StringBuilder();
         private string resultMessage;
+        private UnityEngine.Object lastCopy;
 
         private class TexItem
         {
             public Texture2D Tex; public string Path; public TextureImporter Importer;
             public int SrcMax, CurMax, Width, Height; public bool Alpha, Mips, Compressed, Crunched;
-            public string Why; public int Step = -1;
+            public TexRole Role = TexRole.Other; public readonly HashSet<string> Props = new HashSet<string>();
+            public string Why; public int Step = -1;   // -1 auto, else index into TexOverrideCaps
         }
 
         private class MeshItem
@@ -98,7 +127,7 @@ namespace KawaiiStudio
         public static void ShowWindow()
         {
             PrefabOptimizer window = GetWindow<PrefabOptimizer>("Prefab Optimizer");
-            window.minSize = new Vector2(760, 640);
+            window.minSize = new Vector2(820, 680);
             window.Show();
         }
 
@@ -127,7 +156,7 @@ namespace KawaiiStudio
             DrawSource();
             if (scanned && prefab != null)
             {
-                DrawNumbers();
+                DrawSummary();
                 DrawPresets();
                 DrawSettings();
                 DrawItems();
@@ -140,9 +169,10 @@ namespace KawaiiStudio
             GUILayout.EndScrollView();
         }
 
+        // ------------------------------------------------------------------ source
         private void DrawSource()
         {
-            KawaiiStudioGUI.DrawSection(T("Avatar or prefab"), () =>
+            KawaiiStudioGUI.DrawSection(T("Avatar or prefab"), KawaiiStudioGUI.AccentCyan, () =>
             {
                 var picked = (GameObject)EditorGUILayout.ObjectField(T("Drag it here"), prefab, typeof(GameObject), true);
                 if (picked != prefab)
@@ -150,47 +180,163 @@ namespace KawaiiStudio
                     prefab = picked;
                     scanned = false;
                     resultMessage = null;
+                    lastCopy = null;
                     textures.Clear(); meshes.Clear(); clips.Clear();
                     log.Length = 0;
                     if (prefab != null) Scan();
                 }
                 GUILayout.Space(KawaiiStudioGUI.Space2);
                 if (prefab == null)
+                {
                     KawaiiStudioGUI.Banner(T("Drag a prefab or an avatar from your scene into the field above."), KawaiiStudioGUI.MessageKind.Info);
-                else
+                    return;
+                }
+                EditorGUILayout.BeginHorizontal();
+                KawaiiStudioGUI.KeyValueRow(T("Selected"), prefab.name, KawaiiStudioGUI.SuccessColor);
+                GUILayout.FlexibleSpace();
+                if (KawaiiStudioGUI.SecondaryButton(T("Scan again"), GUILayout.Width(140f))) Scan();
+                EditorGUILayout.EndHorizontal();
+                if (scanned)
                 {
                     EditorGUILayout.BeginHorizontal();
-                    KawaiiStudioGUI.KeyValueRow(T("Selected"), prefab.name, KawaiiStudioGUI.SuccessColor);
+                    Pill($"{rendererCount} renderer(s)", KawaiiStudioGUI.AccentCyan);
+                    Pill($"{materialCount} material(s)", KawaiiStudioGUI.AccentCyan);
+                    Pill($"{textures.Count} texture(s)", KawaiiStudioGUI.AccentPink);
+                    Pill($"{meshes.Count} mesh(es)", KawaiiStudioGUI.AccentPurple);
+                    Pill($"{clips.Count} sound(s)", KawaiiStudioGUI.AccentOrange);
+                    Pill(shapeSourcesFound ? $"{shapeSourceCount} animation source(s)" : "no animation source", shapeSourcesFound ? KawaiiStudioGUI.AccentGreen : KawaiiStudioGUI.WarningColor);
                     GUILayout.FlexibleSpace();
-                    if (KawaiiStudioGUI.SecondaryButton(T("Scan again"), GUILayout.Width(140f))) Scan();
                     EditorGUILayout.EndHorizontal();
                 }
             });
         }
 
-        private void DrawNumbers()
+        private static void Pill(string text, Color color)
         {
-            long vramBefore = 0, vramAfter = 0, audioBefore = 0, audioAfter = 0, trisBefore = 0, trisAfter = 0;
-            foreach (var t in textures) { var e = EstimateTexture(t); vramBefore += e.Key; vramAfter += e.Value; }
-            foreach (var c in clips) { var e = EstimateClip(c); audioBefore += e.Key; audioAfter += e.Value; }
-            foreach (var m in meshes) { trisBefore += m.Tris; trisAfter += EstimateTriangles(m); }
-            EditorGUILayout.BeginHorizontal();
-            Tile(T("Texture memory"), Size(vramBefore) + "  →  " + Size(vramAfter), vramBefore, vramAfter);
-            GUILayout.Space(KawaiiStudioGUI.Space2);
-            Tile(T("Triangles"), trisBefore.ToString("N0") + "  →  ≈ " + trisAfter.ToString("N0"), trisBefore, trisAfter);
-            GUILayout.Space(KawaiiStudioGUI.Space2);
-            Tile(T("Audio"), "≈ " + Size(audioBefore) + "  →  ≈ " + Size(audioAfter), audioBefore, audioAfter);
-            EditorGUILayout.EndHorizontal();
-            GUILayout.Space(KawaiiStudioGUI.Space3);
+            var st = new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleCenter, normal = { textColor = Color.white }, fontStyle = FontStyle.Bold };
+            Vector2 sz = st.CalcSize(new GUIContent(text));
+            Rect r = GUILayoutUtility.GetRect(sz.x + 14f, 18f, GUILayout.Width(sz.x + 14f));
+            KawaiiStudioGUI.DrawPill(r, text, color);
+            GUILayout.Space(4f);
         }
 
-        private static void Tile(string caption, string value, long before, long after)
+        // ------------------------------------------------------------------ summary
+        private struct Totals
+        {
+            public long VramBefore, VramAfter, DiskBefore, DiskAfter, AudioBefore, AudioAfter, TrisBefore, TrisAfter;
+            public int TexChanged, ClipChanged, MeshChanged, ShapesRemoved;
+        }
+
+        private Totals ComputeTotals()
+        {
+            var t = new Totals();
+            foreach (var x in textures)
+            {
+                var e = EstimateTexture(x);
+                t.VramBefore += e.Key; t.VramAfter += e.Value;
+                var d = EstimateDisk(x);
+                t.DiskBefore += d.Key; t.DiskAfter += d.Value;
+                if (TexturePlan(x, Effective(x), x.Step) != null) t.TexChanged++;
+            }
+            foreach (var c in clips)
+            {
+                var e = EstimateClip(c);
+                t.AudioBefore += e.Key; t.AudioAfter += e.Value;
+                if (ClipPlan(c, Effective(c)) != null) t.ClipChanged++;
+            }
+            foreach (var m in meshes)
+            {
+                int after = EstimateTriangles(m);
+                t.TrisBefore += m.Tris; t.TrisAfter += after;
+                if (after < m.Tris || (removeShapes && m.Unused.Count > 0 && m.Why == null)) t.MeshChanged++;
+                if (removeShapes && m.Why == null) t.ShapesRemoved += m.Unused.Count;
+            }
+            return t;
+        }
+
+        private void DrawSummary()
+        {
+            var t = ComputeTotals();
+            var reasons = new List<string>();
+            Impact impact = ComputeImpact(reasons);
+
+            KawaiiStudioGUI.DrawSection(T("What you get"), KawaiiStudioGUI.AccentGreen, () =>
+            {
+                EditorGUILayout.BeginHorizontal();
+                Tile(T("Texture memory"), t.VramBefore, t.VramAfter, false);
+                GUILayout.Space(KawaiiStudioGUI.Space2);
+                Tile(T("Download (textures)"), t.DiskBefore, t.DiskAfter, false);
+                GUILayout.Space(KawaiiStudioGUI.Space2);
+                Tile(T("Triangles"), t.TrisBefore, t.TrisAfter, true);
+                GUILayout.Space(KawaiiStudioGUI.Space2);
+                Tile(T("Audio"), t.AudioBefore, t.AudioAfter, false);
+                EditorGUILayout.EndHorizontal();
+                GUILayout.Space(KawaiiStudioGUI.Space2);
+
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.Label(T("Visual impact"), KawaiiStudioGUI.H3, GUILayout.Width(110f));
+                Color ic = impact == Impact.None ? KawaiiStudioGUI.SuccessColor : impact == Impact.Slight ? KawaiiStudioGUI.WarningColor : KawaiiStudioGUI.ErrorColor;
+                string il = impact == Impact.None ? T("none — nothing the eye can see") : impact == Impact.Slight ? T("slight — only up close") : T("noticeable");
+                Pill(il, ic);
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.EndHorizontal();
+                if (reasons.Count > 0)
+                    Sub(string.Join("  ·  ", reasons.Take(4)) + (reasons.Count > 4 ? "  ·  …" : ""));
+                Sub(TF("{0} texture(s), {1} sound(s), {2} mesh(es) change; {3} unused blendshape(s) go. Everything else stays byte for byte.",
+                    t.TexChanged, t.ClipChanged, t.MeshChanged, t.ShapesRemoved));
+            });
+        }
+
+        private static void Tile(string caption, long before, long after, bool count)
         {
             double pct = before > 0 ? (before - after) * 100.0 / before : 0;
+            string b = count ? before.ToString("N0") : Size(before), a = count ? after.ToString("N0") : Size(after);
+            string value = pct >= 0.5 ? b + "  →  " + (count ? "≈ " : "") + a : b;
             string tail = pct >= 0.5 ? "   −" + pct.ToString("F0") + " %" : "";
             KawaiiStudioGUI.StatTile(value + tail, caption, pct >= 0.5 ? KawaiiStudioGUI.SuccessColor : KawaiiStudioGUI.SubTextColor);
         }
 
+        /// <summary>How visible the current settings are, with the reasons (worst first).</summary>
+        private Impact ComputeImpact(List<string> reasons)
+        {
+            Impact worst = Impact.None;
+            void Add(Impact i, string why) { if (i > worst) worst = i; if (i != Impact.None && !reasons.Contains(why)) reasons.Add(why); }
+
+            int mainDown = 0, normalDown = 0, otherDown = 0, mainCompressed = 0;
+            int crunchLow = 0;
+            foreach (var x in textures)
+            {
+                var p = TexturePlan(x, Effective(x), x.Step);
+                if (p == null) continue;
+                if (p.MaxSize < x.CurMax)
+                {
+                    if (x.Role == TexRole.Main) { mainDown++; Add(p.MaxSize < 2048 ? Impact.Noticeable : Impact.Slight, p.MaxSize < 2048 ? "main textures below 2048" : "main textures 4096 → 2048"); }
+                    else if (x.Role == TexRole.Normal) { normalDown++; Add(p.MaxSize < 2048 ? Impact.Slight : Impact.None, "normal maps below 2048"); }
+                    else { otherDown++; Add(p.MaxSize < 512 ? Impact.Noticeable : p.MaxSize < 1024 ? Impact.Slight : Impact.None, p.MaxSize < 1024 ? "secondary maps below 1024" : ""); }
+                }
+                if (p.Compress && x.Role == TexRole.Main) { mainCompressed++; Add(Impact.Slight, "uncompressed main textures get compressed"); }
+                if (p.Crunch > 0 && p.Crunch < 90) { crunchLow++; Add(p.Crunch < 75 ? Impact.Noticeable : Impact.Slight, "crunch quality under 90"); }
+            }
+            foreach (var c in clips)
+            {
+                var p = ClipPlan(c, Effective(c));
+                if (p == null) continue;
+                int step = Effective(c);
+                if (step >= 3) Add(Impact.Noticeable, "sounds at 11 kHz");
+                else if (step == 2) Add(Impact.Slight, "sounds mono at 22 kHz");
+            }
+            foreach (var m in meshes)
+            {
+                if (m.Why != null) continue;
+                int step = Effective(m);
+                if (step >= 2) Add(Impact.Noticeable, "half the triangles or fewer");
+                else if (step == 1 && EstimateTriangles(m) < m.Tris) Add(Impact.Slight, "polygon reduction (tight error ceiling)");
+            }
+            reasons.RemoveAll(string.IsNullOrEmpty);
+            return worst;
+        }
+
+        // ------------------------------------------------------------------ presets
         private Preset? CurrentPreset()
         {
             if (textures.Any(t => t.Step >= 0) || meshes.Any(m => m.Step >= 0) || clips.Any(c => c.Step >= 0)) return null;
@@ -204,64 +350,105 @@ namespace KawaiiStudio
 
         private static int[] PresetSteps(Preset p)
         {
-            if (p == Preset.Light) return new[] { 0, 1, 0 };
-            if (p == Preset.Maximum) return new[] { 2, 3, 2 };
-            return new[] { 1, 2, 1 };
+            if (p == Preset.Light) return new[] { 0, 0, 0 };
+            if (p == Preset.Maximum) return new[] { 2, 2, 2 };
+            return new[] { 1, 1, 1 };
+        }
+
+        private void ApplyPreset(Preset p)
+        {
+            var s = PresetSteps(p);
+            texStep = s[0]; audioStep = s[1]; meshStep = s[2]; removeShapes = true;
+            foreach (var t in textures) t.Step = -1;
+            foreach (var m in meshes) m.Step = -1;
+            foreach (var c in clips) c.Step = -1;
         }
 
         private void DrawPresets()
         {
             var cur = CurrentPreset();
-            string[] labels = { T("Light — no visible change"), T("Balanced — recommended"), T("Maximum — smallest") };
-            int sel = cur.HasValue ? (int)cur.Value : -1;
-            int picked = KawaiiStudioGUI.Tabs(sel, labels);
-            if (picked != sel && picked >= 0)
+            KawaiiStudioGUI.DrawSection(T("Preset"), KawaiiStudioGUI.AccentPurple, () =>
             {
-                var s = PresetSteps((Preset)picked);
-                texStep = s[0]; audioStep = s[1]; meshStep = s[2]; removeShapes = true;
-                foreach (var t in textures) t.Step = -1;
-                foreach (var m in meshes) m.Step = -1;
-                foreach (var c in clips) c.Step = -1;
-            }
-            GUILayout.Space(KawaiiStudioGUI.Space2);
+                EditorGUILayout.BeginHorizontal();
+                PresetCard(Preset.Light, cur, T("Light"), T("No visible change"), KawaiiStudioGUI.SuccessColor,
+                    T("Sizes kept. Uncompressed images compressed."), T("Sounds untouched."), T("Every triangle kept. Unused blendshapes removed."));
+                GUILayout.Space(KawaiiStudioGUI.Space2);
+                PresetCard(Preset.Balanced, cur, T("Balanced"), T("Recommended"), KawaiiStudioGUI.AccentColor,
+                    T("Main and normal maps stay 2048; masks and details to 1024; crunch 90."), T("Vorbis high quality, stereo and rate kept."), T("Up to a quarter fewer triangles, 2 mm ceiling."));
+                GUILayout.Space(KawaiiStudioGUI.Space2);
+                PresetCard(Preset.Maximum, cur, T("Maximum"), T("Smallest, visible up close"), KawaiiStudioGUI.WarningColor,
+                    T("Main and normal maps to 1024; others to 512; crunch 75."), T("Vorbis medium, mono, 22 kHz."), T("Up to half the triangles."));
+                EditorGUILayout.EndHorizontal();
+                if (!cur.HasValue)
+                    Sub(T("Custom: the sliders or an item differ from every preset. Click a preset to return to it."));
+            });
         }
 
+        private void PresetCard(Preset p, Preset? current, string title, string subtitle, Color accent, string l1, string l2, string l3)
+        {
+            bool selected = current.HasValue && current.Value == p;
+            Rect r = GUILayoutUtility.GetRect(100f, 118f, GUILayout.ExpandWidth(true));
+            if (Event.current.type == EventType.Repaint)
+            {
+                EditorGUI.DrawRect(r, selected ? KawaiiStudioGUI.Fade(accent, 0.14f) : KawaiiStudioGUI.BoxBackground);
+                Color border = selected ? accent : KawaiiStudioGUI.BorderColor;
+                EditorGUI.DrawRect(new Rect(r.x, r.y, r.width, 1), border);
+                EditorGUI.DrawRect(new Rect(r.x, r.yMax - 1, r.width, 1), border);
+                EditorGUI.DrawRect(new Rect(r.x, r.y, 1, r.height), border);
+                EditorGUI.DrawRect(new Rect(r.xMax - 1, r.y, 1, r.height), border);
+                EditorGUI.DrawRect(new Rect(r.x, r.y, 4, r.height), accent);
+            }
+            var tt = new GUIStyle(KawaiiStudioGUI.H3) { normal = { textColor = selected ? accent : KawaiiStudioGUI.TextColor } };
+            GUI.Label(new Rect(r.x + 12, r.y + 8, r.width - 24, 18), title + (selected ? "   ✓" : ""), tt);
+            var ss = new GUIStyle(EditorStyles.miniBoldLabel) { normal = { textColor = accent } };
+            GUI.Label(new Rect(r.x + 12, r.y + 26, r.width - 24, 14), subtitle, ss);
+            var ls = new GUIStyle(EditorStyles.wordWrappedMiniLabel) { normal = { textColor = KawaiiStudioGUI.SubTextColor } };
+            GUI.Label(new Rect(r.x + 12, r.y + 44, r.width - 24, 24), l1, ls);
+            GUI.Label(new Rect(r.x + 12, r.y + 70, r.width - 24, 16), l2, ls);
+            GUI.Label(new Rect(r.x + 12, r.y + 88, r.width - 24, 24), l3, ls);
+            EditorGUIUtility.AddCursorRect(r, MouseCursor.Link);
+            if (GUI.Button(r, GUIContent.none, GUIStyle.none)) { ApplyPreset(p); GUI.changed = true; }
+        }
+
+        // ------------------------------------------------------------------ settings
         private void DrawSettings()
         {
-            KawaiiStudioGUI.DrawSection(T("Settings"), () =>
+            KawaiiStudioGUI.DrawSection(T("Settings"), KawaiiStudioGUI.AccentPink, () =>
             {
                 // textures
-                SettingHeader(T("Textures"), texStep == 0 ? T("Full size — only uncompressed textures get compressed")
-                    : texStep == 1 ? T("Half size — 4096 → 2048, 2048 → 1024, smaller download (crunch)")
-                    : texStep == 2 ? T("Quarter size — 4096 → 1024, 2048 → 512, smaller download (crunch)")
-                    : T("Eighth size — 4096 → 512, 2048 → 256, smaller download (crunch)"));
-                texStep = StepSlider(texStep, TextureLabels);
-                int texChanging = textures.Count(t => TexturePlan(t, Effective(t)) != null);
-                Sub(TF("{0} of {1} textures get lighter. Small ones (256 px and less), ramps and lookup tables are never touched.", texChanging, textures.Count));
+                SettingHeader(T("Textures"), texStep == 0 ? T("Sizes kept — only uncompressed images get compressed")
+                    : texStep == 1 ? T("Main and normal maps up to 2048, other maps up to 1024, crunch 90")
+                    : texStep == 2 ? T("Main and normal maps up to 1024, other maps up to 512, crunch 75")
+                    : T("Main and normal maps up to 512, other maps up to 256, crunch 50"));
+                texStep = StepSlider(texStep, TextureLabels.Select(T).ToArray());
+                int texChanging = textures.Count(t => TexturePlan(t, Effective(t), t.Step) != null);
+                int mains = textures.Count(t => t.Role == TexRole.Main && t.Why == null), normals = textures.Count(t => t.Role == TexRole.Normal && t.Why == null);
+                Sub(TF("{0} of {1} textures get lighter ({2} main, {3} normal maps). 256 px and smaller, ramps, lookup tables, matcaps and sprites are never touched; normal maps are never crunched.",
+                    texChanging, textures.Count, mains, normals));
 
                 // audio
                 SettingHeader(T("Audio"), audioStep == 0 ? T("Sounds stay exactly as they are")
-                    : audioStep == 1 ? T("High — Vorbis, stereo kept")
-                    : audioStep == 2 ? T("Medium — Vorbis, mono, 22 kHz") : T("Low — Vorbis, mono, 11 kHz"));
+                    : audioStep == 1 ? T("High — Vorbis 0.7, channels and rate kept")
+                    : audioStep == 2 ? T("Medium — Vorbis 0.5, mono, 22 kHz") : T("Low — Vorbis 0.3, mono, 11 kHz"));
                 audioStep = StepSlider(audioStep, AudioLabels.Select(T).ToArray());
                 int clipChanging = clips.Count(c => ClipPlan(c, Effective(c)) != null);
                 Sub(clips.Count == 0 ? T("No sound on this avatar.") : TF("{0} of {1} sounds get lighter. A sound is only ever made smaller, never better or bigger.", clipChanging, clips.Count));
 
                 // polygons
                 SettingHeader(T("Polygons"), meshStep == 0 ? T("Every triangle kept")
-                    : meshStep == 1 ? T("Up to a quarter fewer triangles — no visible change")
-                    : meshStep == 2 ? T("Up to half the triangles") : T("Up to three quarters fewer triangles"));
+                    : meshStep == 1 ? T("Up to a quarter fewer triangles — surface may move 0.15 % of the mesh size at most")
+                    : meshStep == 2 ? T("Up to half the triangles — 0.4 % ceiling") : T("Up to three quarters fewer — 1 % ceiling"));
                 meshStep = StepSlider(meshStep, MeshLabels);
                 long tb = meshes.Sum(m => (long)m.Tris), ta = meshes.Sum(m => (long)EstimateTriangles(m));
-                Sub(meshes.Count == 0 ? T("No mesh on this avatar.") : TF("{0} → ≈ {1} triangles. Faces and blendshapes, UV seams, edges and material borders are never touched; a mesh stops before its shape would change.", tb.ToString("N0"), ta.ToString("N0")));
+                Sub(meshes.Count == 0 ? T("No mesh on this avatar.") : TF("{0} → ≈ {1} triangles. Faces and blendshapes, UV seams, edges and material borders are never touched; a mesh stops before its shape would change. Meshes under Cloth are left alone.", tb.ToString("N0"), ta.ToString("N0")));
 
                 // blendshapes
                 GUILayout.Space(KawaiiStudioGUI.Space2);
                 removeShapes = KawaiiStudioGUI.DrawToggle(T("Remove unused blendshapes"), removeShapes);
                 int unused = meshes.Sum(m => m.Unused.Count), total = meshes.Sum(m => m.ShapeCount);
-                Sub(!shapeSourcesFound ? T("No animator controller found: nothing can be proven unused, every blendshape is kept.")
+                Sub(!shapeSourcesFound ? T("No animator, controller or animation clip found anywhere on this avatar: nothing can be proven unused, every blendshape is kept.")
                     : total == 0 ? T("No blendshape on this avatar.")
-                    : TF("{0} of {1} blendshapes are unused. Visemes, eyelids, animated, weighted, MMD and \"vrc.\" ones are always kept.", unused, total));
+                    : TF("{0} of {1} blendshapes are unused by the {2} animation source(s) found. Visemes, eyelids, animated, weighted, MMD and \"vrc.\" ones are always kept.", unused, total, shapeSourceCount));
             });
         }
 
@@ -312,7 +499,7 @@ namespace KawaiiStudio
                         fontStyle = i == value ? FontStyle.Bold : FontStyle.Normal,
                         normal = { textColor = i == value ? KawaiiStudioGUI.TextColor : KawaiiStudioGUI.SubTextColor }
                     };
-                    float w = 90f;
+                    float w = 110f;
                     float lx = i == 0 ? track.x - 6f : i == n - 1 ? track.x + track.width - w + 6f : x - w / 2;
                     GUI.Label(new Rect(lx, track.y + 9f, w, 16f), labels[i], st);
                 }
@@ -341,73 +528,124 @@ namespace KawaiiStudio
             int Pick(float x) => Mathf.Clamp(Mathf.RoundToInt((x - track.x) / Mathf.Max(1f, track.width) * (n - 1)), 0, n - 1);
         }
 
+        // ------------------------------------------------------------------ items
         private void DrawItems()
         {
-            KawaiiStudioGUI.DrawSection(T("Each item"), () =>
+            KawaiiStudioGUI.DrawSection(T("Each item"), KawaiiStudioGUI.AccentBlue, () =>
             {
-                EditorGUILayout.BeginHorizontal();
                 int t = KawaiiStudioGUI.Tabs(itemTab, new[]
                 {
                     TF("Textures ({0})", textures.Count), TF("Meshes ({0})", meshes.Count), TF("Audio ({0})", clips.Count)
                 });
                 if (t != itemTab) { itemTab = t; showAllItems = false; }
-                EditorGUILayout.EndHorizontal();
+                GUILayout.Space(KawaiiStudioGUI.Space1);
+
+                EditorGUILayout.BeginHorizontal();
+                search = EditorGUILayout.TextField(search, EditorStyles.toolbarSearchField, GUILayout.MinWidth(160f), GUILayout.MaxWidth(320f));
+                GUILayout.Space(6f);
+                changedOnly = GUILayout.Toggle(changedOnly, T("Changed only"), EditorStyles.miniButton, GUILayout.Width(100f));
+                GUILayout.FlexibleSpace();
                 if (GUILayout.Button(T("All on Auto"), EditorStyles.miniButton, GUILayout.Width(110f)))
                 {
                     foreach (var x in textures) x.Step = -1;
                     foreach (var x in meshes) x.Step = -1;
                     foreach (var x in clips) x.Step = -1;
                 }
-                Sub(T("Auto follows the sliders above. Pick a value to set one item on its own. Before → after is estimated, the biggest first."));
+                EditorGUILayout.EndHorizontal();
+                Sub(T("Auto follows the sliders above. Pick a value to set one item on its own. Before → after is estimated, the biggest first. Click a name to find it in the project."));
                 GUILayout.Space(KawaiiStudioGUI.Space1);
 
-                const int Shown = 40;
+                string q = (search ?? "").Trim().ToLowerInvariant();
+                bool Match(string name) => q.Length == 0 || (name ?? "").ToLowerInvariant().Contains(q);
                 int count = 0;
                 if (itemTab == 0)
                 {
-                    var list = textures.OrderByDescending(x => EstimateTexture(x).Key).ToList();
+                    var list = textures.Where(x => Match(x.Tex != null ? x.Tex.name : x.Path) && (!changedOnly || TexturePlan(x, Effective(x), x.Step) != null))
+                        .OrderByDescending(x => EstimateTexture(x).Key).ToList();
                     foreach (var x in showAllItems ? list : list.Take(Shown))
                     {
                         var e = EstimateTexture(x);
-                        string detail = $"{x.Width}×{x.Height} · {(x.Tex != null ? x.Tex.format.ToString() : "?")}{(x.Crunched ? " · crunch" : "")}";
-                        x.Step = ItemRow(x.Tex, x.Tex != null ? x.Tex.name : x.Path, detail, e.Key, e.Value, x.Why, x.Step, texStep, TextureLabels);
+                        var p = TexturePlan(x, Effective(x), x.Step);
+                        string detail = $"{x.Width}×{x.Height}";
+                        if (p != null && p.MaxSize < x.CurMax) detail += $" → {p.MaxSize}";
+                        detail += $" · {(x.Tex != null ? x.Tex.format.ToString() : "?")}{(x.Crunched ? " · crunch" : p != null && p.Crunch > 0 ? $" · crunch {p.Crunch}" : "")}";
+                        if (p != null && p.Compress) detail += " · " + T("will be compressed");
+                        x.Step = ItemRow(x.Tex, x.Tex != null ? x.Tex.name : x.Path, detail, RoleLabel(x), RoleColor(x.Role), e.Key, e.Value, x.Why, x.Step, TexOverrideLabels,
+                            T("Auto") + " · " + AutoCapLabel(x));
                     }
                     count = list.Count;
                 }
                 else if (itemTab == 1)
                 {
-                    var list = meshes.OrderByDescending(x => x.Tris).ToList();
+                    var list = meshes.Where(x => Match(x.Mesh != null ? x.Mesh.name : x.Path) && (!changedOnly || EstimateTriangles(x) < x.Tris || (removeShapes && x.Unused.Count > 0 && x.Why == null)))
+                        .OrderByDescending(x => x.Tris).ToList();
                     foreach (var x in showAllItems ? list : list.Take(Shown))
                     {
                         int after = EstimateTriangles(x);
                         string detail = TF("{0} triangles", x.Tris.ToString("N0")) + (after < x.Tris ? " → ≈ " + after.ToString("N0") : "")
-                                        + (removeShapes && x.Unused.Count > 0 ? " · " + TF("{0} unused blendshape(s) removed", x.Unused.Count) : "");
-                        x.Step = ItemRow(x.Mesh, x.Mesh != null ? x.Mesh.name : x.Path, detail, x.Tris, after, x.Why, x.Step, meshStep, MeshLabels, count: true);
+                                        + $" · {x.Verts:N0} vertices" + (x.ShapeCount > 0 ? $" · {x.ShapeCount} blendshapes" : "")
+                                        + (removeShapes && x.Unused.Count > 0 && x.Why == null ? " · " + TF("{0} unused removed", x.Unused.Count) : "");
+                        x.Step = ItemRow(x.Mesh, x.Mesh != null ? x.Mesh.name : x.Path, detail, x.Locked > 0 ? TF("{0} % locked by blendshapes", x.Verts > 0 ? x.Locked * 100 / x.Verts : 0) : null, KawaiiStudioGUI.AccentPurple,
+                            x.Tris, after, x.Why, x.Step, MeshLabels, T("Auto") + " · " + MeshLabels[Mathf.Clamp(meshStep, 0, 3)], count: true);
                     }
                     count = list.Count;
                 }
                 else
                 {
-                    var list = clips.OrderByDescending(x => EstimateClip(x).Key).ToList();
+                    var list = clips.Where(x => Match(x.Clip != null ? x.Clip.name : x.Path) && (!changedOnly || ClipPlan(x, Effective(x)) != null))
+                        .OrderByDescending(x => EstimateClip(x).Key).ToList();
                     foreach (var x in showAllItems ? list : list.Take(Shown))
                     {
                         var e = EstimateClip(x);
                         string detail = $"{x.Format} · {(x.Mono || x.Channels == 1 ? "mono" : "stereo")} · {x.Frequency / 1000f:0.#} kHz · {x.Length:0.0} s";
-                        x.Step = ItemRow(x.Clip, x.Clip != null ? x.Clip.name : x.Path, detail, e.Key, e.Value, x.Why, x.Step, audioStep, AudioLabels.Select(T).ToArray());
+                        x.Step = ItemRow(x.Clip, x.Clip != null ? x.Clip.name : x.Path, detail, null, KawaiiStudioGUI.AccentOrange, e.Key, e.Value, x.Why, x.Step,
+                            AudioLabels.Select(T).ToArray(), T("Auto") + " · " + T(AudioLabels[Mathf.Clamp(audioStep, 0, 3)]));
                     }
                     count = list.Count;
                 }
-                if (count == 0) Sub(T("Nothing of this kind on this avatar."));
+                if (count == 0) Sub(changedOnly || q.Length > 0 ? T("Nothing matches.") : T("Nothing of this kind on this avatar."));
                 if (!showAllItems && count > Shown && GUILayout.Button(TF("Show all {0}", count), EditorStyles.miniButton, GUILayout.Width(140f))) showAllItems = true;
             });
         }
 
-        private int ItemRow(UnityEngine.Object obj, string name, string detail, long before, long after, string why, int step, int global, string[] labels, bool count = false)
+        private string RoleLabel(TexItem x)
+        {
+            switch (x.Role)
+            {
+                case TexRole.Main: return T("main colour");
+                case TexRole.Normal: return T("normal map");
+                case TexRole.Emission: return T("emission");
+                default: return T("secondary");
+            }
+        }
+
+        private static Color RoleColor(TexRole r)
+        {
+            switch (r)
+            {
+                case TexRole.Main: return KawaiiStudioGUI.AccentPink;
+                case TexRole.Normal: return KawaiiStudioGUI.AccentBlue;
+                case TexRole.Emission: return KawaiiStudioGUI.AccentOrange;
+                default: return KawaiiStudioGUI.AccentCyan;
+            }
+        }
+
+        private string AutoCapLabel(TexItem x)
+        {
+            int cap = CapFor(x.Role, texStep);
+            return cap >= 99999 ? T("keep") : cap.ToString();
+        }
+
+        private int ItemRow(UnityEngine.Object obj, string name, string detail, string badge, Color badgeColor, long before, long after, string why, int step,
+                            string[] labels, string autoLabel, bool count = false)
         {
             KawaiiStudioGUI.BeginWell();
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.BeginVertical(GUILayout.MinWidth(200f));
-            if (GUILayout.Button(name, EditorStyles.boldLabel) && obj != null) EditorGUIUtility.PingObject(obj);
+            EditorGUILayout.BeginVertical(GUILayout.MinWidth(220f));
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button(name, EditorStyles.boldLabel, GUILayout.ExpandWidth(false)) && obj != null) EditorGUIUtility.PingObject(obj);
+            if (badge != null) Pill(badge, badgeColor);
+            EditorGUILayout.EndHorizontal();
             GUILayout.Label(detail, EditorStyles.miniLabel);
             if (why != null)
             {
@@ -425,7 +663,7 @@ namespace KawaiiStudio
             EditorGUILayout.EndVertical();
             if (why == null)
             {
-                var options = new[] { T("Auto") + " · " + labels[Mathf.Clamp(global, 0, labels.Length - 1)] }.Concat(labels).ToArray();
+                var options = new[] { autoLabel }.Concat(labels).ToArray();
                 int sel = EditorGUILayout.Popup(step < 0 ? 0 : step + 1, options, GUILayout.Width(130f));
                 step = sel == 0 ? -1 : sel - 1;
             }
@@ -435,15 +673,21 @@ namespace KawaiiStudio
             return step;
         }
 
+        // ------------------------------------------------------------------ apply
         private void DrawApply()
         {
             GUILayout.Space(KawaiiStudioGUI.Space2);
-            KawaiiStudioGUI.Banner(TF("Your avatar is never modified: the lighter meshes are new files in \"{0}\", used by a copy named \"{1} (Optimized)\". Texture and sound import settings change, and \"Restore settings\" puts them back.", OutFolder(), prefab.name), KawaiiStudioGUI.MessageKind.Info);
+            KawaiiStudioGUI.Banner(TF("Your avatar is never modified: the lighter meshes are new files in \"{0}\", used by a copy named \"{1} (Optimized)\". Texture and sound import settings are project-wide (every avatar using the same file gets the lighter version); they are saved first and \"Restore settings\" puts them back.", OutFolder(), prefab.name), KawaiiStudioGUI.MessageKind.Info);
             GUILayout.Space(KawaiiStudioGUI.Space2);
             EditorGUILayout.BeginHorizontal();
             GUILayout.FlexibleSpace();
             if (KawaiiStudioGUI.PrimaryButton(T("OPTIMIZE"), GUILayout.Width(260f), GUILayout.Height(36f))) Optimize();
             if (File.Exists(BackupPath()) && KawaiiStudioGUI.SecondaryButton(T("Restore settings"), GUILayout.Width(160f), GUILayout.Height(36f))) RestoreSettings();
+            if (lastCopy != null && KawaiiStudioGUI.SecondaryButton(T("Select the copy"), GUILayout.Width(160f), GUILayout.Height(36f)))
+            {
+                Selection.activeObject = lastCopy;
+                EditorGUIUtility.PingObject(lastCopy);
+            }
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
             if (!string.IsNullOrEmpty(resultMessage))
@@ -459,7 +703,7 @@ namespace KawaiiStudio
             GUILayout.Space(KawaiiStudioGUI.Space2);
             showLog = EditorGUILayout.Foldout(showLog, T("Details"), true);
             if (!showLog) return;
-            logScroll = EditorGUILayout.BeginScrollView(logScroll, GUILayout.Height(180f));
+            logScroll = EditorGUILayout.BeginScrollView(logScroll, GUILayout.Height(200f));
             EditorGUILayout.TextArea(log.ToString(), EditorStyles.wordWrappedMiniLabel);
             EditorGUILayout.EndScrollView();
         }
@@ -474,40 +718,66 @@ namespace KawaiiStudio
             if (!keepReport) { log.Length = 0; resultMessage = null; }
             if (prefab == null) return;
             var renderers = prefab.GetComponentsInChildren<Renderer>(true);
-            var seenTex = new HashSet<Texture>();
+            rendererCount = renderers.Length;
+            var seenTex = new Dictionary<Texture, TexItem>();
             var seenMesh = new HashSet<Mesh>();
+            var seenMat = new HashSet<Material>();
+            var clothMeshes = new HashSet<Mesh>();
+            foreach (var cloth in prefab.GetComponentsInChildren<Cloth>(true))
+            {
+                var smr = cloth.GetComponent<SkinnedMeshRenderer>();
+                if (smr != null && smr.sharedMesh != null) clothMeshes.Add(smr.sharedMesh);
+            }
             foreach (var r in renderers)
             {
                 foreach (var mat in r.sharedMaterials)
                 {
                     if (mat == null || mat.shader == null) continue;
+                    seenMat.Add(mat);
                     int pc = ShaderUtil.GetPropertyCount(mat.shader);
                     for (int i = 0; i < pc; i++)
                     {
                         if (ShaderUtil.GetPropertyType(mat.shader, i) != ShaderUtil.ShaderPropertyType.TexEnv) continue;
                         string prop = ShaderUtil.GetPropertyName(mat.shader, i);
                         var tex = mat.GetTexture(prop);
-                        if (tex == null || !seenTex.Add(tex)) continue;
-                        var item = ScanTexture(tex, prop);
-                        if (item != null) textures.Add(item);
+                        if (tex == null) continue;
+                        TexItem item;
+                        if (!seenTex.TryGetValue(tex, out item))
+                        {
+                            item = ScanTexture(tex);
+                            if (item == null) continue;
+                            seenTex[tex] = item;
+                            textures.Add(item);
+                        }
+                        item.Props.Add(prop);
                     }
                 }
                 Mesh mesh = null;
                 if (r is SkinnedMeshRenderer smr) mesh = smr.sharedMesh;
                 else { var mf = r.GetComponent<MeshFilter>(); if (mf != null) mesh = mf.sharedMesh; }
-                if (mesh != null && seenMesh.Add(mesh)) meshes.Add(ScanMesh(mesh));
+                if (mesh != null && seenMesh.Add(mesh))
+                {
+                    var mi = ScanMesh(mesh);
+                    if (mi.Why == null && clothMeshes.Contains(mesh)) mi.Why = "driven by a Cloth component: left as it is";
+                    meshes.Add(mi);
+                }
             }
+            materialCount = seenMat.Count;
+            foreach (var t in textures) ClassifyTexture(t);
             var seenClip = new HashSet<AudioClip>();
             foreach (var src in prefab.GetComponentsInChildren<AudioSource>(true))
                 if (src.clip != null && seenClip.Add(src.clip)) clips.Add(ScanClip(src.clip));
             FindUnusedShapes();
             scanned = true;
-            if (!keepReport) Log($"Scan: {textures.Count} texture(s), {meshes.Count} mesh(es), {clips.Count} sound(s)");
+            if (!keepReport) Log($"Scan: {rendererCount} renderer(s), {materialCount} material(s), {textures.Count} texture(s), {meshes.Count} mesh(es), {clips.Count} sound(s), {shapeSourceCount} animation source(s)");
         }
 
-        private static readonly string[] RampWords = { "ramp", "lut", "gradation", "gradient", "matcap" };
+        private static readonly string[] RampWords = { "ramp", "lut", "gradation", "gradient", "matcap", "toonmap", "shademap_ramp" };
+        private static readonly string[] MainWords = { "_maintex", "_basemap", "_basecolormap", "_albedo", "_diffuse", "_texture", "_color_map", "_colormap", "shademap", "_main2ndtex", "_main3rdtex", "_maintexture" };
+        private static readonly string[] NormalWords = { "bump", "normal", "_nrm", "_nml" };
+        private static readonly string[] EmissionWords = { "emis", "_glow" };
 
-        private TexItem ScanTexture(Texture tex, string prop)
+        private static TexItem ScanTexture(Texture tex)
         {
             string path = AssetDatabase.GetAssetPath(tex);
             var item = new TexItem { Tex = tex as Texture2D, Path = path, Width = tex.width, Height = tex.height };
@@ -525,12 +795,26 @@ namespace KawaiiStudio
                 item.Compressed = item.Importer.textureCompression != TextureImporterCompression.Uncompressed;
                 item.Crunched = item.Importer.crunchedCompression;
                 item.Alpha = item.Importer.DoesSourceTextureHaveAlpha() && item.Importer.alphaSource != TextureImporterAlphaSource.None;
-                string low = (tex.name + " " + prop).ToLowerInvariant();
                 bool thin = Mathf.Max(tex.width, tex.height) >= 8 * Mathf.Min(tex.width, tex.height) && Mathf.Min(tex.width, tex.height) <= 16;
-                if (item.Why == null && (RampWords.Any(low.Contains) || thin)) item.Why = "ramp or lookup texture: left as it is";
+                if (item.Why == null && thin) item.Why = "ramp or lookup texture: left as it is";
                 if (item.Why == null && item.Importer.textureType == TextureImporterType.Sprite) item.Why = "sprite: left as it is";
+                if (item.Why == null && item.Importer.textureType == TextureImporterType.Cookie) item.Why = "light cookie: left as it is";
             }
             return item;
+        }
+
+        /// <summary>The role a texture plays for its shaders, from every property it is bound to (main wins over normal over the rest).</summary>
+        private static void ClassifyTexture(TexItem t)
+        {
+            string name = (t.Tex != null ? t.Tex.name : t.Path ?? "").ToLowerInvariant();
+            var lows = t.Props.Select(p => p.ToLowerInvariant()).ToList();
+            if (t.Why == null && (RampWords.Any(name.Contains) || lows.Any(p => RampWords.Any(p.Contains))))
+                t.Why = "ramp, lookup or matcap texture: left as it is";
+            if (t.Importer != null && t.Importer.textureType == TextureImporterType.NormalMap) { t.Role = TexRole.Normal; return; }
+            bool main = lows.Any(p => MainWords.Any(p.Contains) && !NormalWords.Any(p.Contains) && !p.Contains("mask"));
+            bool normal = lows.Any(p => NormalWords.Any(p.Contains));
+            bool emission = lows.Any(p => EmissionWords.Any(p.Contains));
+            t.Role = main ? TexRole.Main : normal ? TexRole.Normal : emission ? TexRole.Emission : TexRole.Other;
         }
 
         private static bool SourceSize(TextureImporter imp, out int w, out int h)
@@ -560,6 +844,7 @@ namespace KawaiiStudio
                     if (mesh.GetTopology(s) != MeshTopology.Triangles) { item.Why = "not made of triangles (lines or points)"; continue; }
                     item.Tris += (int)(mesh.GetIndexCount(s) / 3);
                 }
+                if (!mesh.isReadable) item.Why = item.Why ?? "not readable (Read/Write is off in its import settings): left as it is";
                 if (string.IsNullOrEmpty(item.Path) || item.Path.StartsWith("Library/") || item.Path.StartsWith("Resources/")) item.Why = item.Why ?? "a built-in mesh: left as it is";
                 if (item.Why == null && item.Tris < 64) item.Why = "too few triangles to reduce";
                 if (item.Why == null)
@@ -638,57 +923,57 @@ namespace KawaiiStudio
         {
             var used = new HashSet<string>();
             var keepIndex = new Dictionary<Mesh, HashSet<int>>();
-            int controllers = 0;
-            var ctrls = new List<RuntimeAnimatorController>();
+            var ctrls = new HashSet<RuntimeAnimatorController>();
+            var directClips = new HashSet<AnimationClip>();
+            bool sdk2 = false;
+
             foreach (var anim in prefab.GetComponentsInChildren<Animator>(true))
                 if (anim.runtimeAnimatorController != null) ctrls.Add(anim.runtimeAnimatorController);
-            bool sdk2 = false;
+            foreach (var legacy in prefab.GetComponentsInChildren<Animation>(true))
+                foreach (AnimationState st in legacy) if (st != null && st.clip != null) directClips.Add(st.clip);
+
             foreach (var comp in prefab.GetComponentsInChildren<Component>(true))
             {
                 if (comp == null) continue;
                 string tn = comp.GetType().Name;
-                if (tn != "VRCAvatarDescriptor" && tn != "VRC_AvatarDescriptor") continue;
-                sdk2 |= tn == "VRC_AvatarDescriptor";
                 var so = new SerializedObject(comp);
-                foreach (string layers in new[] { "baseAnimationLayers", "specialAnimationLayers" })
+                if (tn == "VRCAvatarDescriptor" || tn == "VRC_AvatarDescriptor")
                 {
-                    var arr = so.FindProperty(layers);
-                    if (arr == null || !arr.isArray) continue;
-                    for (int i = 0; i < arr.arraySize; i++)
+                    sdk2 |= tn == "VRC_AvatarDescriptor";
+                    var vis = so.FindProperty("VisemeBlendShapes");
+                    if (vis != null && vis.isArray) for (int i = 0; i < vis.arraySize; i++) used.Add(vis.GetArrayElementAtIndex(i).stringValue);
+                    var mouth = so.FindProperty("MouthOpenBlendShapeName");
+                    if (mouth != null) used.Add(mouth.stringValue);
+                    var eyeMesh = so.FindProperty("customEyeLookSettings.eyelidsSkinnedMesh");
+                    var eyeIdx = so.FindProperty("customEyeLookSettings.eyelidsBlendshapes");
+                    if (eyeMesh != null && eyeMesh.objectReferenceValue is SkinnedMeshRenderer es && es.sharedMesh != null && eyeIdx != null && eyeIdx.isArray)
                     {
-                        var c = arr.GetArrayElementAtIndex(i).FindPropertyRelative("animatorController");
-                        if (c != null && c.objectReferenceValue is RuntimeAnimatorController rac) ctrls.Add(rac);
+                        var hs = new HashSet<int>();
+                        for (int i = 0; i < eyeIdx.arraySize; i++) hs.Add(eyeIdx.GetArrayElementAtIndex(i).intValue);
+                        keepIndex[es.sharedMesh] = hs;
                     }
                 }
-                var vis = so.FindProperty("VisemeBlendShapes");
-                if (vis != null && vis.isArray) for (int i = 0; i < vis.arraySize; i++) used.Add(vis.GetArrayElementAtIndex(i).stringValue);
-                var mouth = so.FindProperty("MouthOpenBlendShapeName");
-                if (mouth != null) used.Add(mouth.stringValue);
-                var eyeMesh = so.FindProperty("customEyeLookSettings.eyelidsSkinnedMesh");
-                var eyeIdx = so.FindProperty("customEyeLookSettings.eyelidsBlendshapes");
-                if (eyeMesh != null && eyeMesh.objectReferenceValue is SkinnedMeshRenderer es && es.sharedMesh != null && eyeIdx != null && eyeIdx.isArray)
-                {
-                    var hs = new HashSet<int>();
-                    for (int i = 0; i < eyeIdx.arraySize; i++) hs.Add(eyeIdx.GetArrayElementAtIndex(i).intValue);
-                    keepIndex[es.sharedMesh] = hs;
-                }
-                // SDK2 animations live in override controllers
-                var ov = so.FindProperty("CustomStandingAnims");
-                if (ov != null && ov.objectReferenceValue is RuntimeAnimatorController o1) ctrls.Add(o1);
-                var ov2 = so.FindProperty("CustomSittingAnims");
-                if (ov2 != null && ov2.objectReferenceValue is RuntimeAnimatorController o2) ctrls.Add(o2);
+                // every controller and clip referenced by ANY component: the descriptor's layers, Modular Avatar
+                // (Merge Animator), VRCFury, Gesture Manager, custom scripts… whatever animates this avatar at build time
+                CollectAnimationSources(so, ctrls, directClips);
             }
-            foreach (var rac in ctrls.Distinct())
+
+            int sources = 0;
+            foreach (var rac in ctrls)
             {
-                controllers++;
+                sources++;
                 foreach (var clip in rac.animationClips)
-                {
-                    if (clip == null) continue;
-                    foreach (var b in AnimationUtility.GetCurveBindings(clip))
-                        if (b.propertyName.StartsWith("blendShape.")) used.Add(b.propertyName.Substring("blendShape.".Length));
-                }
+                    if (clip != null) directClips.Add(clip);
             }
-            shapeSourcesFound = controllers > 0;
+            foreach (var clip in directClips)
+            {
+                sources++;
+                foreach (var b in AnimationUtility.GetCurveBindings(clip))
+                    if (b.propertyName.StartsWith("blendShape.")) used.Add(b.propertyName.Substring("blendShape.".Length));
+            }
+            shapeSourceCount = sources;
+            shapeSourcesFound = sources > 0;
+
             var weighted = new Dictionary<Mesh, HashSet<int>>();
             foreach (var smr in prefab.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
@@ -714,6 +999,22 @@ namespace KawaiiStudio
             }
         }
 
+        /// <summary>Every RuntimeAnimatorController / AnimationClip a component references, however deep (capped, so a huge component cannot stall the scan).</summary>
+        private static void CollectAnimationSources(SerializedObject so, HashSet<RuntimeAnimatorController> ctrls, HashSet<AnimationClip> clips)
+        {
+            var it = so.GetIterator();
+            int budget = 20000;
+            bool enter = true;
+            while (it.Next(enter) && budget-- > 0)
+            {
+                enter = it.propertyType == SerializedPropertyType.Generic || it.isArray;
+                if (it.propertyType != SerializedPropertyType.ObjectReference) continue;
+                var o = it.objectReferenceValue;
+                if (o is RuntimeAnimatorController rac) ctrls.Add(rac);
+                else if (o is AnimationClip clip) clips.Add(clip);
+            }
+        }
+
         private static bool IsMmd(string n)
         {
             foreach (char c in n)
@@ -722,26 +1023,30 @@ namespace KawaiiStudio
         }
 
         // ================================================================== plans + estimates
-        private int Effective(TexItem t) => t.Step >= 0 ? t.Step : texStep;
+        private int Effective(TexItem t) => texStep;
         private int Effective(MeshItem m) => m.Step >= 0 ? m.Step : meshStep;
         private int Effective(ClipItem c) => c.Step >= 0 ? c.Step : audioStep;
 
+        private static int CapFor(TexRole role, int step) => TexCaps[Mathf.Clamp(step, 0, 3), (int)role];
+
         private class TexPlanData { public int MaxSize; public bool Compress; public int Crunch; }
 
-        /// <summary>What a texture gets at this step, null = nothing to change.</summary>
-        private static TexPlanData TexturePlan(TexItem t, int step)
+        /// <summary>What a texture gets at this step (or at an explicit per-item cap), null = nothing to change.</summary>
+        private static TexPlanData TexturePlan(TexItem t, int step, int overrideStep)
         {
             if (t.Why != null || t.Importer == null) return null;
-            float scale = TextureScales[Mathf.Clamp(step, 0, TextureScales.Length - 1)];
+            step = Mathf.Clamp(step, 0, 3);
+            int cap = overrideStep >= 0 ? TexOverrideCaps[Mathf.Clamp(overrideStep, 0, TexOverrideCaps.Length - 1)] : CapFor(t.Role, step);
             int max = t.CurMax;
-            if (scale < 1f && t.SrcMax > TextureFloor)
+            if (cap < t.CurMax && t.SrcMax > TextureFloor)
             {
-                int target = Mathf.Max(TextureFloor, Mathf.RoundToInt(t.SrcMax * scale));
+                // a power of two at or under the cap, derived from the SOURCE size: never halved twice, never under the floor
                 int pot = 32;
-                while (pot * 2 <= target) pot *= 2;
-                max = Mathf.Min(t.CurMax, pot);
+                while (pot * 2 <= Mathf.Min(cap, t.SrcMax)) pot *= 2;
+                max = Mathf.Max(TextureFloor, Mathf.Min(t.CurMax, pot));
             }
-            int crunch = step <= 0 ? 0 : step == 1 ? 75 : 50;
+            int crunch = t.Role == TexRole.Normal ? CrunchQualityNormal[step] : CrunchQuality[step];
+            if (overrideStep == 0) crunch = 0;                                   // "Keep": size and crunch untouched
             var p = new TexPlanData { MaxSize = max, Compress = !t.Compressed, Crunch = t.Crunched ? 0 : crunch };
             if (p.MaxSize >= t.CurMax && !p.Compress && p.Crunch == 0) return null;
             return p;
@@ -752,7 +1057,7 @@ namespace KawaiiStudio
             switch (f)
             {
                 case TextureFormat.DXT1: case TextureFormat.DXT1Crunched: case TextureFormat.BC4: case TextureFormat.ETC_RGB4: case TextureFormat.ETC2_RGB: return 0.5f;
-                case TextureFormat.DXT5: case TextureFormat.DXT5Crunched: case TextureFormat.BC5: case TextureFormat.BC7: case TextureFormat.BC6H: case TextureFormat.ETC2_RGBA8: return 1f;
+                case TextureFormat.DXT5: case TextureFormat.DXT5Crunched: case TextureFormat.BC5: case TextureFormat.BC7: case TextureFormat.BC6H: case TextureFormat.ETC2_RGBA8: case TextureFormat.ETC2_RGBA8Crunched: return 1f;
                 case TextureFormat.Alpha8: case TextureFormat.R8: return 1f;
                 case TextureFormat.RGB24: return 3f;
                 case TextureFormat.RGBAHalf: return 8f;
@@ -767,12 +1072,22 @@ namespace KawaiiStudio
             float bpp = t.Tex != null ? BytesPerPixel(t.Tex.format) : 4f;
             float mip = t.Mips ? 4f / 3f : 1f;
             long now = (long)(t.Width * (long)t.Height * bpp * mip);
-            var p = TexturePlan(t, Effective(t));
+            var p = TexturePlan(t, Effective(t), t.Step);
             if (p == null) return new KeyValuePair<long, long>(now, now);
             float s = Mathf.Min(1f, (float)p.MaxSize / Mathf.Max(1, t.CurMax));
             float bppAfter = p.Compress ? (t.Alpha ? 1f : 0.5f) : bpp;
             long after = (long)(t.Width * s * t.Height * s * bppAfter * mip);
             return new KeyValuePair<long, long>(now, Math.Min(now, after));
+        }
+
+        /// <summary>(download now, download after): what the texture weighs in the bundle — crunch roughly halves a compressed texture.</summary>
+        private KeyValuePair<long, long> EstimateDisk(TexItem t)
+        {
+            var v = EstimateTexture(t);
+            var p = TexturePlan(t, Effective(t), t.Step);
+            float nowF = t.Crunched ? 0.45f : 1f;
+            float afterF = t.Crunched || (p != null && p.Crunch > 0) ? 0.45f : 1f;
+            return new KeyValuePair<long, long>((long)(v.Key * nowF), (long)(v.Value * afterF));
         }
 
         private class ClipPlanData { public bool Mono; public int Rate; public float Quality; }
@@ -812,12 +1127,53 @@ namespace KawaiiStudio
             return new KeyValuePair<long, long>(now, Math.Min(now, after));
         }
 
+        // Exact triangle counts per mesh and step: the simplifier is run for real (positions only, no mesh
+        // built), once per (mesh, step), so the numbers on screen are the numbers OPTIMIZE will produce. A
+        // guess from the interior-vertex count used to promise 25 % off where the tight ceiling gives 2 %.
+        private readonly Dictionary<Mesh, int[]> exactTris = new Dictionary<Mesh, int[]>();
+
         private int EstimateTriangles(MeshItem m)
         {
-            float keep = MeshKeeps[Mathf.Clamp(Effective(m), 0, MeshKeeps.Length - 1)];
-            if (m.Why != null || keep >= 0.999f) return m.Tris;
-            int canRemove = (int)(m.Interior * 0.85f);
-            return Mathf.Max((int)(m.Tris * keep), m.Tris - 2 * canRemove);
+            int step = Mathf.Clamp(Effective(m), 0, MeshKeeps.Length - 1);
+            if (m.Why != null || m.Mesh == null || step == 0) return m.Tris;
+            int[] cache;
+            if (!exactTris.TryGetValue(m.Mesh, out cache)) exactTris[m.Mesh] = cache = new[] { -1, -1, -1, -1 };
+            if (cache[step] < 0)
+            {
+                try { cache[step] = SimplifyCount(m.Mesh, MeshKeeps[step], MeshMaxError[step]); }
+                catch { cache[step] = m.Tris; }
+            }
+            return cache[step];
+        }
+
+        /// <summary>How many triangles the reduction leaves at this step — the real run, without building the mesh.</summary>
+        private static int SimplifyCount(Mesh src, float keep, double maxError)
+        {
+            int n = src.vertexCount;
+            var pos = src.vertices;
+            var subs = new List<int[]>();
+            for (int s = 0; s < src.subMeshCount; s++) subs.Add(src.GetTriangles(s));
+            int before = subs.Sum(x => x.Length / 3);
+            float[] P = new float[n * 3];
+            for (int i = 0; i < n; i++) { P[i * 3] = pos[i].x; P[i * 3 + 1] = pos[i].y; P[i * 3 + 2] = pos[i].z; }
+            float[] W = null; int[] B = null;
+            var bpv = src.GetBonesPerVertex();
+            var all = src.GetAllBoneWeights();
+            if (bpv.Length == n && all.Length > 0)
+            {
+                W = new float[n * 4]; B = new int[n * 4];
+                int at = 0;
+                for (int i = 0; i < n; i++)
+                {
+                    int c = bpv[i];
+                    for (int k = 0; k < c; k++)
+                        if (k < 4) { W[i * 4 + k] = all[at + k].weight; B[i * 4 + k] = all[at + k].boneIndex; }
+                    at += c;
+                }
+            }
+            var r = KSMeshSimplify.Run(new KSMeshSimplify.Input { Positions = P, SubMeshes = subs, Locked = LockedVertices(src), Weights = W, Bones = B, MaxError = maxError },
+                Mathf.RoundToInt(before * keep));
+            return r.SubMeshes.Sum(x => x.Length / 3);
         }
 
         // ================================================================== optimize
@@ -830,9 +1186,10 @@ namespace KawaiiStudio
             if (prefab == null) return;
             log.Length = 0;
             resultMessage = null;
+            lastCopy = null;
             KawaiiStudioPaths.EnsureFolder(OutFolder());
             var backup = LoadBackup();
-            int texDone = 0, clipDone = 0, meshDone = 0;
+            int texDone = 0, clipDone = 0, meshDone = 0, shapesDone = 0, verifyFailed = 0;
             long trisBefore = meshes.Sum(m => (long)m.Tris), trisAfter = 0;
             var replaced = new Dictionary<Mesh, Mesh>();
             try
@@ -845,13 +1202,13 @@ namespace KawaiiStudio
                     {
                         var t = textures[i];
                         EditorUtility.DisplayProgressBar("Prefab Optimizer", t.Tex != null ? t.Tex.name : t.Path, 0.3f * i / Mathf.Max(1, textures.Count));
-                        var p = TexturePlan(t, Effective(t));
+                        var p = TexturePlan(t, Effective(t), t.Step);
                         if (p == null) continue;
                         Backup(backup, t.Path, t.Importer, null);
                         if (p.MaxSize < t.CurMax)
                         {
                             t.Importer.maxTextureSize = p.MaxSize;
-                            foreach (string plat in new[] { "Standalone", "Android" })
+                            foreach (string plat in new[] { "Standalone", "Android", "iPhone" })
                             {
                                 var ps = t.Importer.GetPlatformTextureSettings(plat);
                                 if (ps.overridden && ps.maxTextureSize > p.MaxSize) { ps.maxTextureSize = p.MaxSize; t.Importer.SetPlatformTextureSettings(ps); }
@@ -865,8 +1222,8 @@ namespace KawaiiStudio
                         var parts = new List<string>();
                         if (p.MaxSize < t.CurMax) parts.Add($"{t.CurMax} → {p.MaxSize} px");
                         if (p.Compress) parts.Add("compressed");
-                        if (p.Crunch > 0) parts.Add($"crunch {p.Crunch} (smaller download)");
-                        Log($"✓ {t.Tex.name}: {string.Join(", ", parts)}");
+                        if (p.Crunch > 0) parts.Add($"crunch {p.Crunch}");
+                        Log($"✓ {t.Tex.name} [{RoleLabel(t)}]: {string.Join(", ", parts)}");
                     }
                     // audio: import settings
                     for (int i = 0; i < clips.Count; i++)
@@ -892,25 +1249,37 @@ namespace KawaiiStudio
                 finally { AssetDatabase.StopAssetEditing(); }
                 SaveBackup(backup);
 
-                // meshes: new, lighter copies
+                // meshes: new, lighter copies — each one verified against its source before it is used
                 for (int i = 0; i < meshes.Count; i++)
                 {
                     var m = meshes[i];
                     EditorUtility.DisplayProgressBar("Prefab Optimizer", m.Mesh != null ? m.Mesh.name : m.Path, 0.4f + 0.5f * i / Mathf.Max(1, meshes.Count));
-                    float keep = MeshKeeps[Mathf.Clamp(Effective(m), 0, MeshKeeps.Length - 1)];
-                    var drop = removeShapes ? new HashSet<string>(m.Unused) : new HashSet<string>();
+                    int step = Mathf.Clamp(Effective(m), 0, MeshKeeps.Length - 1);
+                    float keep = MeshKeeps[step];
+                    var drop = removeShapes && m.Why == null ? new HashSet<string>(m.Unused) : new HashSet<string>();
                     if (m.Mesh == null || m.Why != null || (keep >= 0.999f && drop.Count == 0)) { trisAfter += m.Tris; continue; }
                     try
                     {
                         int after;
-                        var nm = BuildMesh(m.Mesh, keep, drop, out after);
+                        List<int> keepIdx;
+                        var nm = BuildMesh(m.Mesh, keep, MeshMaxError[step], drop, out after, out keepIdx);
                         if (nm == null) { trisAfter += m.Tris; Log($"○ {m.Mesh.name}: nothing to remove without changing its shape"); continue; }
+                        string problem = VerifyMesh(m.Mesh, nm, keepIdx, drop);
+                        if (problem != null)
+                        {
+                            verifyFailed++;
+                            trisAfter += m.Tris;
+                            Log($"✗ {m.Mesh.name}: verification failed ({problem}) — left as it was");
+                            DestroyImmediate(nm);
+                            continue;
+                        }
                         string path = AssetDatabase.GenerateUniqueAssetPath(OutFolder() + "/" + Safe(m.Mesh.name) + ".asset");
                         AssetDatabase.CreateAsset(nm, path);
                         replaced[m.Mesh] = nm;
                         trisAfter += after;
                         meshDone++;
-                        Log($"✓ {m.Mesh.name}: triangles {m.Tris:N0} → {after:N0}{(drop.Count > 0 ? $", {drop.Count} unused blendshape(s) removed" : "")} → {path}");
+                        shapesDone += drop.Count;
+                        Log($"✓ {m.Mesh.name}: triangles {m.Tris:N0} → {after:N0}, vertices {m.Mesh.vertexCount:N0} → {nm.vertexCount:N0}{(drop.Count > 0 ? $", {drop.Count} unused blendshape(s) removed" : "")}, verified → {path}");
                     }
                     catch (Exception e) { trisAfter += m.Tris; Log($"✗ {m.Mesh.name}: {e.Message} — left as it was"); }
                 }
@@ -922,15 +1291,16 @@ namespace KawaiiStudio
                     copyName = MakeOptimizedCopy(replaced);
                 }
                 AssetDatabase.SaveAssets();
-                resultMessage = TF("Done: {0} texture(s), {1} sound(s), {2} mesh(es) made lighter. Triangles {3} → {4}.", texDone, clipDone, meshDone, trisBefore.ToString("N0"), trisAfter.ToString("N0"))
-                                + (copyName != null ? "\n" + TF("Use \"{0}\" for your upload: it has the lighter meshes.", copyName) : "");
+                resultMessage = TF("Done: {0} texture(s), {1} sound(s), {2} mesh(es) made lighter, {3} unused blendshape(s) removed. Triangles {4} → {5}.", texDone, clipDone, meshDone, shapesDone, trisBefore.ToString("N0"), trisAfter.ToString("N0"))
+                                + (copyName != null ? "\n" + TF("Use \"{0}\" for your upload: it has the lighter meshes.", copyName) : "")
+                                + (verifyFailed > 0 ? "\n" + TF("{0} mesh(es) failed verification and were left untouched (see Details).", verifyFailed) : "");
                 Log(resultMessage);
             }
             catch (Exception e)
             {
                 resultMessage = null;
                 Log("✗ " + e);
-                EditorUtility.DisplayDialog("Prefab Optimizer", e.Message, "OK");
+                if (!Application.isBatchMode) EditorUtility.DisplayDialog("Prefab Optimizer", e.Message, "OK");
             }
             finally { EditorUtility.ClearProgressBar(); }
             showLog = true;
@@ -942,7 +1312,7 @@ namespace KawaiiStudio
         /// exact data — positions, normals, tangents, colours, every UV channel, bone weights, bind poses — new triangles,
         /// and the blendshapes still used. Null when nothing would change.
         /// </summary>
-        private static Mesh BuildMesh(Mesh src, float keep, HashSet<string> dropShapes, out int trisAfter)
+        private static Mesh BuildMesh(Mesh src, float keep, double maxError, HashSet<string> dropShapes, out int trisAfter, out List<int> keepIdx)
         {
             int n = src.vertexCount;
             var pos = src.vertices;
@@ -973,7 +1343,6 @@ namespace KawaiiStudio
             var used = new bool[n];
             if (keep < 0.999f)
             {
-                float maxError = keep >= 0.74f ? 0.005f : keep >= 0.49f ? 0.01f : 0.02f;
                 var r = KSMeshSimplify.Run(new KSMeshSimplify.Input { Positions = P, SubMeshes = subs, Locked = locked, Weights = W, Bones = B, MaxError = maxError },
                     Mathf.RoundToInt(before * keep));
                 outSubs = r.SubMeshes;
@@ -981,28 +1350,30 @@ namespace KawaiiStudio
             }
             else foreach (var sm in subs) foreach (int i in sm) used[i] = true;
             trisAfter = outSubs.Sum(x => x.Length / 3);
+            keepIdx = null;
             if (trisAfter >= before && dropShapes.Count == 0) return null;
 
             var map = new int[n];
             int nn = 0;
             for (int i = 0; i < n; i++) map[i] = used[i] || locked[i] ? nn++ : -1;
-            var keepIdx = new List<int>(nn);
+            keepIdx = new List<int>(nn);
             for (int i = 0; i < n; i++) if (map[i] >= 0) keepIdx.Add(i);
 
             var m = new Mesh { name = src.name, indexFormat = nn > 65535 ? IndexFormat.UInt32 : src.indexFormat };
-            m.SetVertices(keepIdx.Select(i => pos[i]).ToList());
-            if (src.HasVertexAttribute(VertexAttribute.Normal)) { var a = src.normals; m.SetNormals(keepIdx.Select(i => a[i]).ToList()); }
-            if (src.HasVertexAttribute(VertexAttribute.Tangent)) { var a = src.tangents; m.SetTangents(keepIdx.Select(i => a[i]).ToList()); }
-            if (src.HasVertexAttribute(VertexAttribute.Color)) { var a = new List<Color>(); src.GetColors(a); m.SetColors(keepIdx.Select(i => a[i]).ToList()); }
+            var kept = keepIdx;
+            m.SetVertices(kept.Select(i => pos[i]).ToList());
+            if (src.HasVertexAttribute(VertexAttribute.Normal)) { var a = src.normals; m.SetNormals(kept.Select(i => a[i]).ToList()); }
+            if (src.HasVertexAttribute(VertexAttribute.Tangent)) { var a = src.tangents; m.SetTangents(kept.Select(i => a[i]).ToList()); }
+            if (src.HasVertexAttribute(VertexAttribute.Color)) { var a = new List<Color>(); src.GetColors(a); m.SetColors(kept.Select(i => a[i]).ToList()); }
             for (int ch = 0; ch < 8; ch++)
             {
                 var attr = (VertexAttribute)((int)VertexAttribute.TexCoord0 + ch);
                 if (!src.HasVertexAttribute(attr)) continue;
                 int dim = src.GetVertexAttributeDimension(attr);
                 var uv = new List<Vector4>(); src.GetUVs(ch, uv);
-                if (dim <= 2) m.SetUVs(ch, keepIdx.Select(i => (Vector2)uv[i]).ToList());
-                else if (dim == 3) m.SetUVs(ch, keepIdx.Select(i => (Vector3)uv[i]).ToList());
-                else m.SetUVs(ch, keepIdx.Select(i => uv[i]).ToList());
+                if (dim <= 2) m.SetUVs(ch, kept.Select(i => (Vector2)uv[i]).ToList());
+                else if (dim == 3) m.SetUVs(ch, kept.Select(i => (Vector3)uv[i]).ToList());
+                else m.SetUVs(ch, kept.Select(i => uv[i]).ToList());
             }
             m.bindposes = src.bindposes;
             if (bpv.Length == n && all.Length > 0)
@@ -1012,7 +1383,7 @@ namespace KawaiiStudio
                 var nb = new NativeArray<byte>(nn, Allocator.Temp);
                 var nw = new List<BoneWeight1>();
                 int j = 0;
-                foreach (int i in keepIdx)
+                foreach (int i in kept)
                 {
                     nb[j++] = bpv[i];
                     for (int k = offsets[i]; k < offsets[i + 1]; k++) nw.Add(all[k]);
@@ -1033,11 +1404,67 @@ namespace KawaiiStudio
                 {
                     src.GetBlendShapeFrameVertices(s, f, dv, dn, dt);
                     m.AddBlendShapeFrame(name, src.GetBlendShapeFrameWeight(s, f),
-                        keepIdx.Select(i => dv[i]).ToArray(), keepIdx.Select(i => dn[i]).ToArray(), keepIdx.Select(i => dt[i]).ToArray());
+                        kept.Select(i => dv[i]).ToArray(), kept.Select(i => dn[i]).ToArray(), kept.Select(i => dt[i]).ToArray());
                 }
             }
-            m.RecalculateBounds();
+            m.bounds = src.bounds;
             return m;
+        }
+
+        /// <summary>
+        /// The safety net: a reduced mesh is only used when every kept vertex is byte-identical to its source (position,
+        /// normal, UV0, bone weights), every triangle points at kept vertices, every sub-mesh is still there, every kept
+        /// blendshape has the same frames with the same deltas, and the bind poses are the same. Null = all good.
+        /// </summary>
+        private static string VerifyMesh(Mesh src, Mesh nm, List<int> keepIdx, HashSet<string> dropped)
+        {
+            if (keepIdx == null || nm.vertexCount != keepIdx.Count) return "vertex count";
+            if (nm.subMeshCount != src.subMeshCount) return "sub-mesh count";
+            var sp = src.vertices; var np = nm.vertices;
+            for (int j = 0; j < keepIdx.Count; j++) if (sp[keepIdx[j]] != np[j]) return "vertex position";
+            if (src.HasVertexAttribute(VertexAttribute.Normal))
+            {
+                var sn = src.normals; var nn = nm.normals;
+                if (nn.Length != keepIdx.Count) return "normals";
+                for (int j = 0; j < keepIdx.Count; j++) if (sn[keepIdx[j]] != nn[j]) return "normal";
+            }
+            if (src.HasVertexAttribute(VertexAttribute.TexCoord0))
+            {
+                var su = new List<Vector4>(); src.GetUVs(0, su);
+                var nu = new List<Vector4>(); nm.GetUVs(0, nu);
+                if (nu.Count != keepIdx.Count) return "uv count";
+                for (int j = 0; j < keepIdx.Count; j++) if (su[keepIdx[j]] != nu[j]) return "uv";
+            }
+            var sb = src.GetBonesPerVertex(); var nb = nm.GetBonesPerVertex();
+            if (sb.Length == src.vertexCount && nb.Length != keepIdx.Count) return "bone weights";
+            if (sb.Length == src.vertexCount)
+                for (int j = 0; j < keepIdx.Count; j++) if (sb[keepIdx[j]] != nb[j]) return "bones per vertex";
+            if (src.bindposes.Length != nm.bindposes.Length) return "bind poses";
+            for (int s = 0; s < nm.subMeshCount; s++)
+            {
+                var tri = nm.GetTriangles(s);
+                foreach (int t in tri) if (t < 0 || t >= nm.vertexCount) return "triangle index";
+            }
+            int expectShapes = 0;
+            for (int s = 0; s < src.blendShapeCount; s++) if (!dropped.Contains(src.GetBlendShapeName(s))) expectShapes++;
+            if (nm.blendShapeCount != expectShapes) return "blendshape count";
+            var dv = new Vector3[src.vertexCount]; var dn = new Vector3[src.vertexCount]; var dt = new Vector3[src.vertexCount];
+            var ev = new Vector3[nm.vertexCount]; var en = new Vector3[nm.vertexCount]; var et = new Vector3[nm.vertexCount];
+            for (int s = 0; s < src.blendShapeCount; s++)
+            {
+                string name = src.GetBlendShapeName(s);
+                if (dropped.Contains(name)) continue;
+                int ni = nm.GetBlendShapeIndex(name);
+                if (ni < 0) return "blendshape " + name;
+                if (nm.GetBlendShapeFrameCount(ni) != src.GetBlendShapeFrameCount(s)) return "blendshape frames " + name;
+                for (int f = 0; f < src.GetBlendShapeFrameCount(s); f++)
+                {
+                    src.GetBlendShapeFrameVertices(s, f, dv, dn, dt);
+                    nm.GetBlendShapeFrameVertices(ni, f, ev, en, et);
+                    for (int j = 0; j < keepIdx.Count; j++) if (dv[keepIdx[j]] != ev[j]) return "blendshape delta " + name;
+                }
+            }
+            return null;
         }
 
         /// <summary>A copy of the avatar using the lighter meshes (blendshape weights and eyelid indices follow by name).
@@ -1085,11 +1512,13 @@ namespace KawaiiStudio
                 string path = AssetDatabase.GenerateUniqueAssetPath(dir + "/" + Safe(copy.name) + ".prefab");
                 var saved = PrefabUtility.SaveAsPrefabAsset(copy, path);
                 DestroyImmediate(copy);
+                lastCopy = saved;
                 Selection.activeObject = saved;
                 EditorGUIUtility.PingObject(saved);
                 return Path.GetFileNameWithoutExtension(path);
             }
             Undo.RegisterCreatedObjectUndo(copy, "Optimized copy");
+            lastCopy = copy;
             Selection.activeObject = copy;
             return copy.name;
         }
@@ -1112,18 +1541,6 @@ namespace KawaiiStudio
                     e.intValue = newMesh.GetBlendShapeIndex(oldMesh.GetBlendShapeName(o));
                 }
                 so.ApplyModifiedPropertiesWithoutUndo();
-            }
-        }
-
-        private static void EnsureFolder(string folder)
-        {
-            string[] parts = folder.Split('/');
-            string cur = parts[0];
-            for (int i = 1; i < parts.Length; i++)
-            {
-                string next = cur + "/" + parts[i];
-                if (!AssetDatabase.IsValidFolder(next)) AssetDatabase.CreateFolder(cur, parts[i]);
-                cur = next;
             }
         }
 
@@ -1151,7 +1568,7 @@ namespace KawaiiStudio
             {
                 e.kind = "texture";
                 e.maxSize = ti.maxTextureSize; e.compression = (int)ti.textureCompression; e.crunch = ti.crunchedCompression; e.crunchQuality = ti.compressionQuality;
-                foreach (string plat in new[] { "Standalone", "Android" })
+                foreach (string plat in new[] { "Standalone", "Android", "iPhone" })
                 {
                     var ps = ti.GetPlatformTextureSettings(plat);
                     if (ps.overridden) { e.platforms.Add(plat); e.platformMax.Add(ps.maxTextureSize); }
@@ -1195,6 +1612,51 @@ namespace KawaiiStudio
             AssetDatabase.DeleteAsset(BackupPath());
             resultMessage = TF("{0} texture / sound setting(s) restored.", n);
             Scan(keepReport: true);
+        }
+
+        // ================================================================== headless
+        /// <summary>
+        /// Unity.exe -batchmode -executeMethod KawaiiStudio.PrefabOptimizer.CommandLineOptimize, with KS_PREFAB (asset path)
+        /// and KS_PRESET (Light / Balanced / Maximum) in the environment. Scans, optimizes, writes optimizer-report.txt next
+        /// to the project: the plan per texture (role, size before → after), the log, and the result.
+        /// </summary>
+        public static void CommandLineOptimize()
+        {
+            string path = Environment.GetEnvironmentVariable("KS_PREFAB");
+            string presetName = Environment.GetEnvironmentVariable("KS_PRESET") ?? "Balanced";
+            var lines = new List<string>();
+            var w = CreateInstance<PrefabOptimizer>();
+            try
+            {
+                w.prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                if (w.prefab == null) throw new Exception("prefab not found: " + path);
+                w.Scan();
+                Preset preset;
+                if (!Enum.TryParse(presetName, true, out preset)) preset = Preset.Balanced;
+                w.ApplyPreset(preset);
+                var totals = w.ComputeTotals();
+                var reasons = new List<string>();
+                lines.Add($"prefab {path} preset {preset}: {w.textures.Count} textures, {w.meshes.Count} meshes, {w.clips.Count} sounds, {w.shapeSourceCount} animation sources");
+                lines.Add($"impact {w.ComputeImpact(reasons)}: {string.Join(" | ", reasons)}");
+                lines.Add($"estimate: vram {Size(totals.VramBefore)} -> {Size(totals.VramAfter)}, disk {Size(totals.DiskBefore)} -> {Size(totals.DiskAfter)}, tris {totals.TrisBefore:N0} -> {totals.TrisAfter:N0}, audio {Size(totals.AudioBefore)} -> {Size(totals.AudioAfter)}, shapes removed {totals.ShapesRemoved}");
+                foreach (var t in w.textures.OrderByDescending(x => x.CurMax))
+                {
+                    var p = TexturePlan(t, w.Effective(t), t.Step);
+                    lines.Add($"tex {t.Tex?.name} role={t.Role} props={string.Join(",", t.Props)} {t.Width}x{t.Height} src={t.SrcMax} -> {(p == null ? "unchanged" : $"max {p.MaxSize}{(p.Compress ? " compress" : "")}{(p.Crunch > 0 ? " crunch " + p.Crunch : "")}")}{(t.Why != null ? " [" + t.Why + "]" : "")}");
+                }
+                foreach (var m in w.meshes)
+                    lines.Add($"mesh {m.Mesh?.name} tris={m.Tris} verts={m.Verts} locked={m.Locked} interior={m.Interior} shapes={m.ShapeCount} unused={m.Unused.Count} -> {w.EstimateTriangles(m)}{(m.Why != null ? " [" + m.Why + "]" : "")}");
+                w.Optimize();
+                lines.Add("---- log");
+                lines.Add(w.log.ToString());
+                lines.Add("result: " + (w.resultMessage ?? "FAILED"));
+            }
+            catch (Exception e)
+            {
+                lines.Add("EXCEPTION " + e);
+            }
+            File.WriteAllText(Path.Combine(Directory.GetParent(Application.dataPath).FullName, "optimizer-report.txt"), string.Join("\n", lines));
+            DestroyImmediate(w);
         }
     }
 }

@@ -120,6 +120,11 @@ namespace KawaiiStudio
         
         // Paramètres atlas
         private Vector2Int limitAtlasSize = new Vector2Int(4096, 4096);
+        // The most atlases a conversion may produce: the frames are scaled down to fit. 8 x 4096² is the sane
+        // budget for an avatar; KSVideoDecoder tops out at 64 (MAX_ATLAS_COUNT), a custom material has no limit but
+        // swaps one material per atlas.
+        private int maxAtlases = 8;
+        private bool headless;   // CommandLineConvert: no dialogs, no delayCall, synchronous frame loop
         private Vector2Int atlasSize;
         private Vector2Int slices;
         private Vector2Int actualFrameSize;
@@ -303,17 +308,51 @@ namespace KawaiiStudio
                 string path = AssetDatabase.GUIDToAssetPath(guid);
                 if (!string.IsNullOrEmpty(path) && Directory.Exists(path)) candidates.Add(Path.GetFullPath(path));
             }
+            string firstWithExe = null;
             foreach (string dir in candidates)
             {
                 if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) continue;
                 if (File.Exists(Path.Combine(dir, "ffmpeg.exe")) || File.Exists(Path.Combine(dir, "ffmpeg")) ||
                     File.Exists(Path.Combine(dir, "bin", "ffmpeg.exe")) || File.Exists(Path.Combine(dir, "bin", "ffmpeg")))
                 {
-                    ffmpegPath = dir;
-                    return;
+                    if (firstWithExe == null) firstWithExe = dir;
+                    // the executable must actually answer: a copy without its DLLs (avcodec, avformat...) starts and
+                    // exits silently, and every probe then reads "w=0, h=0" -- seen with a stray Assets/ThirdParty/FFMPEG
+                    if (FfmpegAnswers(dir))
+                    {
+                        ffmpegPath = dir;
+                        return;
+                    }
                 }
             }
-            ffmpegPath = workspace ?? legacy;
+            ffmpegPath = firstWithExe ?? workspace ?? legacy;
+            if (firstWithExe != null)
+                AddLog($"⚠️ FFMPEG in {firstWithExe} does not run (missing DLLs next to ffmpeg.exe?). Put the full FFMPEG build in {workspace}.");
+        }
+
+        /// <summary>True when "ffprobe -version" (or ffmpeg's) prints something within 3 s.</summary>
+        private static bool FfmpegAnswers(string dir)
+        {
+            foreach (string exe in new[] { "ffprobe.exe", "ffprobe", "ffmpeg.exe", "ffmpeg" })
+            {
+                foreach (string p in new[] { Path.Combine(dir, exe), Path.Combine(dir, "bin", exe) })
+                {
+                    if (!File.Exists(p)) continue;
+                    try
+                    {
+                        var psi = new ProcessStartInfo(p, "-version") { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+                        using (var proc = Process.Start(psi))
+                        {
+                            if (proc == null) return false;
+                            string head = proc.StandardOutput.ReadLine();
+                            if (!proc.WaitForExit(3000)) { try { proc.Kill(); } catch { } }
+                            return !string.IsNullOrEmpty(head) && head.IndexOf("version", StringComparison.OrdinalIgnoreCase) >= 0;
+                        }
+                    }
+                    catch { return false; }
+                }
+            }
+            return false;
         }
         
         // MODIFIÉ : Nouveau chemin par défaut avec création automatique du dossier
@@ -573,6 +612,9 @@ namespace KawaiiStudio
                 limitAtlasSize = EditorGUILayout.Vector2IntField("Limit Atlas size", limitAtlasSize);
                 limitAtlasSize.x = Mathf.Clamp(limitAtlasSize.x, 512, MAX_TEXTURE_SIZE);
                 limitAtlasSize.y = Mathf.Clamp(limitAtlasSize.y, 512, MAX_TEXTURE_SIZE);
+                EditorGUI.BeginDisabledGroup(useSingleAtlas);
+                maxAtlases = EditorGUILayout.IntSlider(new GUIContent("Max atlases", "Frames are scaled down so the whole video fits in this many atlases. 8 is a sane avatar budget; the KSVideoDecoder shader supports up to 64."), maxAtlases, 1, MAX_ATLAS_COUNT);
+                EditorGUI.EndDisabledGroup();
                 EditorGUI.EndDisabledGroup();
                 
                 EditorGUI.indentLevel--;
@@ -595,6 +637,8 @@ namespace KawaiiStudio
                 EditorGUILayout.LabelField($"Columns|Rows = {slices.x}x{slices.y}", statsStyle);
                 EditorGUILayout.LabelField($"Result frame size = {actualFrameSize.x}x{actualFrameSize.y}", statsStyle);
                 EditorGUILayout.LabelField($"Atlas size = {atlasSize.x}x{atlasSize.y}x{atlasCount}", statsStyle);
+                if (actualFrameSize.x < targetFrameSize.x || actualFrameSize.y < targetFrameSize.y)
+                    EditorGUILayout.HelpBox($"Frames scaled from {targetFrameSize.x}x{targetFrameSize.y} to {actualFrameSize.x}x{actualFrameSize.y} so the {totalFrames} frames fit in {atlasCount} atlas(es) of {limitAtlasSize.x}x{limitAtlasSize.y}. Raise \"Max atlases\" or the atlas size limit for sharper frames, shorten the clip or lower the frame rate for fewer of them.", MessageType.Info);
             }
             
             long vram = (long)atlasSize.x * atlasSize.y * atlasCount / 2;
@@ -734,7 +778,7 @@ namespace KawaiiStudio
                 AutoPickCustomMaterial();
 
                 // MODIFIÉ : Créer le chemin dans Assets/Kawaii Studio/Videos/NomVideo
-                string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
+                string videoName = OutputName();
                 outputDirectory = DEFAULT_OUTPUT_PATH + "/" + videoName;
 
                 AddLog($"✓ Video: {videoInfo.Width}x{videoInfo.Height}");
@@ -753,6 +797,23 @@ namespace KawaiiStudio
             }
         }
         
+        /// <summary>
+        /// The base name of everything the conversion writes: the video's file name, cut down only when the full
+        /// path of "<output>/<name>/<name> Atlas 00.png" would pass Windows' 260-character limit (File.WriteAllBytes
+        /// then fails with "could not find a part of the path"). A name that fits is never changed, so a conversion
+        /// re-run over an existing folder keeps its files and their GUIDs.
+        /// </summary>
+        private string OutputName()
+        {
+            string name = KawaiiStudioPaths.SafeName(Path.GetFileNameWithoutExtension(inputVideoPath ?? ""));
+            string root = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+            string parent = outputDirectory != null && outputDirectory.StartsWith("Assets/") && !outputDirectory.EndsWith("/" + name, StringComparison.Ordinal)
+                ? outputDirectory : DEFAULT_OUTPUT_PATH;
+            while (name.Length > 16 && Path.Combine(root, parent, name, name + " Atlas 00.png").Length > 250)
+                name = name.Substring(0, name.Length - 8).TrimEnd();
+            return name;
+        }
+
         /// <summary>
         /// When no custom material is chosen, use the workspace's "Video Screen Overlay" (KSScreenShader)
         /// and switch "Use custom material" on: the video then plays on that screen material, which the
@@ -1154,6 +1215,21 @@ namespace KawaiiStudio
             int framesPerAtlas = slices.x * slices.y;
             atlases = (totalFrames - 1) / framesPerAtlas + 1;
 
+            // The budget: a 100 s video at full resolution used to come out as 800+ atlases (3.4.0 and the
+            // tool before it) -- unusable, and the decoder shader stops at 64. The frame shrinks, aspect
+            // kept, until the whole video fits in maxAtlases.
+            int budget = Mathf.Clamp(maxAtlases, 1, MAX_ATLAS_COUNT);
+            for (int guard = 0; guard < 64 && atlases > budget; guard++)
+            {
+                float k = Mathf.Sqrt((float)budget / atlases) * 0.97f;
+                frameSize.x = Mathf.Max(8, (int)(frameSize.x * k) & ~3);
+                frameSize.y = Mathf.Max(8, (int)(frameSize.y * k) & ~3);
+                slices.x = Mathf.Max(1, limitAtlasSize.x / frameSize.x);
+                slices.y = Mathf.Max(1, limitAtlasSize.y / frameSize.y);
+                framesPerAtlas = slices.x * slices.y;
+                atlases = (totalFrames - 1) / framesPerAtlas + 1;
+            }
+
             if (atlases <= 8)
             {
                 int minPerimeter = int.MaxValue;
@@ -1293,8 +1369,16 @@ namespace KawaiiStudio
             AddLog($"📊 Frames: {totalFrames} @ {frameRate} fps");
             AddLog("╚════════════════════════════════════");
             
+            CalculateAtlasLayout();
+            if (useAtlasMode && atlasCount > MAX_ATLAS_COUNT && !(useCustomMaterial && customMaterial != null))
+            {
+                AddLog($"✗ {atlasCount} atlases: the KSVideoDecoder shader plays at most {MAX_ATLAS_COUNT}. Lower \"Max atlases\", shorten the clip or use a custom material.");
+                if (!headless) EditorUtility.DisplayDialog("Too many atlases", $"{atlasCount} atlases would be needed; the KSVideoDecoder shader plays at most {MAX_ATLAS_COUNT}.\n\nLower \"Max atlases\" (frames get smaller), shorten the clip, lower the frame rate, or use a custom material.", "OK");
+                return;
+            }
+
             SetupConversion();
-            
+
             if (useAtlasMode)
             {
                 StartAtlasConversion();
@@ -1307,7 +1391,7 @@ namespace KawaiiStudio
         
         private void SetupConversion()
         {
-            string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
+            string videoName = OutputName();
             
             // MODIFIÉ : S'assurer que outputDirectory pointe vers Assets/Kawaii Studio/Videos/NomVideo
             if (!outputDirectory.Contains(videoName))
@@ -1420,7 +1504,7 @@ namespace KawaiiStudio
             string extension = saveAsJPEG ? "jpg" : "png";
             string quality = saveAsJPEG ? $"-qscale:v {QualityToQScale(jpegQuality)}" : "";
             
-            string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
+            string videoName = OutputName();
             string arguments = string.Format(CultureInfo.InvariantCulture,
                 "-nostdin -y -ss {1} -to {2} -i \"{0}\" -filter_complex \"fps=fps={5}, format=pix_fmts=rgb24, scale={3}x{4}:flags=area:out_range=full\" -f image2 -start_number 0 -frames {6} {7} \"{8}/{9} Atlas %d.{10}\"",
                 inputVideoPath, timeStart, timeEnd, actualFrameSize.x, actualFrameSize.y, frameRate, totalFrames, quality, outputDirectory, videoName, extension);
@@ -1546,12 +1630,21 @@ namespace KawaiiStudio
                 if (endOfStream)
                 {
                     StopEncoding();
-                    EditorApplication.delayCall += () =>
+                    if (headless)
                     {
                         AssetDatabase.Refresh();
                         AddLog("✅ Atlas conversion completed!");
                         FinalizeConversion();
-                    };
+                    }
+                    else
+                    {
+                        EditorApplication.delayCall += () =>
+                        {
+                            AssetDatabase.Refresh();
+                            AddLog("✅ Atlas conversion completed!");
+                            FinalizeConversion();
+                        };
+                    }
                 }
                 else
                 {
@@ -1566,14 +1659,13 @@ namespace KawaiiStudio
             }
         }
         
+        private Color32[] _blackAtlas;
+
         private void ClearCurrentAtlas()
         {
-            RenderTexture tempRT = RenderTexture.GetTemporary(atlasSize.x, atlasSize.y, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
-            RenderTexture.active = tempRT;
-            Graphics.DrawTexture(new Rect(Vector2.zero, atlasSize), Texture2D.blackTexture);
-            outputTexture.ReadPixels(new Rect(Vector2.zero, atlasSize), 0, 0);
-            RenderTexture.active = null;
-            RenderTexture.ReleaseTemporary(tempRT);
+            int n = atlasSize.x * atlasSize.y;
+            if (_blackAtlas == null || _blackAtlas.Length != n) _blackAtlas = new Color32[n];
+            outputTexture.SetPixels32(_blackAtlas);
         }
         
         private void StopEncoding()
@@ -1653,7 +1745,7 @@ namespace KawaiiStudio
         {
             try
             {
-                string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
+                string videoName = OutputName();
                 string basePath = outputDirectory + "/" + videoName;
                 
                 AddLog("📦 Creating animation assets...");
@@ -1665,12 +1757,12 @@ namespace KawaiiStudio
                 Selection.activeObject = videoPrefab;
                 
                 AddLog($"🎉 Conversion finished! Prefab created at: {basePath}.prefab");
-                EditorUtility.DisplayDialog("Success! 🎉", "Video conversion completed successfully!\n\nPrefab: " + basePath + ".prefab", "OK");
+                if (!headless) EditorUtility.DisplayDialog("Success! 🎉", "Video conversion completed successfully!\n\nPrefab: " + basePath + ".prefab", "OK");
             }
             catch (Exception ex)
             {
-                AddLog($"✗ Error finalizing: {ex.Message}");
-                EditorUtility.DisplayDialog("Error", "Failed to finalize conversion: " + ex.Message, "OK");
+                AddLog($"✗ Error finalizing: {ex}");
+                if (!headless) EditorUtility.DisplayDialog("Error", "Failed to finalize conversion: " + ex.Message, "OK");
             }
         }
         
@@ -1800,7 +1892,7 @@ namespace KawaiiStudio
         private GameObject CreateVideoPrefab(string basePath, AnimationClip anim)
         {
             string prefabPath = basePath + ".prefab";
-            string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
+            string videoName = OutputName();
             
             GameObject tempObj = GameObject.CreatePrimitive(PrimitiveType.Quad);
             tempObj.name = videoName + " Video";
@@ -1831,34 +1923,23 @@ namespace KawaiiStudio
             }
             
             string controllerPath = basePath + ".controller";
+            // An existing controller is reused (its GUID stays, so references hold) and REPAIRED: a conversion
+            // that died before this point (the pre-3.4 tool created the controller first) left it with no
+            // layer and no state, and the old code then never assigned the clip -- the video stayed still.
             AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
             if (controller == null)
-            {
                 controller = AnimatorController.CreateAnimatorControllerAtPath(controllerPath);
+            if (controller.layers.Length == 0)
+                controller.AddLayer("Base Layer");
+            {
                 AnimatorStateMachine stateMachine = controller.layers[0].stateMachine;
-                AnimatorState state = stateMachine.AddState("Play");
+                AnimatorState state = stateMachine.states.Length > 0 ? stateMachine.states[0].state : stateMachine.AddState("Play");
                 state.motion = anim;
                 state.writeDefaultValues = false;
-                
-                // Set default state to loop the animation
                 stateMachine.defaultState = state;
+                EditorUtility.SetDirty(controller);
             }
-            else
-            {
-                if (controller.layers.Length > 0)
-                {
-                    AnimatorStateMachine stateMachine = controller.layers[0].stateMachine;
-                    if (stateMachine.states.Length > 0)
-                    {
-                        AnimatorState state = stateMachine.states[0].state;
-                        state.motion = anim;
-                        
-                        // Ensure the state is set as default
-                        stateMachine.defaultState = state;
-                    }
-                }
-            }
-            
+
             animator.runtimeAnimatorController = controller;
             
             GameObject prefab = PrefabUtility.SaveAsPrefabAsset(tempObj, prefabPath);
@@ -2081,5 +2162,76 @@ namespace KawaiiStudio
         }
         
         private string FormatBytes(long bytes) => KawaiiStudioUtil.FormatBytes(bytes);
-    }
+    
+        // ================================================================== headless
+        /// <summary>
+        /// Unity.exe -batchmode -executeMethod KawaiiStudio.VideoAnimatorWindow.CommandLineConvert
+        /// Environment: KS_VIDEO (absolute path), optional KS_OUTPUT (Assets/... folder), KS_MAX_ATLASES, KS_FPS,
+        /// KS_FRAME (WxH), KS_AUDIO (asset path of an AudioClip), KS_NO_CUSTOM_MATERIAL=1 (KSVideoDecoder instead of
+        /// the workspace overlay). Runs the whole conversion synchronously and writes video-report.txt next to the project.
+        /// </summary>
+        public static void CommandLineConvert()
+        {
+            string video = Environment.GetEnvironmentVariable("KS_VIDEO");
+            var lines = new List<string>();
+            var w = CreateInstance<VideoAnimatorWindow>();
+            try
+            {
+                w.headless = true;
+                w.inputVideoPath = video;
+                if (string.IsNullOrEmpty(video) || !File.Exists(video)) throw new Exception("KS_VIDEO not found: " + video);
+                w.AnalyzeVideo();
+                if (!w.videoInfo.IsValid) throw new Exception("video could not be analyzed (ffprobe at " + w.ffmpegPath + ")");
+                string output = Environment.GetEnvironmentVariable("KS_OUTPUT");
+                if (!string.IsNullOrEmpty(output)) w.outputDirectory = output;
+                int maxA; if (int.TryParse(Environment.GetEnvironmentVariable("KS_MAX_ATLASES"), out maxA)) w.maxAtlases = Mathf.Clamp(maxA, 1, MAX_ATLAS_COUNT);
+                float fps; if (float.TryParse(Environment.GetEnvironmentVariable("KS_FPS"), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture, out fps)) w.frameRate = Mathf.Clamp(fps, 1f, w.videoInfo.FrameRate);
+                string frame = Environment.GetEnvironmentVariable("KS_FRAME");
+                if (!string.IsNullOrEmpty(frame) && frame.Contains("x"))
+                {
+                    var p = frame.Split('x');
+                    int fx, fy;
+                    if (int.TryParse(p[0], out fx) && int.TryParse(p[1], out fy)) w.targetFrameSize = new Vector2Int(fx, fy);
+                }
+                string audio = Environment.GetEnvironmentVariable("KS_AUDIO");
+                if (!string.IsNullOrEmpty(audio)) w.audioClip = AssetDatabase.LoadAssetAtPath<AudioClip>(audio);
+                if (Environment.GetEnvironmentVariable("KS_NO_CUSTOM_MATERIAL") == "1") { w.useCustomMaterial = false; w.customMaterial = null; }
+                w.CalculateAtlasLayout();
+                lines.Add($"video {video}: {w.videoInfo.Width}x{w.videoInfo.Height} {w.videoInfo.FrameRate:F3} fps {w.videoInfo.Duration:F2} s");
+                lines.Add($"plan: {w.totalFrames} frames @ {w.frameRate:F3} fps, frame {w.targetFrameSize.x}x{w.targetFrameSize.y} -> {w.actualFrameSize.x}x{w.actualFrameSize.y}, slices {w.slices.x}x{w.slices.y}, {w.atlasCount} atlas(es) of {w.atlasSize.x}x{w.atlasSize.y}, custom material {(w.useCustomMaterial && w.customMaterial != null ? w.customMaterial.name : "none (KSVideoDecoder)")}, output {w.outputDirectory}");
+                w.StartConversion();
+                int guard = 0;
+                while (w.isEncoding && guard++ < 10000000) w.UpdateFFMPEGEncoding();
+                lines.Add("---- log");
+                lines.Add(w.logOutput);
+                string basePath = w.outputDirectory + "/" + Path.GetFileNameWithoutExtension(video);
+                var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(basePath + ".anim");
+                if (clip != null)
+                {
+                    lines.Add($"clip {basePath}.anim: length {clip.length:F2} s, frameRate {clip.frameRate}, float curves {AnimationUtility.GetCurveBindings(clip).Length}, object curves {AnimationUtility.GetObjectReferenceCurveBindings(clip).Length}, loop {AnimationUtility.GetAnimationClipSettings(clip).loopTime}");
+                    foreach (var b in AnimationUtility.GetCurveBindings(clip)) lines.Add($"  float {b.type.Name} {b.propertyName} keys={AnimationUtility.GetEditorCurve(clip, b).length}");
+                    foreach (var b in AnimationUtility.GetObjectReferenceCurveBindings(clip)) lines.Add($"  object {b.type.Name} {b.propertyName} keys={AnimationUtility.GetObjectReferenceCurve(clip, b).Length}");
+                }
+                else lines.Add("clip MISSING");
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(basePath + ".prefab");
+                if (prefab != null)
+                {
+                    var an = prefab.GetComponent<Animator>();
+                    var mr = prefab.GetComponent<MeshRenderer>();
+                    lines.Add($"prefab: controller {(an != null && an.runtimeAnimatorController != null ? an.runtimeAnimatorController.name : "NONE")}, material {(mr != null && mr.sharedMaterial != null ? mr.sharedMaterial.name + " / " + (mr.sharedMaterial.shader != null ? mr.sharedMaterial.shader.name : "no shader") : "NONE")}, audio {(prefab.GetComponent<AudioSource>() != null && prefab.GetComponent<AudioSource>().clip != null ? prefab.GetComponent<AudioSource>().clip.name : "none")}");
+                    var ctrl = an != null ? an.runtimeAnimatorController as UnityEditor.Animations.AnimatorController : null;
+                    if (ctrl != null && ctrl.layers.Length > 0 && ctrl.layers[0].stateMachine.defaultState != null)
+                        lines.Add($"controller: default state '{ctrl.layers[0].stateMachine.defaultState.name}' motion {(ctrl.layers[0].stateMachine.defaultState.motion != null ? ctrl.layers[0].stateMachine.defaultState.motion.name : "NONE")}");
+                }
+                else lines.Add("prefab MISSING");
+            }
+            catch (Exception e)
+            {
+                lines.Add("EXCEPTION " + e);
+                try { lines.Add(w.logOutput); } catch { }
+            }
+            File.WriteAllText(Path.Combine(Directory.GetParent(Application.dataPath).FullName, "video-report.txt"), string.Join("\n", lines));
+            DestroyImmediate(w);
+        }
+}
 }
