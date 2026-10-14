@@ -2,6 +2,10 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.4.3]
+
+- **Video Animator**: a per-atlas material that already exists ("… Mat N.mat", reused so its GUID holds) is rebuilt from the custom material -- shader and properties -- before its atlas is set. It used to keep whatever shader an older conversion had given it (the pre-3.4 tool's copies pointed at `rireal/screen overlay`), so a re-run over an old folder played on the wrong shader.
+
 ## [3.4.2]
 
 - **Video Animator**: the default output is a quad with the **KSVideoDecoder** material again. 3.4.1 switched "Use custom material" on by itself with the workspace's Video Screen Overlay, so every new video came out as a full-screen overlay (a white screen in the Scene view until the animation runs). The overlay is now only prefilled in the "Material" field: tick the box when you want the screen overlay.

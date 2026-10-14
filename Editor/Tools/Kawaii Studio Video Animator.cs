@@ -2030,7 +2030,15 @@ namespace KawaiiStudio
                         mat = new Material(customMaterial);
                         AssetDatabase.CreateAsset(mat, matPath);
                     }
-                    
+                    else
+                    {
+                        // an existing file is reused for its GUID, but it is rebuilt from the custom material:
+                        // left as it was, it kept whatever shader an older conversion gave it
+                        mat.shader = customMaterial.shader;
+                        mat.CopyPropertiesFromMaterial(customMaterial);
+                        EditorUtility.SetDirty(mat);
+                    }
+
                     Texture2D tex = AssetDatabase.LoadAssetAtPath<Texture2D>(atlasPaths[i]);
                     mat.SetTexture(property, tex);
                     
