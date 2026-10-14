@@ -189,6 +189,7 @@ namespace KawaiiStudio
             FindFFMPEG();
             LoadPreferences();
             DownloadLogo();
+            AutoPickCustomMaterial();
         }
         
         private void OnDisable()
@@ -723,14 +724,25 @@ namespace KawaiiStudio
                 timeStart = 0f;
                 timeEnd = videoInfo.Duration;
                 frameRate = Mathf.Min(30f, videoInfo.FrameRate);
-                
+
+                // the frame size follows the video (3.4.1; it stayed at 512x512 before): the atlas
+                // packer scales it down later when the frames do not fit the atlas limit
+                if (videoInfo.FrameSize.x > 0 && videoInfo.FrameSize.y > 0)
+                    targetFrameSize = videoInfo.FrameSize;
+
+                // the overlay material of the workspace is the default custom material
+                AutoPickCustomMaterial();
+
                 // MODIFIÉ : Créer le chemin dans Assets/Kawaii Studio/Videos/NomVideo
                 string videoName = Path.GetFileNameWithoutExtension(inputVideoPath);
                 outputDirectory = DEFAULT_OUTPUT_PATH + "/" + videoName;
-                
+
                 AddLog($"✓ Video: {videoInfo.Width}x{videoInfo.Height}");
                 AddLog($"✓ Duration: {videoInfo.Duration:F2}s");
-                AddLog($"✓ Frame Rate: {videoInfo.FrameRate:F2} FPS");
+                AddLog($"✓ Frame Rate: {videoInfo.FrameRate:F3} FPS (target {frameRate:F3})");
+                AddLog($"✓ Frame size set to {targetFrameSize.x}x{targetFrameSize.y}");
+                if (useCustomMaterial && customMaterial != null)
+                    AddLog($"✓ Custom material: {customMaterial.name} ({(customMaterial.shader != null ? customMaterial.shader.name : "no shader")})");
                 AddLog($"📁 Output: {outputDirectory}");
                 AddLog("╚════════════════════════════════════");
             }
@@ -741,6 +753,24 @@ namespace KawaiiStudio
             }
         }
         
+        /// <summary>
+        /// When no custom material is chosen, use the workspace's "Video Screen Overlay" (KSScreenShader)
+        /// and switch "Use custom material" on: the video then plays on that screen material, which the
+        /// conversion also fills with the video's size. Nothing is touched when the user already picked one.
+        /// </summary>
+        private void AutoPickCustomMaterial()
+        {
+            if (customMaterial != null) return;
+            Material overlay = KawaiiStudioPaths.Material(OVERLAY_MATERIAL);
+            if (overlay == null) return;
+            var textures = GetCustomShaderTextures(overlay);
+            if (textures.Names.Length == 0) return;
+            customMaterial = overlay;
+            customShaderTextures = textures;
+            customShaderTexture = 0;
+            useCustomMaterial = true;
+        }
+
         private VideoInfo GetVideoInfo(string filename)
         {
             string ffprobePath = ResolveFFProbe();
