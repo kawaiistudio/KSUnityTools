@@ -317,6 +317,6 @@ Shader "Kawaii Studio/BloodKiller"
             ENDCG
         }
     }
-    CustomEditor "KS_BloodKillerGUI"
+    CustomEditor "KawaiiStudio.Shaders.Editor.KS_BloodKillerGUI"
     FallBack "Transparent/Diffuse"
 }

@@ -262,4 +262,5 @@ Shader "Kawaii Studio/KSVideoDecoder"
             ENDCG
         }
     }
+    CustomEditor "KawaiiStudio.Shaders.Editor.KawaiiStudioShaderGUI"
 }

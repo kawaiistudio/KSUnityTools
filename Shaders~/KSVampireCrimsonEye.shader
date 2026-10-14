@@ -208,8 +208,7 @@ Shader "Kawaii Studio/KSVampireCrimsonEye"
 
             float2 GenerateParallaxUV(float2 UVs, float3 viewDirection, float dist, float parallaxScale)
             {
-                // Parallaxe simulée sans dépendre de l'angle de vue :
-                // on converge simplement vers le centre pour donner un effet de profondeur constant.
+                // Parallaxe centrée : converge les UV vers le centre sans dépendre de l'angle de vue
                 float2 plane = -UVs;
                 UVs += plane * parallaxScale;
                 return UVs;
@@ -218,7 +217,7 @@ Shader "Kawaii Studio/KSVampireCrimsonEye"
             // Parallax sans Distance Scaling - garde toujours l'effet de profondeur centré sur la pupille
             float2 GenerateParallaxUV_Depth(float2 UVs, float3 viewDirection, float parallaxScale, float mirrorX)
             {
-                // Version "toujours centrée" : pas de dépendance au viewDir, mais une convergence vers la pupille.
+                // Version centrée : pas de dépendance au viewDir, simple convergence vers le centre
                 float2 plane = -UVs;
                 if (mirrorX > 0.5)
                     plane.x = -plane.x;
@@ -393,12 +392,16 @@ Shader "Kawaii Studio/KSVampireCrimsonEye"
                 // Ring circles
                 float finalCircleCol = 0.0;
                 int circleCount = _RingCount;
-                float circleSmoke = 0.02 * _RingThickness / abs(fbm(
-                    mul(Rot(_Time.y * 50.0 * _AnimSpeed), (outlineUV * 5.0) + float2(
-                        fbm(outlineUV * 5.0 + _Time.y * 2.0 * _AnimSpeed, 2, 0.0),
-                        fbm(outlineUV * 10.0 + _Time.y * 2.0 * _AnimSpeed, 2, 0.0)
-                    ) * 0.3),
-                    10, _Time.y * _AnimSpeed) + 0.001);
+                // Bruit stabilisé pour éviter les "blinks" (brusques variations)
+                float ringNoise = fbm(
+                    mul(Rot(_Time.y * 25.0 * _AnimSpeed), (outlineUV * 5.0) + float2(
+                        fbm(outlineUV * 5.0 + _Time.y * 1.0 * _AnimSpeed, 2, 0.0),
+                        fbm(outlineUV * 10.0 + _Time.y * 1.0 * _AnimSpeed, 2, 0.0)
+                    ) * 0.25),
+                    10, _Time.y * (_AnimSpeed * 0.6));
+                ringNoise = ringNoise * 0.5 + 0.5;          // remettre dans [0..1]
+                ringNoise = max(ringNoise, 0.35);           // éviter les divisions trop faibles
+                float circleSmoke = 0.02 * _RingThickness / ringNoise;
 
                 for (int e = 0; e < circleCount; e++)
                 {
@@ -464,7 +467,7 @@ Shader "Kawaii Studio/KSVampireCrimsonEye"
                 // Color and glare
                 col.rgb *= _MainColor.rgb;
 
-                // Glare recentré sur la pupille
+                // Glare recentré sur la pupille (indépendant de l'angle de vue)
                 float2 glare = uvCentered;
                 col.rgb *= saturate(0.1 / length((glare - float2(0.0, 0.0)) * float2(0.4, 0.8)));
                 // Réinjecte la fumée de pupille après le MainColor pour garder sa teinte indépendante
@@ -479,12 +482,12 @@ Shader "Kawaii Studio/KSVampireCrimsonEye"
                 // Sparkles Logic (Cosmic Style)
                 // Déclaration préalable de OffsetUV nécessaire pour les sparkles
                 float2 OffsetUV = uvCentered * 2;
-                // Parallax désactivée
+                // Parallax désactivée (effet centré)
                 float2 parallax_base = float2(0, 0);
                 
                 // Sauvegarde UV
                 float2 tuv = OffsetUV; 
-                OffsetUV = uvCentered + 0.5; // espace 0..1 recentré sur la pupille pour les sparkles
+                OffsetUV = uvCentered + 0.5; // Espace 0..1 recentré sur la pupille pour les sparkles
                 
                 float stars = 1;
                 float starCount = floor(_SparkleCount);

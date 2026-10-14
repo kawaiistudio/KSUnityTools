@@ -172,12 +172,15 @@
 ---
 
 ### Custom Shader GUIs
-Polished inspector interfaces for included shaders:
-- **Vampire Eye** — Pupil smoke, sparkles, hue animation, parallax, rings
+Every shader ships with a Kawaii Studio inspector (banner, coloured sections, community footer):
+- **Vampire Eye** — Pupil smoke, sparkles, hue animation, parallax, rings (stabilised, no blinking)
 - **Blood Killer** — Flow, distortion, doppelganger noise, micro waves, edge opacity
-- **Hair Realistic** — Dual anisotropy, blood/liquid layer, rim light, backlight translucency
+- **Hair Realistic** — Dual anisotropy, blood/liquid layer, rim light, backlight translucency; cutout build with transparency threshold, depth pre-pass, Advanced toggles
 - **Screen Line** — Minimal shader with community footer
-- **KSVideoDecoder** — Texture atlas video playback shader
+- **KSVideoDecoder** — Texture atlas video playback; the 64 atlas slots are shown only where used (the Video Animator fills them)
+- **KS Screen Shader** — Screen-space video overlay (the Video Animator writes the video size into it); VR / PC placement blocks
+- **VR Stereo Display** — Stereo pair debug view, mode popup (side by side, one eye, anaglyph)
+- **Screen Overlay** — Distance-limited overlay used by the Video Animator's screens
 
 ---
 

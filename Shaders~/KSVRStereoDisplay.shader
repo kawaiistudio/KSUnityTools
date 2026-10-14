@@ -86,4 +86,5 @@ Shader "Kawaii Studio/VR Stereo Display Debug"
         }
     }
     FallBack "Unlit/Texture"
+    CustomEditor "KawaiiStudio.Shaders.Editor.KawaiiStudioShaderGUI"
 }

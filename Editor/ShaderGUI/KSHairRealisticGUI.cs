@@ -23,6 +23,7 @@ namespace KawaiiStudio.Shaders.Editor
         private static bool showEffects = true;
         private static bool showEmission = true;
         private static bool showTransparency = true;
+        private static bool showAdvanced = false;
 
         // Colors
         private static readonly Color kPink = new Color(0.9f, 0.4f, 0.6f);
@@ -143,6 +144,7 @@ namespace KawaiiStudio.Shaders.Editor
                     
                     GUILayout.Space(5);
                     DrawProperty(materialEditor, properties, "_Cutoff", "Alpha Cutoff");
+                    DrawProperty(materialEditor, properties, "_ClampCutoff", "Transparency Threshold");
                     DrawProperty(materialEditor, properties, "_AlphaSharp", "Alpha Sharpness");
                     DrawProperty(materialEditor, properties, "_Culling", "Culling Mode");
                 }
@@ -280,6 +282,22 @@ namespace KawaiiStudio.Shaders.Editor
                 }
             });
             
+            // ---------------- ADVANCED ----------------
+            // Shader-feature toggles that were declared in the shader but never shown here:
+            // metalness vs specular-colour mode, energy conservation, the tangent-shift
+            // texture, and the specular / reflection kill switches.
+            DrawSection("⚙️ ADVANCED", ref showAdvanced, new Color(0.55f, 0.55f, 0.6f), () => {
+                using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+                {
+                    DrawProperty(materialEditor, properties, "_UseSpecColor", "Use Specular Color");
+                    DrawProperty(materialEditor, properties, "_UseEnergyConserv", "Use Energy Conservation");
+                    DrawProperty(materialEditor, properties, "_UseTangentTexture", "Use Tangent Shift Texture");
+                    GUILayout.Space(5);
+                    DrawProperty(materialEditor, properties, "_SpecularHighlights", "Specular Highlights");
+                    DrawProperty(materialEditor, properties, "_GlossyReflections", "Glossy Reflections");
+                }
+            });
+
             EditorGUILayout.Space(15);
             DrawFooter();
         }

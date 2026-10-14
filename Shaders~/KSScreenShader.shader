@@ -135,4 +135,5 @@ Shader "Kawaii Studio/KSScreenShader"
         }
     }
     FallBack Off
+    CustomEditor "KawaiiStudio.Shaders.Editor.KawaiiStudioShaderGUI"
 }

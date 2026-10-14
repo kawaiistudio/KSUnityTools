@@ -2,6 +2,14 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.4.1]
+
+**Every shader gets its Kawaii Studio inspector, and the shaders catch up with the author's latest versions.**
+
+- **KSHairRealistic**: the cutout build (`TransparentCutout`, `AlphaTest+50`): a real alpha clip with a "Transparency Threshold" (`_ClampCutoff`), clipped shadows so transparent tips no longer cast square shadows, and a depth pre-pass that fixes the self-sorting artifacts of overlapping semi-transparent strands. The inspector now exposes the threshold and, in a new **Advanced** section, the energy-conservation / specular-colour / tangent-texture toggles and the specular / reflection switches that were in the shader but never shown.
+- **KSVampireCrimsonEye**: stabilised ring noise -- the rings no longer "blink".
+- **Inspectors**: BloodKiller's `CustomEditor` named its class without the namespace, so Unity silently fell back to the default inspector -- fixed. `screen_overlay` referenced Shader Forge's inspector (not installed). **KSScreenShader, VR Stereo Display and KSVideoDecoder had none.** All four now use `KawaiiStudioShaderGUI`: the branded banner, coloured sections built from the shader's own `[Header]` blocks, a hint on what the shader is for, the Video Decoder's 64 atlas slots shown only where used (the Video Animator fills them), the Stereo Display mode as a popup, render queue / instancing / double-sided GI, and the community footer -- the same look as the hand-written inspectors.
+
 ## [3.4.0]
 
 **The workspace.** The package now creates and maintains `Assets/Kawaii Studio` in your project and every tool talks to it.

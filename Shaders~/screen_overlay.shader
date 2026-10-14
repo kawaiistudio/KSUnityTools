@@ -106,5 +106,5 @@ Shader "rireal/screen overlay" {
         }
     }
     FallBack "Diffuse"
-    CustomEditor "ShaderForgeMaterialInspector"
+    CustomEditor "KawaiiStudio.Shaders.Editor.KawaiiStudioShaderGUI"
 }

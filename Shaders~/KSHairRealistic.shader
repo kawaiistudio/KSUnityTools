@@ -89,8 +89,8 @@
 	{
 		Tags
 		{
-			"RenderType"="Transparent"
-			"Queue"="Transparent"
+			"RenderType"="TransparentCutout"
+			"Queue"="AlphaTest+50"
 			"IgnoreProjector"="True"
 			"DisableBatching"="True"
 		}
@@ -552,9 +552,18 @@ inline float IGN(float2 p) {
 
 inline void applyAlphaClip(inout float alpha, float cutoff, float2 pos, bool sharpen)
 {
-	// Fade mode: no clip, just alpha modification
-	// If you want to force opacity at root, ensure alpha is 1.0 there
-	// The fading is handled by the blend mode now
+	// Clamp very low alpha to zero to avoid ghost fragments
+	alpha = saturate(alpha);
+
+	// Below the transparency threshold, kill the pixel entirely
+	clip(alpha - _ClampCutoff + 0.001);
+
+	// Optional sharp cutout (dithered)
+	if (sharpen > 0.5)
+	{
+		float dither = IGN(pos);
+		clip(alpha - cutoff - (dither - 0.5) * 0.05);
+	}
 }
 
 inline float ApplyTipTransparency(float alpha, float2 uv)
@@ -867,15 +876,44 @@ inline float EdgeBand(float alpha, float cutoff, float width)
 			alpha = ApplyTipTransparency(alpha, i.uv);
 			applyAlphaClip(alpha, _Cutoff, i.pos.xy, _AlphaSharp);
 
+			// Clip shadow for transparent tips so they don't cast solid square shadows
+			clip(alpha - _ClampCutoff + 0.001);
+
 			SHADOW_CASTER_FRAGMENT(i)
 		}
 		#endif
 		ENDCG
 
+		// ---- Depth pre-pass: writes Z only, no color ----
+		// Fixes self-sorting artifacts on overlapping semi-transparent hair strands
+		Pass
+		{
+			Tags { "LightMode" = "Always" }
+			ColorMask 0
+			ZWrite On
+			Cull [_Culling]
+
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag_depth
+			#pragma target 4.0
+
+			float4 frag_depth(v2f i) : SV_Target
+			{
+				float alpha = _Color.a;
+				if (_Color.a > 0)
+					alpha *= tex2D(_MainTex, i.uv).a;
+				alpha = ApplyTipTransparency(alpha, i.uv);
+				clip(alpha - _ClampCutoff + 0.001);
+				return 0;
+			}
+			ENDCG
+		}
+
 		Pass
 		{
 			Tags { "LightMode" = "ForwardBase" }
-            // AlphaToMask Off - We use Blend now
+			ZWrite Off  // Depth already written by pre-pass
 			CGPROGRAM
 			#pragma vertex vert
 			#pragma fragment frag
