@@ -2,6 +2,10 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.4.2]
+
+- **Video Animator**: the default output is a quad with the **KSVideoDecoder** material again. 3.4.1 switched "Use custom material" on by itself with the workspace's Video Screen Overlay, so every new video came out as a full-screen overlay (a white screen in the Scene view until the animation runs). The overlay is now only prefilled in the "Material" field: tick the box when you want the screen overlay.
+
 ## [3.4.1]
 
 **Every shader gets its Kawaii Studio inspector, and the shaders catch up with the author's latest versions.**

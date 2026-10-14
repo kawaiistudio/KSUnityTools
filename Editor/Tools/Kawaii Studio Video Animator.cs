@@ -787,6 +787,8 @@ namespace KawaiiStudio
                 AddLog($"✓ Frame size set to {targetFrameSize.x}x{targetFrameSize.y}");
                 if (useCustomMaterial && customMaterial != null)
                     AddLog($"✓ Custom material: {customMaterial.name} ({(customMaterial.shader != null ? customMaterial.shader.name : "no shader")})");
+                else
+                    AddLog("✓ Output: quad with the KSVideoDecoder material (tick \"Use custom material\" for the screen overlay)");
                 AddLog($"📁 Output: {outputDirectory}");
                 AddLog("╚════════════════════════════════════");
             }
@@ -815,9 +817,10 @@ namespace KawaiiStudio
         }
 
         /// <summary>
-        /// When no custom material is chosen, use the workspace's "Video Screen Overlay" (KSScreenShader)
-        /// and switch "Use custom material" on: the video then plays on that screen material, which the
-        /// conversion also fills with the video's size. Nothing is touched when the user already picked one.
+        /// The "Material" field of "Use custom material" is prefilled with the workspace's "Video Screen
+        /// Overlay" (KSScreenShader), so ticking the box is one click -- but the box stays OFF: the default
+        /// output is a quad with the KSVideoDecoder material (3.4.1 switched the overlay on by itself and
+        /// every new video came out as a full-screen overlay). Nothing is touched when a material is set.
         /// </summary>
         private void AutoPickCustomMaterial()
         {
@@ -829,7 +832,6 @@ namespace KawaiiStudio
             customMaterial = overlay;
             customShaderTextures = textures;
             customShaderTexture = 0;
-            useCustomMaterial = true;
         }
 
         private VideoInfo GetVideoInfo(string filename)
