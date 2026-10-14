@@ -8,7 +8,6 @@ public class KS_ScreenLineGUI : ShaderGUI
     private const string DISCORD_URL = "https://discord.gg/xAeJrSAgqG";
     private const string TELEGRAM_URL = "https://t.me/kawaiistudio";
     private const string VRCHAT_URL = "https://vrchat.com/home/group/grp_7bf987ee-2f4a-4eae-b9b5-c060b97250ab";
-    private const string LOGO_PATH = "Assets/Kawaii Studio/References/logo.png";
 
     private static Texture2D logoTexture;
     private static bool isDownloading = false;
@@ -76,9 +75,9 @@ public class KS_ScreenLineGUI : ShaderGUI
 
     private void DownloadLogo()
     {
-        // Branding is loaded locally from Assets/Kawaii Studio/References (no network).
+        // Branding comes from the package's References folder, wherever it is installed (no network).
         isDownloading = true;
-        logoTexture = KawaiiStudio.KawaiiStudioBranding.Logo ?? AssetDatabase.LoadAssetAtPath<Texture2D>(LOGO_PATH);
+        logoTexture = KawaiiStudio.KawaiiStudioBranding.Logo;
         isDownloading = false;
     }
 }

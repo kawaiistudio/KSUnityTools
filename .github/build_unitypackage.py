@@ -238,7 +238,14 @@ def guid_for(unity_path: str) -> str:
     return hashlib.md5(f"com.kawaiistudio.ksunitytools::{unity_path}".encode("utf-8")).hexdigest()
 
 
-def meta_for(unity_path: str, is_dir: bool) -> str:
+def meta_for(unity_path: str, is_dir: bool, disk_path: "str | None" = None) -> str:
+    # A .meta tracked in the repo next to the file wins (3.4.0: Shaders~/ and Materials~/ ship
+    # theirs, with the published GUIDs, because the workspace installer copies them verbatim).
+    if disk_path and os.path.isfile(disk_path + ".meta"):
+        with open(disk_path + ".meta", "r", encoding="utf-8") as fh:
+            tracked = fh.read().replace("\r\n", "\n").rstrip("\n") + "\n"
+        if "guid: " in tracked:
+            return tracked
     guid = guid_for(unity_path)
     if is_dir:
         body = "folderAsset: yes\nDefaultImporter:\n  externalObjects: {}\n  userData: \n  assetBundleName: \n  assetBundleVariant: "
@@ -254,6 +261,14 @@ def meta_for(unity_path: str, is_dir: bool) -> str:
     return f"fileFormatVersion: 2\nguid: {guid}\n{body}\n"
 
 
+def unity_rel(rel: str) -> str:
+    """Repo-relative path -> path under Assets/Kawaii Studio. A folder ending in "~" is one Unity
+    skips inside the package (Shaders~, Materials~: the workspace installer copies them into
+    Assets/Kawaii Studio/Shaders|Materials). In the .unitypackage the package IS the workspace,
+    so they ship under their real names and import directly."""
+    return "/".join(seg[:-1] if seg.endswith("~") else seg for seg in rel.split("/"))
+
+
 def collect():
     """(unity_path, disk_path_or_None) for every folder and file to ship, parents first."""
     entries: list[tuple[str, str | None]] = []
@@ -265,7 +280,7 @@ def collect():
             d = "/".join(parts[:i])
             if d and d not in seen_dirs:
                 seen_dirs.add(d)
-                entries.append((f"{UNITY_ROOT}/{d}", None))
+                entries.append((f"{UNITY_ROOT}/{unity_rel(d)}", None))
 
     entries.append((UNITY_ROOT, None))
     for dirpath, dirnames, filenames in os.walk(ROOT):
@@ -281,7 +296,7 @@ def collect():
             if fn in EXCLUDED_FILES or fn.endswith(".meta"):
                 continue
             rel = f"{rel_dir}/{fn}" if rel_dir else fn
-            entries.append((f"{UNITY_ROOT}/{rel}", os.path.join(dirpath, fn)))
+            entries.append((f"{UNITY_ROOT}/{unity_rel(rel)}", os.path.join(dirpath, fn)))
     return entries
 
 
@@ -316,7 +331,7 @@ def main() -> int:
     with tarfile.open(out, "w:gz") as tar:
         for unity_path, disk in entries:
             guid = guid_for(unity_path)
-            meta = meta_for(unity_path, disk is None).encode("utf-8")
+            meta = meta_for(unity_path, disk is None, disk).encode("utf-8")
             tar.addfile(dir_entry(guid))
             if disk is not None:
                 with open(disk, "rb") as f:

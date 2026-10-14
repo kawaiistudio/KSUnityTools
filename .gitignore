@@ -1,18 +1,22 @@
-# Ignore everything — repo is a landing page only.
-# The actual tool is distributed as .unitypackage via GitHub Releases.
-*
+# The repo root IS the VPM package: release.yml zips it as-is, so everything is tracked
+# except build output and Unity / IDE noise. (Until 3.3.0 this file ignored "*" with an
+# allow list -- a leftover from when the repo was only a landing page -- and every new
+# source had to be force-added.)
+build/
+Library/
+Temp/
+Logs/
+obj/
+UserSettings/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
 
-# Allow these files
-!.gitignore
-!README.md
-!LICENSE
-!VERSION.md
-
-# Allow banner & logo for README display
-!References/
-!References/banner.png
-!References/logo.png
-
-# Allow screenshot gallery for README / GitHub landing page
-!screenshots/
-!screenshots/*.png
+# Unity writes a .meta next to every file when the repo is opened as an embedded package.
+# None are tracked, EXCEPT those of the shader / material sources: they carry the GUIDs
+# published since 3.0.0, and the workspace installer copies them into Assets/Kawaii Studio
+# so existing materials keep pointing at the right shader.
+*.meta
+!Shaders~/*.meta
+!Materials~/*.meta

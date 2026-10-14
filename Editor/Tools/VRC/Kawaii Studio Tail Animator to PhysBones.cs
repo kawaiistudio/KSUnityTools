@@ -735,8 +735,7 @@ namespace KawaiiStudio
             settings.loopTime = true;
             AnimationUtility.SetAnimationClipSettings(clip, settings);
             // save asset
-            string folder = "Assets/Kawaii Studio/Animations";
-            if (!AssetDatabase.IsValidFolder(folder)) { AssetDatabase.CreateFolder("Assets/Kawaii Studio", "Animations"); }
+            string folder = KawaiiStudioPaths.OutputFolder("Animations");   // Assets/Kawaii Studio/Animations, created if needed
             string assetPath = folder + "/" + clip.name + ".anim";
             AssetDatabase.CreateAsset(clip, assetPath);
             AssetDatabase.SaveAssets();
@@ -769,12 +768,7 @@ namespace KawaiiStudio
             bindingRoot = GetBindingRoot();
             if (createPrefabOnBake && bindingRoot != null)
             {
-                string prefabFolder = "Assets/Kawaii Studio/Prefabs";
-                if (!AssetDatabase.IsValidFolder(prefabFolder))
-                {
-                    if (!AssetDatabase.IsValidFolder("Assets/Kawaii Studio")) AssetDatabase.CreateFolder("Assets", "Kawaii Studio");
-                    AssetDatabase.CreateFolder("Assets/Kawaii Studio", "Prefabs");
-                }
+                string prefabFolder = KawaiiStudioPaths.OutputFolder("Prefabs");   // Assets/Kawaii Studio/Prefabs
                 string prefabPath = prefabFolder + "/" + bindingRoot.name + "_PhysBones.prefab";
                 // Ensure unique
                 int idx = 1; string tryPath = prefabPath;

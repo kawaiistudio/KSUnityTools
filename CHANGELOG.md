@@ -2,6 +2,24 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.4.0]
+
+**The workspace.** The package now creates and maintains `Assets/Kawaii Studio` in your project and every tool talks to it.
+
+### Why
+Installed through VCC, the toolset lives under `Packages/` -- read-only and invisible in the Assets tree. 3.3.0 still kept its shaders and materials there and its tools still wrote to hard-coded `Assets/Kawaii Studio/...` paths that nothing created: the Video Animator could not find its own decoder shader, materials pointed at shaders with random GUIDs, outputs landed in stray folders (`Assets/Kawaii Studio Optimized`, `Assets/KS_Protected_*`).
+
+### What changes
+- **Workspace installer** (`Kawaii Studio > Workspace`): on load, the package creates `Assets/Kawaii Studio` with `Shaders`, `Materials`, `Videos`, `Animations`, `Prefabs`, `Models`, `KS Exported`, `Optimized`, `Protected`, `ThirdParty/FFMPEG`, and installs the 8 shaders and 2 materials there **with their published GUIDs** -- a material that already uses a Kawaii Studio shader keeps working. Shaders follow package updates (the previous file goes to `Backups~/<version>/`); materials are yours and are never replaced. `workspace.json` records the synced version. "Install or Repair" re-copies everything.
+- **Project scan and repair** (`Kawaii Studio > Workspace > Scan and Repair Project`, also offered right after an install or an update): the package looks INSIDE the project for what older installs left behind and puts it right -- tool scripts of a pre-package install under `Assets/` (they compile next to the package and double every menu item: parked in `Backups~`); byte-identical copies of a Kawaii Studio shader outside the workspace (every material on the copy is repointed to the workspace shader, the copy is parked -- a modified copy is yours and is only reported); materials whose shader is missing (the pink `Hidden/InternalErrorShader`) when a known pre-3.4 GUID or their saved properties identify one of our shaders beyond doubt (repointed; otherwise reported); outputs of older versions in `Assets/Kawaii Studio Optimized` and `Assets/KS_Protected_*` (moved into the workspace through the AssetDatabase, so references hold); FFMPEG in the pre-3.4 `Assets/ThirdParty/FFMPEG` (moved to the workspace). Nothing is ever deleted.
+- **Your edits are safe**: the installer records the hash of every shader it installs; on an update it only replaces shaders that are still exactly what it installed. A shader you edited, or one that was already in the project before the package, is kept and listed -- "Repair / Update" in the Studio Manager replaces everything, with the previous files kept in `Backups~`.
+- **Video Animator**: decoder shader and `Video Screen Overlay` material come from the workspace; the converted video's size is written into the overlay material (`_VideoWidth` / `_VideoHeight`, KSScreenShader) so a screen shows it undistorted; FFMPEG is looked up in `Assets/Kawaii Studio/ThirdParty/FFMPEG` first (then the old `Assets/ThirdParty/FFMPEG`, then any `ffmpeg` folder), `bin/ffmpeg.exe` layouts included; outputs in `Videos/<name>/`.
+- **Controller To Anim** joins the package (`Kawaii Studio > Universal Tools > Controller To Anim`): bake a chain of a controller layer's states into one clip. Output in `Animations/Controller To Anim`.
+- **Prefab Optimizer** writes to `Optimized/` (was `Assets/Kawaii Studio Optimized`), **KS Obfuscator** to `Protected/` (was `Assets/KS_Protected_*`), **Kawaii Exporter** to `KS Exported/`, **Tail to PhysBones** to `Animations/` and `Prefabs/`, **GLB to FBX** defaults to `Models/`. Every folder is created through the AssetDatabase, so Unity sees it at once.
+- **Studio Manager** shows the workspace (folder, synced version, package location) with Install / Repair and Open Folder, and lists Controller To Anim.
+- `EYE SHADER.mat` now references the published `KSVampireCrimsonEye` GUID (it pointed at a GUID that only existed in the author's project).
+- Package: shaders and materials ship as `Shaders~` / `Materials~` sources with tracked `.meta` files (Unity ignores `~` folders, so the only imported copy is the workspace's). The `.unitypackage` build maps them back to `Shaders` / `Materials`, where the package is the workspace. `legacyFolders` removed from `package.json`.
+
 ## [3.3.0]
 
 **Prefab Optimizer, rebuilt**: real compression and real polygon reduction, without breaking your avatar.

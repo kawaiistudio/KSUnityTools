@@ -95,8 +95,12 @@ namespace KawaiiStudio
         const int MAX_ATLAS_COUNT = 64;
         const string DISCORD_URL = "https://discord.gg/xAeJrSAgqG";
         const string LOGO_URL = "https://github.com/kawaiistudio/KSUnityTools/blob/main/logo_v2.png?raw=true";
-        const string SHADER_PATH = "Assets/Kawaii Studio/Shaders/KSVideoDecoder.shader";
-        const string DEFAULT_OUTPUT_PATH = "Assets/Kawaii Studio/Videos"; // MODIFIÉ
+        // 3.4.0: the decoder shader, the overlay material and the output folder all live in the
+        // Kawaii Studio workspace (Assets/Kawaii Studio), installed by the package -- never in the
+        // package folder itself, which VCC keeps under Packages/ where no shader is imported.
+        const string DECODER_SHADER = "KSVideoDecoder";
+        const string OVERLAY_MATERIAL = "Video Screen Overlay";
+        static string DEFAULT_OUTPUT_PATH => KawaiiStudioPaths.Videos;
         
         // Variables principales
         private string inputVideoPath = "";
@@ -285,18 +289,30 @@ namespace KawaiiStudio
         
         private void FindFFMPEG()
         {
-            string[] guids = AssetDatabase.FindAssets("ffmpeg t:folder");
-            foreach (string guid in guids)
+            // 1. the workspace: Assets/Kawaii Studio/ThirdParty/FFMPEG (ffmpeg.exe, or bin/ffmpeg.exe)
+            // 2. the pre-3.4 location: Assets/ThirdParty/FFMPEG
+            // 3. any folder called "ffmpeg" in the project
+            // When none holds the executable the workspace folder is kept, so the error message
+            // tells the user exactly where to drop FFMPEG.
+            string workspace = KawaiiStudioPaths.ToAbsolute(KawaiiStudioPaths.FFmpeg);
+            string legacy = Path.Combine(Application.dataPath, "ThirdParty", "FFMPEG");
+            var candidates = new List<string> { workspace, legacy };
+            foreach (string guid in AssetDatabase.FindAssets("ffmpeg t:folder"))
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
-                if (Directory.Exists(path))
+                if (!string.IsNullOrEmpty(path) && Directory.Exists(path)) candidates.Add(Path.GetFullPath(path));
+            }
+            foreach (string dir in candidates)
+            {
+                if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) continue;
+                if (File.Exists(Path.Combine(dir, "ffmpeg.exe")) || File.Exists(Path.Combine(dir, "ffmpeg")) ||
+                    File.Exists(Path.Combine(dir, "bin", "ffmpeg.exe")) || File.Exists(Path.Combine(dir, "bin", "ffmpeg")))
                 {
-                    ffmpegPath = Path.GetFullPath(path);
+                    ffmpegPath = dir;
                     return;
                 }
             }
-            
-            ffmpegPath = Path.Combine(Application.dataPath, "ThirdParty", "FFMPEG");
+            ffmpegPath = workspace ?? legacy;
         }
         
         // MODIFIÉ : Nouveau chemin par défaut avec création automatique du dossier
@@ -304,19 +320,11 @@ namespace KawaiiStudio
         {
             lastOpenedDirectory = EditorPrefs.GetString("KawaiiStudio.VideoAnimator.LastDirectory", Application.dataPath);
             outputDirectory = EditorPrefs.GetString("KawaiiStudio.VideoAnimator.OutputDirectory", DEFAULT_OUTPUT_PATH);
-            
-            // Créer le dossier par défaut s'il n'existe pas
-            if (!AssetDatabase.IsValidFolder(DEFAULT_OUTPUT_PATH))
+
+            // the workspace (shaders, materials, the Videos folder) is installed by the package
+            KawaiiStudioWorkspace.EnsureInstalled();
+            if (string.IsNullOrEmpty(outputDirectory) || !outputDirectory.StartsWith(KawaiiStudioPaths.Workspace, StringComparison.Ordinal))
             {
-                // Créer "Assets/Kawaii Studio" si nécessaire
-                if (!AssetDatabase.IsValidFolder("Assets/Kawaii Studio"))
-                {
-                    AssetDatabase.CreateFolder("Assets", "Kawaii Studio");
-                }
-                
-                // Créer "Assets/Kawaii Studio/Videos"
-                AssetDatabase.CreateFolder("Assets/Kawaii Studio", "Videos");
-                
                 outputDirectory = DEFAULT_OUTPUT_PATH;
                 SavePreferences();
             }
@@ -919,14 +927,18 @@ namespace KawaiiStudio
 
         private string GetFFMPEGExecutable(string name)
         {
+            // <folder>/ffmpeg.exe, <folder>/bin/ffmpeg.exe (the layout of the official zips), or the unix names
             string exePath = Path.Combine(ffmpegPath, name + ".exe");
-            if (File.Exists(exePath))
-                return exePath;
-            
-            string unixPath = Path.Combine(ffmpegPath, name);
-            if (File.Exists(unixPath))
-                return unixPath;
-            
+            foreach (string candidate in new[]
+            {
+                exePath, Path.Combine(ffmpegPath, "bin", name + ".exe"),
+                Path.Combine(ffmpegPath, name), Path.Combine(ffmpegPath, "bin", name),
+            })
+            {
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+
             return exePath;
         }
         
@@ -1273,25 +1285,8 @@ namespace KawaiiStudio
                 outputDirectory = DEFAULT_OUTPUT_PATH + "/" + videoName;
             }
             
-            // Créer le dossier de sortie si nécessaire
-            if (!AssetDatabase.IsValidFolder(outputDirectory))
-            {
-                string[] folders = outputDirectory.Replace("Assets/", "").Replace("Assets", "").Split('/');
-                string currentPath = "Assets";
-                
-                foreach (string folder in folders)
-                {
-                    if (string.IsNullOrEmpty(folder)) continue;
-                    
-                    string newPath = currentPath + "/" + folder;
-                    if (!AssetDatabase.IsValidFolder(newPath))
-                    {
-                        AssetDatabase.CreateFolder(currentPath, folder);
-                    }
-                    currentPath = newPath;
-                }
-                outputDirectory = currentPath;
-            }
+            // the output folder, created level by level through the AssetDatabase
+            outputDirectory = KawaiiStudioPaths.EnsureFolder(outputDirectory);
             
             // MODIFIÉ : Les fichiers sont maintenant dans le dossier de la vidéo
             string basePath = outputDirectory + "/" + videoName;
@@ -1632,7 +1627,8 @@ namespace KawaiiStudio
                 string basePath = outputDirectory + "/" + videoName;
                 
                 AddLog("📦 Creating animation assets...");
-                
+
+                InjectVideoMetadataIntoOverlayMaterial();
                 AnimationClip animClip = CreateAnimationClip(basePath);
                 GameObject videoPrefab = CreateVideoPrefab(basePath, animClip);
                 
@@ -1705,10 +1701,10 @@ namespace KawaiiStudio
         
         private void AnimateKSVideoDecoder(AnimationClip anim, string basePath)
         {
-            Shader decoderShader = AssetDatabase.LoadAssetAtPath<Shader>(SHADER_PATH);
+            Shader decoderShader = KawaiiStudioPaths.Shader(DECODER_SHADER);
             if (decoderShader == null)
             {
-                AddLog("✗ KSVideoDecoder shader not found at: " + SHADER_PATH);
+                AddLog($"✗ {DECODER_SHADER} shader not found in {KawaiiStudioPaths.Shaders} -- run Kawaii Studio > Workspace > Install or Repair");
                 return;
             }
             
@@ -1745,6 +1741,32 @@ namespace KawaiiStudio
             EditorUtility.SetDirty(mat);
         }
         
+        /// <summary>
+        /// The "Video Screen Overlay" material (KSScreenShader) corrects a screen's aspect ratio from
+        /// _VideoWidth / _VideoHeight: the converted video's size is written into it, so a screen using
+        /// the overlay shows this video undistorted. The material is the user's (a package update never
+        /// replaces it), which is why it lives in the workspace and not in the package.
+        /// </summary>
+        private void InjectVideoMetadataIntoOverlayMaterial()
+        {
+            if (videoInfo.Width <= 0 || videoInfo.Height <= 0) return;
+            Material overlay = KawaiiStudioPaths.Material(OVERLAY_MATERIAL);
+            if (overlay == null)
+            {
+                AddLog($"⚠️ {OVERLAY_MATERIAL}.mat not found in {KawaiiStudioPaths.Materials}; video size not written.");
+                return;
+            }
+            if (!overlay.HasProperty("_VideoWidth") || !overlay.HasProperty("_VideoHeight"))
+            {
+                AddLog($"⚠️ {OVERLAY_MATERIAL}.mat does not use KSScreenShader; video size not written.");
+                return;
+            }
+            overlay.SetFloat("_VideoWidth", videoInfo.Width);
+            overlay.SetFloat("_VideoHeight", videoInfo.Height);
+            EditorUtility.SetDirty(overlay);
+            AddLog($"✓ Video size {videoInfo.Width}x{videoInfo.Height} written into {OVERLAY_MATERIAL}.mat");
+        }
+
         private GameObject CreateVideoPrefab(string basePath, AnimationClip anim)
         {
             string prefabPath = basePath + ".prefab";

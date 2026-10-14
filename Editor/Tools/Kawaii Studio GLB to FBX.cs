@@ -71,6 +71,9 @@ namespace KawaiiStudio
             
             // Charger le chemin Blender sauvegardé
             blenderPath = EditorPrefs.GetString(PREFS_BLENDER_PATH, "");
+            // default output: the workspace's Models folder (Assets/Kawaii Studio/Models)
+            if (string.IsNullOrEmpty(outputFolder))
+                outputFolder = KawaiiStudioPaths.ToAbsolute(KawaiiStudioPaths.Models);
             
             // Auto-détecter Blender si pas de chemin sauvegardé
             if (string.IsNullOrEmpty(blenderPath) || !File.Exists(blenderPath))

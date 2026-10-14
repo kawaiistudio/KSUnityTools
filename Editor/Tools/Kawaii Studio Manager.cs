@@ -3,9 +3,10 @@
 // This used to double as a package manager: it downloaded individual .cs files from
 // raw.githubusercontent and overwrote them in place to "update" tools. That mechanism is
 // gone. Installation and updates are the VRChat Creator Companion's job now (the package
-// is published to a VPM listing), so the Manager is purely a launcher: it lists every tool
-// and opens it, shows the one shared version, and links out. No network calls, no writing
-// to the user's project.
+// is published to a VPM listing), so the Manager is a launcher plus the one place that
+// shows the state of the WORKSPACE: "Assets/Kawaii Studio", where the package installs its
+// shaders and materials and where every tool writes (see KawaiiStudioWorkspace). No
+// network calls.
 using System;
 using System.Linq;
 using UnityEditor;
@@ -36,8 +37,10 @@ namespace KawaiiStudio
         {
             new Tool("Prefab Optimizer", "Make an avatar lighter without breaking it: textures, audio, polygons",
                 "Kawaii Studio/Prefab Optimizer"),
-            new Tool("Video Animator", "Turn a video into a looping animated texture sheet",
+            new Tool("Video Animator", "Turn a video into a looping animated texture sheet (KSVideoDecoder)",
                 "Kawaii Studio/Video Animator"),
+            new Tool("Controller To Anim", "Bake a chain of a controller layer's states into one safe animation clip",
+                "Kawaii Studio/Universal Tools/Controller To Anim"),
             new Tool("GLB to FBX Converter", "Convert .glb models to .fbx through Blender",
                 "Kawaii Studio/GLB to FBX Converter"),
             new Tool("Kawaii Exporter", "Export a prefab and its dependencies to a .unitypackage",
@@ -64,11 +67,16 @@ namespace KawaiiStudio
         private Vector2 _scroll;
         private bool _sdkPresent;
 
+        // workspace state, read once per focus (the stamp is a file) and after every action here
+        private bool _wsInstalled;
+        private string _wsVersion = "";
+        private KawaiiStudioWorkspace.Report _wsReport;
+
         [MenuItem("Kawaii Studio/Studio Manager", priority = 0)]
         public static void ShowWindow()
         {
             var window = GetWindow<KawaiiStudioManager>("Kawaii Studio");
-            window.minSize = new Vector2(420, 520);
+            window.minSize = new Vector2(420, 560);
             window.Show();
         }
 
@@ -78,6 +86,25 @@ namespace KawaiiStudio
             // loaded, the VRChat tools' menu items are registered and safe to invoke.
             _sdkPresent = AppDomain.CurrentDomain.GetAssemblies()
                 .Any(a => a.GetName().Name.StartsWith("VRC.SDK3", StringComparison.Ordinal));
+            RefreshWorkspaceState();
+        }
+
+        private void OnFocus() => RefreshWorkspaceState();
+
+        private void RefreshWorkspaceState()
+        {
+            try
+            {
+                _wsReport = KawaiiStudioWorkspace.EnsureInstalled();   // a no-op once checked this session
+                _wsInstalled = KawaiiStudioWorkspace.IsInstalled;
+                _wsVersion = KawaiiStudioWorkspace.InstalledVersion;
+            }
+            catch (Exception e)
+            {
+                _wsInstalled = false;
+                _wsVersion = "";
+                Debug.LogWarning("[Kawaii Studio] workspace state unavailable: " + e.Message);
+            }
         }
 
         private void OnGUI()
@@ -91,6 +118,8 @@ namespace KawaiiStudio
                 VERSION,
                 KawaiiStudioBranding.Logo,
                 KawaiiStudioBranding.Banner);
+
+            KawaiiStudioGUI.DrawSection("Workspace", KawaiiStudioGUI.AccentPurple, DrawWorkspace);
 
             KawaiiStudioGUI.DrawSection("Tools", KawaiiStudioGUI.AccentCyan, () =>
             {
@@ -137,6 +166,80 @@ namespace KawaiiStudio
             KawaiiStudioGUI.DrawFooter();
             EditorGUILayout.EndScrollView();
         }
+
+        // ------------------------------------------------------------------ workspace
+
+        private void DrawWorkspace()
+        {
+            bool upToDate = _wsInstalled && _wsVersion == VERSION;
+            string status = !_wsInstalled ? "Not installed"
+                : upToDate ? "Installed, up to date"
+                : $"Installed from {_wsVersion}, package is {VERSION}";
+
+            KawaiiStudioGUI.KeyValueRow("Folder", KawaiiStudioPaths.Workspace);
+            KawaiiStudioGUI.KeyValueRow("Status", status, upToDate ? KawaiiStudioGUI.SuccessColor : KawaiiStudioGUI.WarningColor);
+            KawaiiStudioGUI.KeyValueRow("Package",
+                KawaiiStudioPaths.IsLegacyLayout ? ".unitypackage install (the package is the workspace)" : KawaiiStudioPaths.PackageRoot);
+
+            GUILayout.Space(4);
+            KawaiiStudioGUI.Banner(
+                "Shaders, materials and every tool's output live here: Videos, Animations, Prefabs, Models, " +
+                "KS Exported, Optimized, Protected and ThirdParty/FFMPEG (drop ffmpeg there for the Video Animator). " +
+                "Shaders follow package updates; materials are yours and are never replaced.",
+                KawaiiStudioGUI.MessageKind.Info);
+
+            if (_wsReport != null && _wsReport.Errors.Count > 0)
+                KawaiiStudioGUI.Banner("Last check reported: " + string.Join(" | ", _wsReport.Errors), KawaiiStudioGUI.MessageKind.Error);
+
+            // what the last look inside the project found (older installs, duplicate shaders,
+            // pink materials, stray output folders, FFMPEG in the old place)
+            var scan = KawaiiStudioProjectRepair.LastScan ?? _wsReport?.Project;
+            if (scan != null && !scan.Clean)
+            {
+                KawaiiStudioGUI.Banner(scan.Summary(),
+                    scan.FixableCount > 0 ? KawaiiStudioGUI.MessageKind.Warning : KawaiiStudioGUI.MessageKind.Info);
+                foreach (var f in scan.Findings.Take(8))
+                    GUILayout.Label("• " + f.Path + (f.Fixable ? "" : "  (left as is)"), KawaiiStudioGUI.InfoLabelStyle);
+                if (scan.Findings.Count > 8)
+                    GUILayout.Label($"… and {scan.Findings.Count - 8} more (the Console has the full list)", KawaiiStudioGUI.InfoLabelStyle);
+            }
+            else if (scan != null)
+            {
+                KawaiiStudioGUI.Banner("Project scan: nothing left behind by older installs.", KawaiiStudioGUI.MessageKind.Success);
+            }
+
+            GUILayout.Space(4);
+            EditorGUILayout.BeginHorizontal();
+            if (KawaiiStudioGUI.PrimaryButton(_wsInstalled ? "Repair / Update" : "Install"))
+            {
+                _wsReport = KawaiiStudioWorkspace.Reinstall();
+                _wsInstalled = KawaiiStudioWorkspace.IsInstalled;
+                _wsVersion = KawaiiStudioWorkspace.InstalledVersion;
+                Debug.Log(_wsReport.ToString());
+            }
+            if (KawaiiStudioGUI.SecondaryButton("Scan Project"))
+            {
+                var s = KawaiiStudioProjectRepair.Scan();
+                Debug.Log("[Kawaii Studio] " + s);
+            }
+            using (new EditorGUI.DisabledScope(scan == null || scan.FixableCount == 0))
+            {
+                if (KawaiiStudioGUI.SecondaryButton(scan != null && scan.FixableCount > 0 ? $"Repair {scan.FixableCount}" : "Repair"))
+                {
+                    var rep = KawaiiStudioProjectRepair.Repair(scan);
+                    KawaiiStudioProjectRepair.Scan();
+                    EditorUtility.DisplayDialog("Kawaii Studio", rep.ToString(), "OK");
+                }
+            }
+            using (new EditorGUI.DisabledScope(!_wsInstalled))
+            {
+                if (KawaiiStudioGUI.SecondaryButton("Open Folder"))
+                    KawaiiStudioWorkspace.MenuOpenFolder();
+            }
+            EditorGUILayout.EndHorizontal();
+        }
+
+        // ------------------------------------------------------------------ tools
 
         private void DrawToolRow(Tool tool, bool enabled)
         {

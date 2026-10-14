@@ -269,6 +269,17 @@ Double-click it with your project open and import. Everything installs under
 SDK is present, and stay out of the way when it isn't — so the package is safe to import
 into any project.
 
+### The workspace: `Assets/Kawaii Studio`
+
+Whichever way you install, the package creates and maintains **`Assets/Kawaii Studio`** in
+your project (`Kawaii Studio > Workspace`). The shaders and the two materials are installed
+there with their published GUIDs, so you can assign, edit and export them like any asset of
+yours; shaders follow package updates (the previous file is kept in `Backups~`), materials
+are never replaced. Every tool writes there too: `Videos`, `Animations`, `Prefabs`, `Models`,
+`KS Exported`, `Optimized`, `Protected`. Drop FFMPEG in `ThirdParty/FFMPEG` for the Video
+Animator. Scripts of a pre-3.0 install found in `Assets/Kawaii Studio/Editor` are detected and
+can be moved aside in one click — nothing is deleted.
+
 ### Method 3 — Unity Package Manager (git URL)
 1. `Window > Package Manager` then `+` then **Add package from git URL**
 2. Paste: `https://github.com/kawaiistudio/KSUnityTools.git`
@@ -317,7 +328,7 @@ into any project.
 
 ### v2.0 *(Current)*
 - Video Animator with texture atlas generation
-- Studio Manager hub (Tools/Shaders + quick launch + GitHub updater)
+- Studio Manager hub (workspace state + quick launch; updates come through VCC)
 - Audio compression optimizer (Vorbis/ADPCM + quality + sample rate)
 - Prefab Optimizer: progress bar, cached GUIStyles, alpha-aware format detection, fixed log scroll
 - UI consistency pass across all tools

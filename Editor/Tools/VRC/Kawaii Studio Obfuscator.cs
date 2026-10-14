@@ -89,14 +89,10 @@ namespace KawaiiStudio.VRC
             // Strip characters that are illegal in an asset path; an avatar named
             // "Foo/Bar" used to throw or silently create a nested folder.
             string safeName = string.Join("_", avatarRoot.name.Split(Path.GetInvalidFileNameChars()));
-            folderPath = "Assets/KS_Protected_" + safeName + "_" + Random.Range(100, 999);
-            if (!Directory.Exists(folderPath))
-            {
-                Directory.CreateDirectory(folderPath);
-                // Directory.CreateDirectory alone leaves the AssetDatabase unaware of the
-                // folder, so every CreateAsset below failed with "Couldn't create asset file".
-                AssetDatabase.Refresh();
-            }
+            // Assets/Kawaii Studio/Protected/<avatar>_<n> (3.4.0; the old "Assets/KS_Protected_*" folders
+            // littered the Assets root). Created through the AssetDatabase: Directory.CreateDirectory
+            // alone left it unaware of the folder and every CreateAsset below failed.
+            folderPath = KawaiiStudioPaths.EnsureFolder(KawaiiStudioPaths.OutputFolder("Protected") + "/" + safeName + "_" + Random.Range(100, 999));
 
             GameObject newAvatar = Instantiate(avatarRoot);
             newAvatar.name = "KS_PROTECTED_" + avatarRoot.name;

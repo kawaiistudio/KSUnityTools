@@ -268,11 +268,9 @@ namespace KawaiiStudio
             {
                 // 1. Determine destination
                 string targetName = Path.GetFileNameWithoutExtension(targetAssetPath);
-                string baseExportFolder = "Assets/Kawaii Studio/KS Exported";
-                string specificExportFolder = $"{baseExportFolder}/{targetName}_KS_exported";
-
-                if (!Directory.Exists(baseExportFolder)) Directory.CreateDirectory(baseExportFolder);
-                if (!Directory.Exists(specificExportFolder)) Directory.CreateDirectory(specificExportFolder);
+                // the workspace's "KS Exported" folder, created through the AssetDatabase so Unity sees it at once
+                string baseExportFolder = KawaiiStudioPaths.OutputFolder("KS Exported");
+                string specificExportFolder = KawaiiStudioPaths.EnsureFolder($"{baseExportFolder}/{KawaiiStudioPaths.SafeName(targetName)}_KS_exported");
 
                 // 2. Collect files
                 var assetPaths = BuildExportAssetList(targetAssetPath, includeDependencies, recurseFolders);

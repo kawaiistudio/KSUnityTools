@@ -27,14 +27,15 @@ namespace KawaiiStudio
     ///    everything a blendshape moves, UV seams, open borders and material edges are never touched, and a mesh stops
     ///    before its shape would change. Unused blendshapes (not animated, not a viseme / eyelid, no weight, not "vrc."
     ///    nor MMD) can go too.
-    ///  - Nothing of yours is overwritten: the reduced meshes are new assets in "Assets/Kawaii Studio Optimized/…",
+    ///  - Nothing of yours is overwritten: the reduced meshes are new assets in "Assets/Kawaii Studio/Optimized/…",
     ///    used by a COPY of the avatar named "… (Optimized)". Texture / audio import settings are saved first and
     ///    "Restore settings" puts them back.
     /// </summary>
     public class PrefabOptimizer : EditorWindow
     {
         private const string VERSION = KawaiiStudioVersion.Current;
-        private const string OutRoot = "Assets/Kawaii Studio Optimized";
+        // the workspace's Optimized folder (3.4.0; was the stray "Assets/Kawaii Studio Optimized")
+        private static string OutRoot => KawaiiStudioPaths.Optimized;
         private const int TextureFloor = 256;
 
         private static readonly string[] TextureLabels = { "100 %", "50 %", "25 %", "12.5 %" };
@@ -829,7 +830,7 @@ namespace KawaiiStudio
             if (prefab == null) return;
             log.Length = 0;
             resultMessage = null;
-            EnsureFolder(OutFolder());
+            KawaiiStudioPaths.EnsureFolder(OutFolder());
             var backup = LoadBackup();
             int texDone = 0, clipDone = 0, meshDone = 0;
             long trisBefore = meshes.Sum(m => (long)m.Tris), trisAfter = 0;
