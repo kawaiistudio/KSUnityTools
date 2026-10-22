@@ -40,6 +40,16 @@
 
 ---
 
+### Kawaii Studio Link `NEW in 3.5`
+> This Unity project and the Kawaii Studio app, linked on your PC.
+
+- **Connect once** in `Kawaii Studio > Kawaii Studio Link`: the project pairs with the running app and links itself again each time it opens. The window shows the app's version, your account and its level
+- **Send to Unity**: in the app's Scene Editor, one click exports the open avatar or world straight into `Assets/Kawaii Studio/KS Exported`, imported and selected here
+- **Test in Kawaii Studio**: builds the selected avatar (or the open world scene) and opens it in the app's Scene Editor, already playing. A world starts on the Photon sim with simulated players
+- Local only: the link uses the app's bridge on `127.0.0.1` with a pairing secret only programs on your PC can read, so a web page can never drive it. The server still decides what your account can open
+
+---
+
 ### Menu Colorizer `NEW in 3.2`
 > Colourful VRChat Expressions Menus in one click: gradients, rainbow text, bold and size, with a live preview of the radial menu.
 

@@ -35,6 +35,8 @@ namespace KawaiiStudio
         // Core tools compile without the VRChat SDK.
         private static readonly Tool[] CoreTools =
         {
+            new Tool("Kawaii Studio Link", "Link this project with the Kawaii Studio app: Send to Unity from its Scene Editor",
+                "Kawaii Studio/Kawaii Studio Link"),
             new Tool("Prefab Optimizer", "Make an avatar lighter without breaking it: textures, audio, polygons",
                 "Kawaii Studio/Prefab Optimizer"),
             new Tool("Video Animator", "Turn a video into a looping animated texture sheet (KSVideoDecoder)",

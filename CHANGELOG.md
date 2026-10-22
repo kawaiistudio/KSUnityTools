@@ -2,6 +2,17 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.5.0]
+
+**Kawaii Studio Link: this Unity and the Kawaii Studio app, linked.**
+
+- **New window `Kawaii Studio > Kawaii Studio Link`**: click Connect once and the project pairs with the running Kawaii Studio app (VRChat Archive) over its local bridge on `127.0.0.1:8791`, then links itself again each time it opens. The window shows the link, the app's version, the signed-in account and its level, and which features that level includes (Scene Editor: VIP, Bundle Patcher: Legendary). The server stays the one that decides; Unity only shows what the app reports.
+- **Send to Unity**: in the app's Scene Editor, Send to Unity runs Export all (the Unity 2022 project layout, shaders rebuilt on the server included) straight into this project. The files arrive in `Temp/`, are moved into `Assets/Kawaii Studio/KS Exported/<name>`, imported, and the avatar's prefab (or the world's scene) is selected and pinged. Sending the same name again keeps the previous copy once in `Backups~/KS Exported/<name>`; the GUIDs are the same, so anything that used the old files follows the new ones. The window lists the recent transfers (Select, Open scene).
+- **Security**: the app's bridge is reachable by any web page, so pairing needs a secret only a local process can read (`%LOCALAPPDATA%\KawaiiStudio\link\bridge.json`, new on every app start), traded for a token for this project; the app refuses anything that looks like a browser request. Unity opens no port: it long-polls the bridge from a background thread, which also survives every domain reload.
+- **Test in Kawaii Studio** (`Kawaii Studio > Test in Kawaii Studio`, the hierarchy's right-click menu, or the Link window): builds the selected avatar, or the open world scene, and opens it in the app's Scene Editor, playing right away. An avatar starts in Play mode; a world starts on the World toolkit's Photon sim. The avatar is prepared the way the VRChat SDK prepares a build: a clone goes through the SDK's preprocess callbacks (Modular Avatar, VRCFury and NDMF hook in there), then Unity's BuildPipeline writes a PC bundle into `Library/KawaiiStudio/TestBuilds`. The app copies it before opening it, and the server still decides whether the Scene Editor opens (VIP).
+- Headless entry points `KawaiiStudio.KawaiiStudioLink.CommandLineServe` and `KawaiiStudio.KawaiiStudioTestBuild.CommandLineTest` (`KS_LINK_TEST` = the prefab or scene) (batchmode without `-quit`; `KS_LINK_EXIT_AFTER`, `KS_LINK_TIMEOUT`, `KS_LINK_DIR`).
+- Needs Kawaii Studio with the link (the app release that ships Send to Unity).
+
 ## [3.4.3]
 
 - **Video Animator**: a per-atlas material that already exists ("… Mat N.mat", reused so its GUID holds) is rebuilt from the custom material -- shader and properties -- before its atlas is set. It used to keep whatever shader an older conversion had given it (the pre-3.4 tool's copies pointed at `rireal/screen overlay`), so a re-run over an old folder played on the wrong shader.
