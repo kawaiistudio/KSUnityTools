@@ -26,6 +26,7 @@ survive the update. Random GUIDs would silently break every project on every rel
 """
 from __future__ import annotations
 
+import gzip
 import hashlib
 import io
 import os
@@ -229,6 +230,13 @@ PINNED_GUIDS = {
 }
 
 
+# 3.6.0: the Link left Editor/Link/ for its own package (Link~ in the repo, "Link" in the .unitypackage). Its three
+# scripts are NOT pinned to their 3.5.0 GUIDs on purpose: Unity resolves an existing GUID to the asset's CURRENT path, so
+# an import over 3.5.0 would update them in Editor/Link -- inside the KawaiiStudio.Editor assembly, away from the Link's
+# own helpers -- and the project would stop compiling (seen 2026-10-22). With new GUIDs they arrive in Link/Editor, and
+# Editor/Core/KawaiiStudioLinkMigration.cs deletes the 3.5.0 copy once the new Link is loaded.
+
+
 def guid_for(unity_path: str) -> str:
     """GUID for a Unity path: the published one when it exists, otherwise a deterministic
     hash of the path so it stays identical across every future build."""
@@ -328,7 +336,11 @@ def main() -> int:
         return t
 
     n_files = n_dirs = 0
-    with tarfile.open(out, "w:gz") as tar:
+    # The gzip header must name the inner file "archtemp.tar", as Unity's own exporter writes it. Python's gzip stores
+    # the OUTPUT file's name there instead ("KSUnityTools.unitypackage"), and Unity then imports NOTHING from the package,
+    # silently: verified 2026-10-22 on Unity 2022.3.22f1 (AssetDatabase.ImportPackage reported "completed" with zero
+    # assets for every .unitypackage this script had built; the same tar with the header renamed imported fine).
+    with open(out, "wb") as raw,             gzip.GzipFile(filename="archtemp.tar", mode="wb", fileobj=raw, mtime=mtime) as gz,             tarfile.open(fileobj=gz, mode="w", format=tarfile.USTAR_FORMAT) as tar:
         for unity_path, disk in entries:
             guid = guid_for(unity_path)
             meta = meta_for(unity_path, disk is None, disk).encode("utf-8")
@@ -349,8 +361,8 @@ def main() -> int:
     # that is the exact defect this script was written to stop repeating.
     shipped = {p for p, d in entries if d is not None}
     required = [p for p in shipped if p.endswith(".asmdef")]
-    if len(required) < 2:
-        print(f"::error::expected 2 .asmdef files in the package, found {len(required)}")
+    if len(required) < 3:
+        print(f"::error::expected 3 .asmdef files in the package (KS, KS VRC, the Link), found {len(required)}")
         return 1
     print("asmdef check: " + ", ".join(sorted(required)))
     return 0

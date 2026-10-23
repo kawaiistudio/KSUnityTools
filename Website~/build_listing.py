@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Generate a VPM listing (index.json) from this repository's GitHub releases.
 
-Every release published by .github/workflows/release.yml attaches two assets:
+Every release published by .github/workflows/release.yml attaches, per package:
   - <package>-<version>.zip   the package itself
-  - package.json              the manifest for that version
+  - package.json              the manifest for that version (KS Unity Tools), or
+    <package>.package.json    the manifest of another package of the same release (since 3.6.0: the
+                              Kawaii Studio Link, com.kawaiistudio.link, released with every tag)
+A package version carried by several releases (the Link when it did not change) is listed once, from
+the OLDEST release that carried it, so its url and zipSHA256 never move under VCC's cache.
 
 This script reads each release's package.json asset, rewrites its "url" to point
 at that release's zip, and collects them all into the VPM repository format:
@@ -82,47 +86,19 @@ def collect_releases(repo, token):
 def build(repo, listing_url, token):
     packages = {}
 
-    for release in collect_releases(repo, token):
+    # oldest first: the first release that carried a package version keeps it
+    for release in reversed(collect_releases(repo, token)):
         if release.get("draft"):
             continue
 
         assets = {asset["name"]: asset for asset in release.get("assets", [])}
-        manifest_asset = assets.get("package.json")
-        zip_asset = next(
-            (a for a in release.get("assets", []) if a["name"].endswith(".zip")), None
-        )
-
-        if manifest_asset is None or zip_asset is None:
-            print(f"  skip '{release.get('tag_name')}': missing package.json or zip asset")
+        manifests = [a for n, a in assets.items() if n == "package.json" or n.endswith(".package.json")]
+        if not manifests:
+            print(f"  skip '{release.get('tag_name')}': no package.json asset")
             continue
 
-        try:
-            manifest = download_json(manifest_asset["url"], token)
-        except (urllib.error.URLError, json.JSONDecodeError) as exc:
-            print(f"  skip '{release.get('tag_name')}': cannot read package.json ({exc})")
-            continue
-
-        name = manifest.get("name")
-        version = manifest.get("version")
-        if not name or not version:
-            print(f"  skip '{release.get('tag_name')}': package.json has no name/version")
-            continue
-
-        # Point the manifest at the actual downloadable asset for this release.
-        manifest["url"] = zip_asset["browser_download_url"]
-
-        # zipSHA256 is what VCC uses to invalidate its cached copy of a package
-        # ("Currently, the zipSHA256 property is only used for cache invalidation"
-        # -- vcc.docs.vrchat.com/vpm/packages). Without it, a user who already pulled a
-        # version can keep being served the stale zip. It belongs in the LISTING entry,
-        # not in the in-repo package.json.
-        try:
-            manifest["zipSHA256"] = sha256_of(zip_asset["url"], token)
-        except (urllib.error.URLError, OSError) as exc:
-            print(f"  !! {name} {version}: cannot hash zip ({exc}); shipping without zipSHA256")
-
-        packages.setdefault(name, {"versions": {}})["versions"][version] = manifest
-        print(f"  + {name} {version}")
+        for manifest_asset in manifests:
+            add_package(packages, release, assets, manifest_asset, token)
 
     return {
         "name": LISTING_NAME,
@@ -132,6 +108,58 @@ def build(repo, listing_url, token):
         "description": LISTING_DESCRIPTION,
         "packages": packages,
     }
+
+
+def find_zip(assets, manifest_asset, name, version):
+    """The zip of THIS package: "<name>-<version>.zip". A release from before 3.6.0 had one zip only."""
+    exact = assets.get(f"{name}-{version}.zip")
+    if exact is not None or manifest_asset["name"] != "package.json":
+        return exact
+    for n, a in assets.items():
+        if n.endswith(".zip") and n.startswith(name):
+            return a
+    for n, a in assets.items():
+        if n.endswith(".zip"):
+            return a
+    return None
+
+
+def add_package(packages, release, assets, manifest_asset, token):
+    tag = release.get("tag_name")
+    try:
+        manifest = download_json(manifest_asset["url"], token)
+    except (urllib.error.URLError, json.JSONDecodeError) as exc:
+        print(f"  skip '{tag}' {manifest_asset['name']}: cannot read it ({exc})")
+        return
+
+    name = manifest.get("name")
+    version = manifest.get("version")
+    if not name or not version:
+        print(f"  skip '{tag}' {manifest_asset['name']}: no name/version")
+        return
+    if version in packages.get(name, {}).get("versions", {}):
+        return  # an older release already listed this version
+
+    zip_asset = find_zip(assets, manifest_asset, name, version)
+    if zip_asset is None:
+        print(f"  skip '{tag}' {name} {version}: no zip asset")
+        return
+
+    # Point the manifest at the actual downloadable asset for this release.
+    manifest["url"] = zip_asset["browser_download_url"]
+
+    # zipSHA256 is what VCC uses to invalidate its cached copy of a package
+    # ("Currently, the zipSHA256 property is only used for cache invalidation"
+    # -- vcc.docs.vrchat.com/vpm/packages). Without it, a user who already pulled a
+    # version can keep being served the stale zip. It belongs in the LISTING entry,
+    # not in the in-repo package.json.
+    try:
+        manifest["zipSHA256"] = sha256_of(zip_asset["url"], token)
+    except (urllib.error.URLError, OSError) as exc:
+        print(f"  !! {name} {version}: cannot hash zip ({exc}); shipping without zipSHA256")
+
+    packages.setdefault(name, {"versions": {}})["versions"][version] = manifest
+    print(f"  + {name} {version}  ({tag})")
 
 
 # The vcc:// URL is percent-encoded exactly like VRChat's own listing template does it

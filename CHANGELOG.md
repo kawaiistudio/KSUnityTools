@@ -2,6 +2,16 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.6.0]
+
+**The Kawaii Studio Link is its own package now (`com.kawaiistudio.link` 1.0.0), so world projects can have it.**
+
+- KS Unity Tools depends on it: VCC installs both, and nothing changes for an avatar project (same window, same menu, same pairing).
+- The Link package needs no VRChat SDK. KS Unity Tools stays an avatar toolset (it needs the avatars SDK), so a world project gets the Link alone. The Kawaii Studio app installs the right one into the Unity projects it makes (GET UNITY PROJECT): KS Unity Tools + the Link for an avatar, the Link for a world.
+- **Links itself on a project the app set up**: when the Kawaii Studio app installs the Link into a project it made, it leaves `UserSettings/KawaiiStudioLink.autoconnect`; the Link reads it once on the first open, turns the link on and deletes it, so no Connect click is needed. A project where you already chose Connect or Disconnect keeps your choice.
+- **Fix: the `.unitypackage` imports again.** Unity only reads a package whose gzip header names the inner file `archtemp.tar` (what its own exporter writes); the build script stored the package's own file name there, and Unity then imported nothing from it, without an error. The build now writes the header Unity expects.
+- The `.unitypackage` carries the Link under `Assets/Kawaii Studio/Link`. Imported over 3.5.0, it adds the new Link and KS Unity Tools then deletes the 3.5.0 copy of the three Link scripts from `Editor/Link` on its first load, so two Links never run side by side.
+
 ## [3.5.0]
 
 **Kawaii Studio Link: this Unity and the Kawaii Studio app, linked.**

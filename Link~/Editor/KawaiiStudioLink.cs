@@ -216,6 +216,7 @@ namespace KawaiiStudio
             EditorApplication.update += Update;
             AssemblyReloadEvents.beforeAssemblyReload += StopThread;
             EditorApplication.quitting += OnQuit;
+            ConsumeAutoConnectMarker();
             if (Enabled) StartThread();
         }
 
@@ -258,6 +259,28 @@ namespace KawaiiStudio
                 string env = Environment.GetEnvironmentVariable("KS_LINK_DIR");
                 if (!string.IsNullOrEmpty(env)) return env;
                 return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KawaiiStudio", "link");
+            }
+        }
+
+        /// <summary>The marker file the Kawaii Studio app leaves in a project it made and set up (GET UNITY PROJECT, with the
+        /// Link installed by the app): its first open links without a click. Read once and deleted; after that only the
+        /// user's own Connect / Disconnect decide, and a project where they already chose keeps that choice.</summary>
+        public const string AutoConnectMarker = "UserSettings/KawaiiStudioLink.autoconnect";
+
+        private static void ConsumeAutoConnectMarker()
+        {
+            try
+            {
+                string marker = Path.Combine(ProjectPath, AutoConnectMarker.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(marker)) return;
+                File.Delete(marker);
+                if (!string.IsNullOrEmpty(EditorUserSettings.GetConfigValue(PrefEnabled))) return;
+                EditorUserSettings.SetConfigValue(PrefEnabled, "1");
+                AddLog("Set up by Kawaii Studio: linking this project automatically.");
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[Kawaii Studio Link] auto-connect marker: " + e.Message);
             }
         }
 
@@ -419,6 +442,23 @@ namespace KawaiiStudio
             }
         }
 
+        /// <summary>What the app logs as "KS Unity Tools x.y.z": KS Unity Tools' version when it is in the project (read
+        /// by reflection: the Link package does not reference it), else the Link's own ("Link 1.0.0", a world project).</summary>
+        private static string KsVersion()
+        {
+            try
+            {
+                foreach (var a in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    var f = a.GetType("KawaiiStudio.KawaiiStudioVersion", false)?.GetField("Current",
+                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                    if (f != null && f.GetValue(null) is string v && v.Length > 0) return v;
+                }
+            }
+            catch { }
+            return "Link " + KawaiiStudioLinkVersion.Current;
+        }
+
         private static bool Pair()
         {
             string why;
@@ -430,7 +470,7 @@ namespace KawaiiStudio
             }
             _port = d.port;
             string body = "{\"project\":" + Quote(ProjectPath) + ",\"name\":" + Quote(ProjectName) + ",\"unity\":" + Quote(UnityVersion) +
-                          ",\"ks\":" + Quote(KawaiiStudioVersion.Current) + ",\"pid\":" + Process.GetCurrentProcess().Id +
+                          ",\"ks\":" + Quote(KsVersion()) + ",\"pid\":" + Process.GetCurrentProcess().Id +
                           ",\"active\":" + (_active ? "true" : "false") + "}";
             Reply r = Request("POST", "/unity/pair", body, 8000, d.secret, false);
             Match token = Regex.Match(r.Body ?? "", "\"token\"\\s*:\\s*\"([0-9a-f]{64})\"");
@@ -715,21 +755,21 @@ namespace KawaiiStudio
             if (!source.StartsWith(Path.GetFullPath(m.folder), StringComparison.OrdinalIgnoreCase) || !Directory.Exists(source))
                 throw new InvalidOperationException("the export has no " + m.assets + " folder");
 
-            string name = KawaiiStudioPaths.SafeName(string.IsNullOrEmpty(m.name) ? Path.GetFileName(source) : m.name);
-            string parent = KawaiiStudioPaths.OutputFolder("KS Exported");
+            string name = KawaiiStudioLinkPaths.SafeName(string.IsNullOrEmpty(m.name) ? Path.GetFileName(source) : m.name);
+            string parent = KawaiiStudioLinkPaths.OutputFolder("KS Exported");
             string dest = parent + "/" + name;
-            string destAbs = KawaiiStudioPaths.ToAbsolute(dest);
+            string destAbs = KawaiiStudioLinkPaths.ToAbsolute(dest);
 
             if (Directory.Exists(destAbs))
             {
                 // the same name sent again: the copy it replaces is kept once, outside the AssetDatabase (Unity
                 // ignores "~" folders). The new files carry the same GUIDs (the app derives them from the bundle),
                 // so scenes and prefabs that used the old ones follow the new ones.
-                string backup = KawaiiStudioPaths.ToAbsolute(KawaiiStudioPaths.Backups + "/KS Exported/" + name);
+                string backup = KawaiiStudioLinkPaths.ToAbsolute(KawaiiStudioLinkPaths.Backups + "/KS Exported/" + name);
                 if (Directory.Exists(backup)) Directory.Delete(backup, true);
                 Directory.CreateDirectory(Path.GetDirectoryName(backup));
                 Directory.Move(destAbs, backup);
-                AddLog("Previous " + name + " kept in " + KawaiiStudioPaths.Backups + "/KS Exported.");
+                AddLog("Previous " + name + " kept in " + KawaiiStudioLinkPaths.Backups + "/KS Exported.");
             }
 
             if (SameVolume(source, destAbs)) Directory.Move(source, destAbs);

@@ -124,7 +124,7 @@ namespace KawaiiStudio
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             RequirePcTarget();
-            string name = KawaiiStudioPaths.SafeName(source.name);
+            string name = KawaiiStudioLinkPaths.SafeName(source.name);
             GameObject clone = null;
             bool preprocessed = false;
             try
@@ -156,7 +156,7 @@ namespace KawaiiStudio
             if (!scene.IsValid() || string.IsNullOrEmpty(scene.path)) throw new InvalidOperationException("Save the world scene first.");
             if (scene.isDirty && (Application.isBatchMode || !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo() || scene.isDirty))
                 throw new InvalidOperationException("Save the scene to test it: the build reads it from disk.");
-            return BuildBundle(scene.path, "customscene.vrcw", KawaiiStudioPaths.SafeName(scene.name) + ".vrcw");
+            return BuildBundle(scene.path, "customscene.vrcw", KawaiiStudioLinkPaths.SafeName(scene.name) + ".vrcw");
         }
 
         private static string BuildBundle(string assetPath, string bundleName, string fileName)

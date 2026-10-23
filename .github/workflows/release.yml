@@ -13,6 +13,9 @@ permissions:
 
 env:
   PACKAGE_NAME: com.kawaiistudio.ksunitytools
+  # 3.6.0: the Kawaii Studio Link is its own package (Link~ in the repo, no VRChat SDK dependency, so world projects
+  # can have it). Every release carries it too; its version comes from Link~/package.json and only changes when it does.
+  LINK_NAME: com.kawaiistudio.link
 
 jobs:
   build:
@@ -26,6 +29,16 @@ jobs:
           VERSION=$(python -c "import json;print(json.load(open('package.json'))['version'])")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Package version: $VERSION"
+          LINK_VERSION=$(python -c "import json;print(json.load(open('Link~/package.json'))['version'])")
+          echo "link_version=$LINK_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Link package version: $LINK_VERSION"
+
+      - name: Verify the Link's version constant matches Link~/package.json
+        run: |
+          if ! grep -q "public const string Current = \"${{ steps.version.outputs.link_version }}\";" "Link~/Editor/KawaiiStudioLinkPaths.cs"; then
+            echo "::error::KawaiiStudioLinkVersion.Current does not match Link~/package.json (${{ steps.version.outputs.link_version }})."
+            exit 1
+          fi
 
       - name: Verify the tag matches package.json
         if: startsWith(github.ref, 'refs/tags/')
@@ -44,7 +57,15 @@ jobs:
         run: |
           mkdir -p build
           zip -r "build/${PACKAGE_NAME}-${{ steps.version.outputs.version }}.zip" . \
-            -x ".git/*" ".github/*" "build/*" "Website~/*" "Documentation~/*" "*.md.meta"
+            -x ".git/*" ".github/*" "build/*" "Website~/*" "Documentation~/*" "Link~/*" "*.md.meta"
+          ls -la build/
+
+      # The Link package: Link~'s content at the zip root (what VCC extracts into Packages/com.kawaiistudio.link),
+      # and its manifest attached as "<name>.package.json" so the listing builder finds both packages of a release.
+      - name: Build Link package zip
+        run: |
+          (cd "Link~" && zip -r "../build/${LINK_NAME}-${{ steps.version.outputs.link_version }}.zip" . -x "*.md.meta")
+          cp "Link~/package.json" "build/${LINK_NAME}.package.json"
           ls -la build/
 
       # The .unitypackage is the one-click path for users who don't use VCC/UPM: import it
@@ -68,3 +89,5 @@ jobs:
             build/${{ env.PACKAGE_NAME }}-${{ steps.version.outputs.version }}.zip
             build/KSUnityTools.unitypackage
             package.json
+            build/${{ env.LINK_NAME }}-${{ steps.version.outputs.link_version }}.zip
+            build/${{ env.LINK_NAME }}.package.json

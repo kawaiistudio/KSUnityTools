@@ -1,0 +1,24 @@
+{
+  "name": "com.kawaiistudio.link",
+  "displayName": "Kawaii Studio Link",
+  "version": "1.0.0",
+  "unity": "2019.4",
+  "description": "Links this Unity project with the Kawaii Studio app (VRChat Archive): Send to Unity from its Scene Editor, Test in Kawaii Studio from Unity. Works in avatar and world projects; no VRChat SDK dependency. Comes with KS Unity Tools, installs alone too.",
+  "author": {
+    "name": "Kawaii Studio",
+    "url": "https://github.com/kawaiistudio"
+  },
+  "license": "See LICENSE",
+  "keywords": [
+    "vrchat",
+    "kawaii studio",
+    "link",
+    "editor",
+    "avatar",
+    "world"
+  ],
+  "vpmDependencies": {},
+  "url": "https://github.com/kawaiistudio/KSUnityTools/releases/download/3.6.0/com.kawaiistudio.link-1.0.0.zip",
+  "changelogUrl": "https://github.com/kawaiistudio/KSUnityTools/blob/main/Link~/CHANGELOG.md",
+  "documentationUrl": "https://github.com/kawaiistudio/KSUnityTools#readme"
+}
