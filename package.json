@@ -1,7 +1,7 @@
 {
   "name": "com.kawaiistudio.ksunitytools",
   "displayName": "KS Unity Tools",
-  "version": "3.6.0",
+  "version": "3.6.1",
   "unity": "2019.4",
   "description": "Kawaii Studio editor toolset for Unity: Kawaii Studio Link (Send to Unity from the Kawaii Studio app), Menu Colorizer, Prefab Optimizer, Video Animator, Controller To Anim, GLB to FBX, Exporter, Obfuscator, NSFW Detector, Tail-to-PhysBones, Contact Scanner, Constraint Tool and custom shaders. Installs its shaders, materials and output folders into Assets/Kawaii Studio.",
   "author": {
@@ -20,9 +20,9 @@
   ],
   "vpmDependencies": {
     "com.vrchat.avatars": ">=3.5.0",
-    "com.kawaiistudio.link": ">=1.0.0"
+    "com.kawaiistudio.link": ">=1.0.1"
   },
-  "url": "https://github.com/kawaiistudio/KSUnityTools/releases/download/3.6.0/com.kawaiistudio.ksunitytools-3.6.0.zip",
+  "url": "https://github.com/kawaiistudio/KSUnityTools/releases/download/3.6.1/com.kawaiistudio.ksunitytools-3.6.1.zip",
   "changelogUrl": "https://github.com/kawaiistudio/KSUnityTools/blob/main/CHANGELOG.md",
   "documentationUrl": "https://github.com/kawaiistudio/KSUnityTools#readme"
 }

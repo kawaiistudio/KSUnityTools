@@ -2,6 +2,10 @@
 
 The Kawaii Studio Link package (`com.kawaiistudio.link`). It ships with KS Unity Tools (a dependency since 3.6.0) and installs alone in a world project.
 
+## [1.0.1]
+
+- The new Kawaii Studio logo in the Link window. No code change.
+
 ## [1.0.0]
 
 - The Link of KS Unity Tools 3.5.0, as its own package: the `Kawaii Studio > Kawaii Studio Link` window, pairing with the Kawaii Studio app over its local bridge, Send to Unity (imports into `Assets/Kawaii Studio/KS Exported`) and Test in Kawaii Studio (the selected avatar or the open world scene).

@@ -2,6 +2,10 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.6.1]
+
+- The new Kawaii Studio logo, in the tools' windows and in the Kawaii Studio Link (`com.kawaiistudio.link` 1.0.1). No code change.
+
 ## [3.6.0]
 
 **The Kawaii Studio Link is its own package now (`com.kawaiistudio.link` 1.0.0), so world projects can have it.**
