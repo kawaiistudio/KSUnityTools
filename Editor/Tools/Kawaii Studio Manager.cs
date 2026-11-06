@@ -43,6 +43,8 @@ namespace KawaiiStudio
                 "Kawaii Studio/Video Animator"),
             new Tool("Controller To Anim", "Bake a chain of a controller layer's states into one safe animation clip",
                 "Kawaii Studio/Universal Tools/Controller To Anim"),
+            new Tool("Texture Asset To PNG", "Make the exact .asset textures of a repaired project editable, and back",
+                "Kawaii Studio/Universal Tools/Texture Asset To PNG"),
             new Tool("GLB to FBX Converter", "Convert .glb models to .fbx through Blender",
                 "Kawaii Studio/GLB to FBX Converter"),
             new Tool("Kawaii Exporter", "Export a prefab and its dependencies to a .unitypackage",

@@ -2,6 +2,18 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.7.0]
+
+**Texture Asset To PNG: the exact textures of a repaired project, editable again.**
+
+- A VRChat Archive full repair keeps compressed and HDR textures as `.asset` files that hold the original bundle's data, so they look exactly like the original. They cannot be opened in an image editor.
+- **New window `Kawaii Studio > Universal Tools > Texture Asset To PNG`** (also in the Studio Manager, and on the right-click menu of a texture: `Kawaii Studio > Convert Texture Asset to PNG`): lists the project's `.asset` textures and swaps the ones you pick for an editable image.
+- The image comes from the project's `Editable Textures` folder (the repair's ripped images), with their original import settings. Without that folder, the tool decodes the texture itself: PNG, or EXR for an HDR texture; a normal map is rebuilt as a regular RGB normal map.
+- **Materials stay linked**: the image takes the texture's GUID and the references are rewritten for an imported image. Nothing to reassign.
+- **Back to exact** (same window, or right-click `Kawaii Studio > Texture Back to Exact`) puts the original `.asset` back. Nothing is deleted: the `.asset` waits in `Assets/Kawaii Studio/Backups~/Texture Asset To PNG`, and your edited image goes there when you go back.
+- Unity re-compresses an image when it imports it, so a converted texture is no longer byte-identical to the original. Measured on two repaired avatars (32 textures): 0 to 20 % of the pixels move by one step (out of 255) or more, 0.66 step on average for the worst texture.
+- Tested on two repaired avatar projects (DXT1, DXT5, crunched, RGBAHalf, normal maps, a cubemap): every material slot stays linked, the console stays clean, and after Back to exact the project is byte-identical to before.
+
 ## [3.6.1]
 
 - The new Kawaii Studio logo, in the tools' windows and in the Kawaii Studio Link (`com.kawaiistudio.link` 1.0.1). No code change.

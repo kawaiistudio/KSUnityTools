@@ -51,6 +51,16 @@
 
 ---
 
+### Texture Asset To PNG `NEW in 3.7`
+> Make the exact `.asset` textures of a VRChat Archive repaired project editable, and put them back.
+
+- A full repair keeps compressed textures as `.asset` files holding the original data. **Convert** swaps the ones you pick for an editable PNG (EXR for HDR), from the project's `Editable Textures` folder with its original import settings, or decoded from the texture itself
+- **Materials stay linked**: same GUID, nothing to reassign
+- **Back to exact** restores the original `.asset`. Nothing is deleted: everything that moves goes to `Assets/Kawaii Studio/Backups~`
+- Right-click a texture: **Kawaii Studio > Convert Texture Asset to PNG** / **Texture Back to Exact**
+
+---
+
 ### Menu Colorizer `NEW in 3.2`
 > Colourful VRChat Expressions Menus in one click: gradients, rainbow text, bold and size, with a live preview of the radial menu.
 
@@ -309,6 +319,7 @@ can be moved aside in one click — nothing is deleted.
 | Video Animator | `Kawaii Studio > Universal Tools > Video Animator` |
 | GLB to FBX | `Kawaii Studio > Universal Tools > GLB to FBX` |
 | Exporter | `Kawaii Studio > Universal Tools > Exporter` |
+| Texture Asset To PNG | `Kawaii Studio > Universal Tools > Texture Asset To PNG` |
 | NSFW Detector | `Kawaii Studio > VRC > NSFW Detector` |
 | Obfuscator | `Kawaii Studio > VRC > Obfuscator` |
 | Tail → PhysBones | `Kawaii Studio > VRC > Tail Animator to PhysBones` |
