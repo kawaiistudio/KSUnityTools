@@ -137,8 +137,8 @@ namespace KawaiiStudio
 
             GUILayout.Space(2);
             GUILayout.Label(KawaiiStudioLink.Enabled
-                ? "This project connects again on its own each time it opens."
-                : "Connect once and this project links itself each time it opens. Nothing leaves this PC: the link is local.",
+                ? "This project links itself whenever it is open and Kawaii Studio runs. Nothing leaves this PC: the link is local."
+                : "Disconnected: this project stays apart from Kawaii Studio until you click Connect.",
                 KawaiiStudioLinkGUI.InfoLabelStyle);
         }
 

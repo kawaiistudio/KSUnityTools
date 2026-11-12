@@ -17,6 +17,8 @@
 // Unity 2022 project layout as its Export all) is written into this project's Temp folder, then
 // moved here into Assets/Kawaii Studio/KS Exported/<name>, imported, selected and pinged. A previous
 // copy of the same name is kept once in Assets/Kawaii Studio/Backups~/KS Exported/<name>.
+// And since 1.1.0 "query": a read-only question from an AI through the app's MCP door (the scenes, an
+// object's components, the Console, assets, a text file), answered by KawaiiStudioLinkAsk.cs.
 //
 // The account's gates (Scene Editor = VIP, Bundle Patcher = Legendary) are the server's. This side
 // only shows what the app reports and never decides anything.
@@ -40,7 +42,7 @@ using Object = UnityEngine.Object;
 namespace KawaiiStudio
 {
     [InitializeOnLoad]
-    public static class KawaiiStudioLink
+    public static partial class KawaiiStudioLink
     {
         public enum LinkState { Off, NoApp, Linked, Failed }
 
@@ -84,6 +86,8 @@ namespace KawaiiStudio
             public string assets;
             public string report;
             public string sentAt;
+            public string tool; // kind "query": which read-only question (KawaiiStudioLinkAsk.cs)
+            public string args; // kind "query": its arguments, as JSON text
         }
 
         [Serializable]
@@ -222,10 +226,17 @@ namespace KawaiiStudio
 
         // ------------------------------------------------------------------ public surface (the window)
 
-        /// <summary>Linked for this project and this user: connects again each time the project opens.</summary>
+        /// <summary>Linked for this project and this user: connects again each time the project opens. Since 1.1.0 (the owner:
+        /// "ça doit être automatique du moment que le projet Unity est ouvert") EVERY project opened in the editor links by itself
+        /// unless Disconnect was clicked in it ("0"); while Kawaii Studio is not running it waits quietly (no Console line). A
+        /// headless batch-mode Unity (a build, a CI job) links only when told: Connect / CommandLineServe ("1").</summary>
         public static bool Enabled
         {
-            get { return EditorUserSettings.GetConfigValue(PrefEnabled) == "1"; }
+            get
+            {
+                string v = EditorUserSettings.GetConfigValue(PrefEnabled);
+                return Application.isBatchMode ? v == "1" : v != "0";
+            }
         }
 
         /// <summary>Bring Unity to the front when an export from the app is in.</summary>
@@ -642,6 +653,9 @@ namespace KawaiiStudio
             }
         }
 
+        private static readonly HashSet<string> AskedIds = new HashSet<string>();
+        private static readonly Queue<string> AskedOrder = new Queue<string>();
+
         private static void OnPoll(string body)
         {
             PollReply p = Parse<PollReply>(body);
@@ -652,6 +666,17 @@ namespace KawaiiStudio
             foreach (ImportMessage m in p.messages)
             {
                 if (m == null || string.IsNullOrEmpty(m.id)) continue;
+                if (m.kind == "query")
+                {
+                    // a question for an AI (KawaiiStudioLinkAsk.cs): answered now, never saved, never twice
+                    if (AskedIds.Contains(m.id)) continue;
+                    AskedIds.Add(m.id);
+                    AskedOrder.Enqueue(m.id);
+                    while (AskedOrder.Count > 200) AskedIds.Remove(AskedOrder.Dequeue());
+                    Ack(m.id, "received", "");
+                    AnswerQuestion(m.id, m.tool, m.args);
+                    continue;
+                }
                 if (_saved.seen.Contains(m.id))
                 {
                     // our "received" was lost on the way: say it again, never run it twice

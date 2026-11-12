@@ -2,6 +2,14 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.8.0]
+
+**The Kawaii Studio Link 1.1.0: every open project links by itself, and an AI linked through the Kawaii Studio app works on them -- it looks, and it edits.**
+
+- Comes with `com.kawaiistudio.link` 1.1.0 (KS Unity Tools depends on it). With the Kawaii Studio app v638 or later, an AI that uses the app's local MCP server (such as Capri, when Claude Code is her AI) sees the open scenes, the hierarchy, an object's components and their values, the selection, the Console's errors and warnings, finds assets and reads the project's scripts and shaders -- and, with the app's editing switch on, writes and fixes scripts, builds and sets up objects, components, materials and assets, saves, plays and stops.
+- No more Connect click: a project opened in Unity links by itself whenever Kawaii Studio runs (Disconnect still keeps one apart). With several projects open, you tell the AI which one you want to work on, in your own words.
+- Each change is one Ctrl+Z in Unity, rewritten files are backed up first (30 copies, 10 MB at most), deleted assets go to the Recycle Bin. See the Link's changelog for the details.
+
 ## [3.7.0]
 
 **Texture Asset To PNG: the exact textures of a repaired project, editable again.**
