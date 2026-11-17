@@ -108,6 +108,10 @@ namespace KawaiiStudio
                 case "unity_read_text": return ReadText(a.path, Math.Max(1, a.from), Math.Max(0, a.lines));
                 default:
                     if (LinkEdit.Knows(tool)) return LinkEdit.Run(tool, argsJson);
+                    // Other Kawaii Studio packages (KS ANTI-RIP, and whatever follows) answer through a
+                    // KSLinkTools class found by reflection, so adding a feature no longer means editing,
+                    // re-versioning and re-publishing this package.
+                    if (KawaiiStudioLinkPlugins.Knows(tool)) return KawaiiStudioLinkPlugins.Run(tool, argsJson);
                     throw new ArgumentException("this KS Unity Tools does not know the question \"" + tool + "\": update it");
             }
         }

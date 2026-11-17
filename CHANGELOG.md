@@ -2,6 +2,49 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.9.0]
+
+**KS ANTI-RIP replaces KS Obfuscator: your avatar ships scrambled, and nothing inside the bundle says how to put it back.**
+
+Comes with `com.kawaiistudio.link` 1.2.0, and needs the Kawaii Studio app v650 or later: the protection itself is
+computed in the app, and is a Premium feature (Premium, VIP and Legendary).
+
+- **Protect from the app.** The Kawaii Studio app's new **KS ANTI-RIP** section lists your linked Unity projects and
+  the avatars in their open scenes; pick one and press PROTECT. The same is available in Unity under
+  `Kawaii Studio > VRC > KS Anti-Rip`. Either way the app does the thinking, and KS Unity Tools -- which you can read
+  -- only applies what it is given, so the method is not published with the source.
+- **The key is not in the bundle.** Each restore blend shape follows one key value, and the animator only says
+  "this shape follows this parameter". The values live in a per-avatar `.key` on your PC and **KS OSC KEY** in the
+  app sends them into VRChat while you wear the avatar. Opening the bundle and reading its animator gives the
+  values away no more than reading the mesh does.
+- **Others see you normally**, by default: the key values are synced, and they are chosen on VRChat's own sync
+  precision, so what other players receive is exactly what was sent. Or keep the key **on your PC only**: nobody
+  can read it, and nobody but you sees the avatar whole. Your choice, per protection.
+- **The repair cannot be undone one slider at a time.** Every restore shape moves every vertex, and only the whole
+  set at the right values cancels out. Measured on a real 64k-vertex avatar: shipped 2.5 m out of place on average,
+  every slider at 100 still 3-4 m out, the best single value for all of them still 1.3 m out, solving the shapes one
+  by one still 1.4 m out -- and the key puts it back to 0.0003 mm, including after VRChat's network rounding.
+- **Checks before it starts, and repairs what it can.** Your VRChat account signed in inside Unity (one-click
+  reconnect when your credentials are saved), upload permission, VRChat confirming the avatar is yours, play mode,
+  unsaved scenes, the Blueprint ID, an Animator, a zero scale, a nested avatar, free synced parameters, a missing
+  expressions menu, an avatar that is already protected, very heavy meshes, and Force Text projects whose avatar
+  is too heavy for Unity to save as text. Every repair is one Ctrl+Z.
+- **No shader is touched.** The repair is carried by blend shapes, so Poiyomi, lilToon and the Quest mobile shaders
+  all work. (1.x regex-patched shader source and broke most of them.)
+- **Non-destructive, and tested as such**: everything happens on a copy; the source avatar's files are hashed
+  before and after and must be byte-for-byte identical.
+- **Not archived by VRChat Archive.** A protected avatar carries an empty, inactive `Kawaii Studio Bundle` object,
+  and the archive refuses those, auto-archiver and manual upload alike.
+- Keys live in Kawaii Studio's own Keys folder (the app's KS Anti-Rip page opens it), outside your Unity project,
+  so sharing a project cannot leak them.
+- Honest about its limits: a downloaded bundle is scrambled geometry, and its animator holds no answer. It is not
+  unbreakable -- the repair is linear, so a solver written against this scheme can still be pointed at a bundle --
+  and with the key synced, someone in your instance with a modified client can read it. No client-side protection
+  avoids that. The old "Advanced Military Grade" banner is gone.
+- Requires an avatar that has been uploaded once (the key is named after its Blueprint ID).
+- **Kawaii Studio Link 1.2.0**: other Kawaii Studio packages can answer the app's questions without the Link having
+  to know about them (`KSLinkTools`), which is how KS ANTI-RIP talks to the app.
+
 ## [3.8.0]
 
 **The Kawaii Studio Link 1.1.0: every open project links by itself, and an AI linked through the Kawaii Studio app works on them -- it looks, and it edits.**

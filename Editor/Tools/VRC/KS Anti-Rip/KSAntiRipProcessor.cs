@@ -1,0 +1,386 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using UnityEditor;
+using UnityEditor.Animations;
+using UnityEngine;
+using VRC.Core;
+using VRC.SDK3.Avatars.Components;
+
+namespace KawaiiStudio.VRC.AntiRip
+{
+    /// <summary>
+    /// Runs one protection pass: ask the Kawaii Studio app for a plan, apply it to a COPY of the avatar, save.
+    ///
+    /// The thinking happens in the app's core (obfuscated, hash-sealed, Premium-checked). This side only
+    /// applies what it is given — which is why KS Unity Tools can keep shipping as readable source without
+    /// publishing how the protection works.
+    ///
+    /// NON-DESTRUCTIVE, and tested as such: every change happens on an Instantiate() clone that is destroyed
+    /// in a finally block, and KSAntiRipNoHarmTest hashes every source file before and after. It also never
+    /// reads or rewrites shader source, so Poiyomi, lilToon and the Quest mobile shaders come through intact.
+    /// </summary>
+    public static class KSAntiRipProcessor
+    {
+        public const string Version = "5.1.0";
+
+        /// <summary>
+        /// The mark a protected avatar carries, so VRChat Archive REFUSES to archive it -- auto-archiver and
+        /// manual upload alike. A KS-protected avatar belongs to its creator, and our own archive is the first
+        /// place that has to respect that.
+        ///
+        /// It is deliberately the SAME GameObject a Kawaii Studio hot swap already injects
+        /// (dependencies\VAABS\uploader\kawaii_inject.py, BUNDLE_GO_NAME), owner's call 2026-11-16: one mark and
+        /// one detection for everything we put into a bundle, rather than a different rule per feature.
+        ///
+        /// The exact string matters -- two spaces, matched as a WHOLE name, never translated, never suffixed with
+        /// a version, and never renamed by the name obfuscator. Like kawaii_inject, it goes first under the root.
+        /// </summary>
+        public const string MarkerName = "Kawaii Studio Bundle";
+
+        public class Settings
+        {
+            public float strength = 5f;           // metres of displacement, requested of the core
+            public int restoreGroups = 3;         // how many shapes the restoration is split across; 8 synced bits each
+            /// <summary>
+            /// True: other players receive the key and see the avatar whole (and a modified client in the same
+            /// instance could read it). False: the key never leaves the wearer's PC, and only the wearer sees the
+            /// avatar whole. See KSAntiRipLock.
+            /// </summary>
+            public bool syncKey = true;
+            public bool hideWhileLocked = true;
+            public bool obfuscateNames = true;
+
+            /// <summary>What the key costs out of VRChat's 256 synced bits: one float (8 bits) per restore shape.</summary>
+            public int KeyBits => syncKey ? Math.Max(1, restoreGroups) * 8 : 0;
+        }
+
+        public class Result
+        {
+            public bool ok;
+            public string message = "";
+            public bool needsPremium;
+            public string folder = "";
+            public string keyPath = "";
+            public string prefabPath = "";
+            public int meshesProtected;
+            public int verticesProtected;
+            public int objectsRenamed;
+            public string lockLayer = "";
+            public List<string> warnings = new List<string>();
+        }
+
+        /// <summary>
+        /// Where the plan comes from. The app by default; a test supplies its own so the applicator can be
+        /// checked with no app running.
+        /// </summary>
+        public interface IPlanSource
+        {
+            KSAntiRipClient.Plan Begin(string avatarId, string avatarName, IList<KSAntiRipClient.MeshInfo> meshes,
+                                       float strength, int restoreGroups);
+            KSAntiRipClient.MeshPlan Mesh(string session, string id);
+            void End(string session);
+            string LastError { get; }
+        }
+
+        sealed class AppPlanSource : IPlanSource
+        {
+            public KSAntiRipClient.Plan Begin(string avatarId, string avatarName, IList<KSAntiRipClient.MeshInfo> meshes,
+                                              float strength, int restoreGroups)
+                => KSAntiRipClient.Begin(avatarId, avatarName, meshes, strength, restoreGroups);
+            public KSAntiRipClient.MeshPlan Mesh(string session, string id) => KSAntiRipClient.Mesh(session, id);
+            public void End(string session) => KSAntiRipClient.End(session);
+            public string LastError => KSAntiRipClient.LastError;
+        }
+
+        public static Result Protect(GameObject source, Settings settings, IPlanSource planSource = null)
+        {
+            planSource = planSource ?? new AppPlanSource();
+            var result = new Result();
+            if (source == null) { result.message = "No avatar selected."; return result; }
+
+            var descriptor = source.GetComponent<VRCAvatarDescriptor>();
+            if (descriptor == null) { result.message = "That GameObject has no VRC Avatar Descriptor."; return result; }
+
+            var pipeline = source.GetComponent<PipelineManager>();
+            string blueprint = pipeline != null ? pipeline.blueprintId : null;
+            if (string.IsNullOrEmpty(blueprint))
+            {
+                // The key is named after the avatar id, and KS OSC KEY matches it against /avatar/change.
+                // Without an id there is nothing to match, so say so instead of writing a dead key.
+                result.message = "This avatar has no Blueprint ID yet.\n\n" +
+                                 "Upload it once normally first — KS Anti-Rip needs the avatar id to name its key, " +
+                                 "and the key is what unlocks it in game.";
+                return result;
+            }
+
+            // What we will ask the core to plan for. Meshes are deduplicated: two renderers sharing one mesh
+            // must share one scrambled copy AND one set of weights, or the second never opens.
+            var skinned = source.GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                                .Where(r => r.sharedMesh != null).ToArray();
+            if (skinned.Length == 0)
+            {
+                result.message = "Nothing to protect: this avatar has no skinned meshes.";
+                return result;
+            }
+            var uniqueMeshes = new List<Mesh>();
+            foreach (var smr in skinned)
+                if (!uniqueMeshes.Contains(smr.sharedMesh)) uniqueMeshes.Add(smr.sharedMesh);
+
+            var request = uniqueMeshes
+                .Select((m, i) => new KSAntiRipClient.MeshInfo { id = "m" + i, vertexCount = m.vertexCount })
+                .ToList();
+
+            EditorUtility.DisplayProgressBar("KS ANTI-RIP", "Asking Kawaii Studio…", 0.1f);
+            KSAntiRipClient.Plan plan;
+            try
+            {
+                plan = planSource.Begin(blueprint, source.name, request, settings.strength,
+                                        settings.restoreGroups);
+            }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
+            }
+
+            if (plan == null || !plan.ok)
+            {
+                result.message = plan != null && !string.IsNullOrEmpty(plan.error) ? plan.error : planSource.LastError;
+                result.needsPremium = plan != null && plan.needsPremium;
+                if (string.IsNullOrEmpty(result.message)) result.message = "Kawaii Studio did not answer.";
+                return result;
+            }
+
+            string tag = string.IsNullOrEmpty(plan.tag) ? Guid.NewGuid().ToString("N").Substring(0, 6) : plan.tag;
+            string marker = string.IsNullOrEmpty(plan.marker) ? MarkerName : plan.marker;
+            var rng = new System.Random();
+
+            string folder = KawaiiStudioPaths.EnsureFolder(
+                KawaiiStudioPaths.OutputFolder("Protected") + "/" + KawaiiStudioPaths.SafeName(source.name) + "_" + tag);
+            result.folder = folder;
+            result.keyPath = plan.keyPath;
+
+            GameObject clone = UnityEngine.Object.Instantiate(source);
+            clone.name = "KS_PROTECTED_" + source.name;
+
+            try
+            {
+                // The "do not archive me" mark, first under the root exactly like kawaii_inject.py, and the one
+                // thing the name obfuscator never touches so the archive can still read it.
+                var markerObject = new GameObject(marker);
+                markerObject.transform.SetParent(clone.transform, false);
+                markerObject.transform.SetSiblingIndex(0);
+                markerObject.SetActive(false);
+
+                var cloneDescriptor = clone.GetComponent<VRCAvatarDescriptor>();
+                var cloneSkinned = clone.GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                                        .Where(r => r.sharedMesh != null).ToArray();
+
+                // Renderers, not paths: the hierarchy is renamed below, so paths are resolved afterwards.
+                var protectedRenderers = new List<KeyValuePair<SkinnedMeshRenderer, KSAntiRipClient.MeshPlan>>();
+                var applied = new Dictionary<Mesh, KeyValuePair<Mesh, KSAntiRipClient.MeshPlan>>();
+
+                for (int i = 0; i < cloneSkinned.Length; i++)
+                {
+                    var smr = cloneSkinned[i];
+                    Mesh original = smr.sharedMesh;
+
+                    if (!applied.TryGetValue(original, out var done))
+                    {
+                        int index = uniqueMeshes.FindIndex(m => m.vertexCount == original.vertexCount &&
+                                                                m.name == original.name);
+                        if (index < 0) index = uniqueMeshes.Count > 0 ? 0 : -1;
+                        if (index < 0) continue;
+
+                        EditorUtility.DisplayProgressBar("KS ANTI-RIP",
+                            $"Protecting mesh {applied.Count + 1}/{uniqueMeshes.Count}…",
+                            0.2f + 0.3f * applied.Count / Math.Max(1, uniqueMeshes.Count));
+
+                        KSAntiRipClient.MeshPlan meshPlan = planSource.Mesh(plan.session, request[index].id);
+                        if (meshPlan == null)
+                        {
+                            result.message = planSource.LastError;
+                            return result;
+                        }
+
+                        Mesh scrambled = KSAntiRipMesh.Apply(original, meshPlan.offsets, meshPlan.groups, meshPlan.shapeNames);
+                        AssetDatabase.CreateAsset(scrambled, folder + "/MSH_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".asset");
+
+                        done = new KeyValuePair<Mesh, KSAntiRipClient.MeshPlan>(scrambled, meshPlan);
+                        applied[original] = done;
+                        result.meshesProtected++;
+                        result.verticesProtected += scrambled.vertexCount;
+                    }
+
+                    smr.sharedMesh = done.Key;
+                    protectedRenderers.Add(new KeyValuePair<SkinnedMeshRenderer, KSAntiRipClient.MeshPlan>(smr, done.Value));
+                }
+
+                if (result.meshesProtected == 0)
+                {
+                    result.message = "Nothing to protect: no mesh could be matched to the plan.";
+                    return result;
+                }
+
+                // Static MeshRenderers cannot carry blend shapes, so they cannot be restored this way. Say it
+                // out loud rather than shipping an avatar with a permanently exploded prop.
+                int statics = clone.GetComponentsInChildren<MeshRenderer>(true)
+                                   .Count(mr => mr.GetComponent<MeshFilter>() != null &&
+                                                mr.GetComponent<MeshFilter>().sharedMesh != null);
+                if (statics > 0)
+                    result.warnings.Add(statics + " static mesh(es) were left unprotected — blend shapes only exist on skinned meshes.");
+
+                EditorUtility.DisplayProgressBar("KS ANTI-RIP", "Hiding the signposts…", 0.6f);
+
+                // Renaming copies and rewrites every animator the descriptor uses, so it runs BEFORE the lock
+                // is built -- otherwise the lock's own layer would be copied again and renamed away.
+                if (settings.obfuscateNames)
+                    result.objectsRenamed = KSAntiRipNames.Obfuscate(clone, cloneDescriptor, folder, tag, rng, result.warnings);
+
+                EditorUtility.DisplayProgressBar("KS ANTI-RIP", "Building the lock…", 0.75f);
+
+                var targets = new List<KSAntiRipLock.ShapeTarget>();
+                var hidePaths = new List<string>();
+                foreach (var entry in protectedRenderers)
+                {
+                    string path = AnimationUtility.CalculateTransformPath(entry.Key.transform, clone.transform);
+                    // Shape k of every mesh follows key parameter k: one key for the whole avatar.
+                    for (int k = 0; k < entry.Value.shapeNames.Count; k++)
+                        targets.Add(new KSAntiRipLock.ShapeTarget
+                        {
+                            path = path,
+                            shapeName = entry.Value.shapeNames[k],
+                            slot = k,
+                        });
+                    if (settings.hideWhileLocked) hidePaths.Add(path);
+                }
+
+                AnimatorController fx = PrepareFxController(cloneDescriptor, folder, result);
+                int layersBefore = fx.layers.Length;
+                KSAntiRipLock.Build(clone, cloneDescriptor, fx, targets, hidePaths, plan.parameters,
+                                    settings.syncKey, folder, rng, settings.obfuscateNames);
+                result.lockLayer = fx.layers.Length > layersBefore ? fx.layers[layersBefore].name : "";
+
+                // A scrambled avatar whose lock is not wired can never be opened, key or no key. Refuse to save
+                // one rather than hand the creator an upload they cannot wear.
+                if (!LockIsWired(cloneDescriptor, fx) || string.IsNullOrEmpty(result.lockLayer))
+                {
+                    result.message = "The lock could not be attached to this avatar's FX layer, so nothing was saved. " +
+                                     "Open the avatar's VRC Avatar Descriptor once in the Inspector and try again.";
+                    return result;
+                }
+
+                EditorUtility.DisplayProgressBar("KS ANTI-RIP", "Saving…", 0.9f);
+                PrefabUtility.SaveAsPrefabAsset(clone, folder + "/KS_PROTECTED.prefab", out bool saved);
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
+
+                if (!saved)
+                {
+                    result.message = "Could not write the protected prefab to:\n" + folder;
+                    return result;
+                }
+                result.prefabPath = folder + "/KS_PROTECTED.prefab";
+                result.ok = true;
+                result.message = "Protected.";
+                return result;
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[KS ANTI-RIP] " + e);
+                result.message = "Protection failed: " + e.Message + "\n\nSee the Console for the full error.";
+                return result;
+            }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
+                if (clone != null) UnityEngine.Object.DestroyImmediate(clone);
+                try { planSource.End(plan.session); } catch { }
+            }
+        }
+
+        /// <summary>Copies the avatar's FX controller into the output folder, or creates one if it has none.</summary>
+        static AnimatorController PrepareFxController(VRCAvatarDescriptor descriptor, string folder, Result result)
+        {
+            string path = folder + "/KS_FX.controller";
+            EnsureFxSlot(descriptor);
+            int index = -1;
+            for (int i = 0; i < descriptor.baseAnimationLayers.Length; i++)
+                if (descriptor.baseAnimationLayers[i].type == VRCAvatarDescriptor.AnimLayerType.FX) index = i;
+
+            AnimatorController existing = index >= 0
+                ? descriptor.baseAnimationLayers[index].animatorController as AnimatorController
+                : null;
+            string existingPath = existing != null ? AssetDatabase.GetAssetPath(existing) : null;
+
+            AnimatorController fx;
+            if (existing != null && !string.IsNullOrEmpty(existingPath) &&
+                existingPath.StartsWith(folder + "/", StringComparison.Ordinal))
+            {
+                // The name obfuscator already copied it into this run's folder. Copying again would strand its
+                // rewritten clips and give the lock a controller nobody is pointing at.
+                fx = existing;
+            }
+            else if (existing != null && !string.IsNullOrEmpty(existingPath))
+            {
+                AssetDatabase.CopyAsset(existingPath, path);
+                fx = AssetDatabase.LoadAssetAtPath<AnimatorController>(path);
+            }
+            else
+            {
+                fx = AnimatorController.CreateAnimatorControllerAtPath(path);
+                result.warnings.Add("This avatar had no FX controller, so KS Anti-Rip made one.");
+            }
+
+            var layers = descriptor.baseAnimationLayers;
+            layers[index].animatorController = fx;
+            layers[index].isDefault = false;
+            descriptor.baseAnimationLayers = layers;
+            descriptor.customizeAnimationLayers = true;
+            return fx;
+        }
+
+        /// <summary>
+        /// Gives the descriptor an FX slot when it has none, the way the SDK's own inspector does
+        /// (VRCAvatarDescriptorEditor3AnimLayerInit: Base, Additive, Gesture, Action, FX).
+        ///
+        /// Found by the 2026-11-16 proof run: an avatar whose baseAnimationLayers was empty -- built by script, or
+        /// never opened in the descriptor inspector -- got its lock built into a brand-new FX controller that was
+        /// then attached to NOTHING. Its mesh shipped scrambled with no lock wired, so it could not be opened even
+        /// with the key. The other avatars only escaped because they happened to have the slot already.
+        /// </summary>
+        static void EnsureFxSlot(VRCAvatarDescriptor descriptor)
+        {
+            var layers = descriptor.baseAnimationLayers;
+            if (layers != null && layers.Any(l => l.type == VRCAvatarDescriptor.AnimLayerType.FX)) return;
+
+            if (layers == null || layers.Length == 0)
+            {
+                layers = new[]
+                {
+                    VRCAvatarDescriptor.AnimLayerType.Base,
+                    VRCAvatarDescriptor.AnimLayerType.Additive,
+                    VRCAvatarDescriptor.AnimLayerType.Gesture,
+                    VRCAvatarDescriptor.AnimLayerType.Action,
+                    VRCAvatarDescriptor.AnimLayerType.FX,
+                }.Select(t => new VRCAvatarDescriptor.CustomAnimLayer { type = t, isDefault = true }).ToArray();
+            }
+            else
+            {
+                layers = layers.Concat(new[]
+                {
+                    new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.FX, isDefault = true },
+                }).ToArray();
+            }
+            descriptor.baseAnimationLayers = layers;
+        }
+
+        /// <summary>True when the descriptor's FX slot really points at <paramref name="fx"/>.</summary>
+        static bool LockIsWired(VRCAvatarDescriptor descriptor, AnimatorController fx)
+        {
+            if (descriptor == null || descriptor.baseAnimationLayers == null || !descriptor.customizeAnimationLayers) return false;
+            return descriptor.baseAnimationLayers.Any(l => l.type == VRCAvatarDescriptor.AnimLayerType.FX &&
+                                                           !l.isDefault && l.animatorController == fx);
+        }
+    }
+}

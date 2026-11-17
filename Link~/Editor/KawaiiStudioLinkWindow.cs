@@ -70,7 +70,7 @@ namespace KawaiiStudio
                 "This project and the Kawaii Studio app, linked",
                 VERSION,
                 KawaiiStudioLinkPaths.Logo,
-                null);
+                KawaiiStudioLinkPaths.Banner);   // the app's own galaxy, so the window looks like Kawaii Studio
 
             KawaiiStudioLinkGUI.DrawSection("Connection", KawaiiStudioLinkGUI.AccentPurple, DrawConnection);
             KawaiiStudioLinkGUI.DrawSection("Account", KawaiiStudioLinkGUI.AccentPink, DrawAccount);

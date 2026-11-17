@@ -134,16 +134,30 @@
 
 ---
 
-### Obfuscator
-> Protect your avatar meshes, shaders and hierarchy from ripping.
+### KS Anti-Rip
+> Your avatar ships scrambled, and nothing inside the bundle says how to put it back.
 
-- Vertex scrambling with configurable distortion strength (2-15)
-- Shader encryption & material clipping
-- GUID-based name obfuscation
-- VRC parameter injection for client-side decryption
+Needs the Kawaii Studio app (v650 or later) and a Premium, VIP or Legendary plan: the protection is
+computed in the app, and this package only applies it.
+
+- Vertex scrambling, reversed by blend shapes — **no shader is modified**, so Poiyomi, lilToon and the
+  Quest mobile shaders all keep working
+- **The key is not in the bundle**: each restore shape follows one key value, and the values live only
+  in a per-avatar `.key` in Kawaii Studio's own Keys folder, outside your Unity project (the app's
+  KS Anti-Rip page opens it). **KS OSC KEY** in the app sends them into VRChat while you wear the avatar
+- Other players see you normally — or keep the key on your PC only, and only you see the avatar whole
+- Checks your project before it starts (VRChat account signed in, avatar ownership, parameters, editor
+  state…) and repairs what it can, each repair one Ctrl+Z
+- Non-destructive: everything happens on a copy, your avatar is never modified
+- Not archived by VRChat Archive
+
+**What it is honest about:** a downloaded bundle is scrambled geometry and its animator holds no answer.
+It is not unbreakable — a solver written against this scheme can still be pointed at a bundle, and with
+the key synced, someone in your instance with a modified client can read it. No client-side protection
+avoids that. It raises the cost a great deal; it is not a wall.
 
 <div align="center">
-<img src="screenshots/ks-obfuscator.png" alt="KS Obfuscator" width="700"/>
+<img src="screenshots/ks-obfuscator.png" alt="KS Anti-Rip" width="700"/>
 </div>
 
 ---
@@ -321,7 +335,7 @@ can be moved aside in one click — nothing is deleted.
 | Exporter | `Kawaii Studio > Universal Tools > Exporter` |
 | Texture Asset To PNG | `Kawaii Studio > Universal Tools > Texture Asset To PNG` |
 | NSFW Detector | `Kawaii Studio > VRC > NSFW Detector` |
-| Obfuscator | `Kawaii Studio > VRC > Obfuscator` |
+| KS Anti-Rip | `Kawaii Studio > VRC > KS Anti-Rip` |
 | Tail → PhysBones | `Kawaii Studio > VRC > Tail Animator to PhysBones` |
 | Constraint Tool | `Kawaii Studio > VRC > Ultimate Constraint Tool` |
 | Contact Scanner | `Kawaii Studio > Contact Scanner Window` |

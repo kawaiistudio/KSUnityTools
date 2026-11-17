@@ -2,6 +2,16 @@
 
 The Kawaii Studio Link package (`com.kawaiistudio.link`). It ships with KS Unity Tools (a dependency since 3.6.0) and installs alone in a world project.
 
+## [1.2.0]
+
+**Other Kawaii Studio packages can answer the app through the Link, without the Link knowing about them.**
+
+- Any loaded Kawaii Studio assembly may expose a `public static class KSLinkTools` with `Knows(string)` and `Run(string, string)`; the Link finds it by reflection and hands it the questions it knows. Before this, every question the app could ask was a hard-coded case in the Link, so a new feature in KS Unity Tools meant re-releasing the Link too.
+- KS Unity Tools 3.9.0 uses it for KS ANTI-RIP: the app lists the avatars in your open scenes, checks a project before protecting (account, editor, avatar, parameters) and repairs what it can, through the Link.
+- A provider that throws is reported with its real reason and never takes the Link down. No new dependency; still works in world projects.
+- **Fixed: "Kawaii Studio is not running" while it was.** When the app ran as administrator and Unity did not, Windows refused the Link the right to ask whether the app's process had exited, and the Link took the refusal for an answer. Now only "no such process" means gone.
+- **The window wears the app's galaxy.** The banner behind the logo is the Kawaii Studio app's own backdrop -- its galaxy shader computed once into a 229 KB image -- instead of a flat gradient.
+
 ## [1.1.0]
 
 **An AI linked through the Kawaii Studio app works on the projects open in Unity: it looks, and it edits.**

@@ -46,6 +46,21 @@ namespace KawaiiStudio
             }
         }
 
+        /// <summary>
+        /// The Kawaii Studio app's galaxy, for the window's banner (null when it cannot be loaded). Not a painting:
+        /// the app's own backdrop shader (KawaiiStudio-UI\src\gfx\galaxy.hlsl) computed once, pixel for pixel, as a
+        /// strip through the middle of a 16:9 frame -- the band where its diagonal arm crosses. 229 KB.
+        /// </summary>
+        public static Texture2D Banner
+        {
+            get
+            {
+                if (_banner == null) _banner = AssetDatabase.LoadAssetAtPath<Texture2D>(Combine(PackageRoot, "References/banner.png"));
+                return _banner;
+            }
+        }
+        private static Texture2D _banner;
+
         /// <summary>A workspace output folder ("KS Exported"): created on demand.</summary>
         public static string OutputFolder(string workspaceSubfolder, string name = null)
         {
@@ -152,6 +167,6 @@ namespace KawaiiStudio
     /// <summary>The Link package's version: must match Link~/package.json (the release checks it).</summary>
     internal static class KawaiiStudioLinkVersion
     {
-        public const string Current = "1.1.0";
+        public const string Current = "1.2.0";
     }
 }

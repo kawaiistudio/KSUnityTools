@@ -321,8 +321,11 @@ namespace KawaiiStudio
                     Rect inner = new Rect(banner.x + 1f, banner.y + 1f, banner.width - 2f, banner.height - 2f);
                     GUI.DrawTexture(inner, bannerBg, ScaleMode.ScaleAndCrop);
 
+                    // A light veil only. The galaxy is dark by design (its brightest cloud sits near 0.25, so the
+                    // app's text keeps contrast over it); the 0.92 veil this used to carry for brighter art hid
+                    // the left two thirds of it.
                     Color shade = Pro ? new Color(0.05f, 0.04f, 0.07f) : new Color(0.10f, 0.09f, 0.13f);
-                    GUI.DrawTexture(inner, GetHorizontalGradient(Fade(shade, 0.92f), Fade(shade, 0f)),
+                    GUI.DrawTexture(inner, GetHorizontalGradient(Fade(shade, 0.45f), Fade(shade, 0f)),
                         ScaleMode.StretchToFill, true);
                 }
                 else

@@ -980,16 +980,35 @@ namespace KawaiiStudio
             return "Kawaii Studio could not be reached: " + e.Message;
         }
 
+        /// <summary>
+        /// Whether the app that wrote bridge.json is still there. Only "no such process" counts as gone.
+        ///
+        /// Up to 1.1.0 this read Process.HasExited, which opens the process with PROCESS_QUERY_INFORMATION. Windows
+        /// refuses that to a non-elevated Unity when Kawaii Studio runs elevated (measured 2026-11-16: 0x400 denied,
+        /// 0x1000 and SYNCHRONIZE allowed), the catch-all turned the refusal into "dead", and the Link told the owner
+        /// "Kawaii Studio is not running" while the app's link was up. GetProcessById succeeding already means the
+        /// pid exists; what happens after that is a permission answer, not a death certificate.
+        /// </summary>
         private static bool ProcessAlive(int pid)
         {
             if (pid <= 0) return true;
+            Process p;
             try
             {
-                using (Process p = Process.GetProcessById(pid)) return !p.HasExited;
+                p = Process.GetProcessById(pid);
+            }
+            catch (ArgumentException)
+            {
+                return false;   // no process with that id: the app really is gone
             }
             catch
             {
-                return false;
+                return true;    // could not look, so do not claim it is dead
+            }
+            using (p)
+            {
+                try { return !p.HasExited; }
+                catch { return true; }   // access denied to an elevated app: it exists, which is all we asked
             }
         }
 
