@@ -2,6 +2,25 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.10.1]
+
+**KS ANTI-RIP no longer breaks the animations of props that have their own Animator.**
+Same Kawaii Studio app as 3.10.0 (v653 or later); `com.kawaiistudio.link` stays 1.2.1.
+
+- **VRCFury effects keep working once protected.** VRCFury gives many props, particles and effects their own
+  Animator, and their clips still pointed at the old object names after the hierarchy was randomized — so those
+  effects did nothing on the protected avatar (about 30 on a real avatar: auras, waves, pillars, a scythe, a tail…).
+  Each of them now gets its own rewritten copy. Measured on that avatar: exactly as many unresolved animation paths
+  protected as unprotected.
+- **The original FX controller no longer ships inside a protected avatar.** The avatar's own Animator still pointed
+  at the unprotected FX, so the bundle carried every original clip and path next to the randomized ones. It now
+  points at the protected copy.
+- **Fixes upload errors on avatars merged by NDMF / Modular Avatar** ("does not exist in the same StateMachine", a
+  broken Gesture mask): controllers are now copied object by object instead of as a file.
+- An object driven by an override controller or a legacy Animation keeps its names, instead of being renamed into
+  something its animations can no longer find.
+- The Unity window's **Open Kawaii Studio Link** button works right after a script reload too.
+
 ## [3.10.0]
 
 **KS ANTI-RIP protects your avatar AT UPLOAD now, without making a copy — non-destructive.**
