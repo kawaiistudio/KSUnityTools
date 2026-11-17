@@ -2,6 +2,18 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.9.1]
+
+**KS ANTI-RIP is driven from the Kawaii Studio app only.**
+
+- The Unity window `Kawaii Studio > VRC > KS Anti-Rip` no longer has an avatar field, settings or a PROTECT
+  button: every one of them is on the app's **KS Anti-Rip** page (UNITY TOOLS), which lists your linked projects
+  and the avatars in their open scenes by itself. The window now says where to go.
+- The app can show the protected prefab in Unity (selected and highlighted in the Project window), ready for the
+  VRChat SDK's upload.
+- The "save scenes" repair no longer opens Unity's Save As dialog for a scene that was never saved: it goes to
+  `Assets/Kawaii Studio/Scenes` under a dated name. Scenes that belong to packages (NDMF's preview scene) are left alone.
+
 ## [3.9.0]
 
 **KS ANTI-RIP replaces KS Obfuscator: your avatar ships scrambled, and nothing inside the bundle says how to put it back.**

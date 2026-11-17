@@ -62,7 +62,7 @@ namespace KawaiiStudio
                 "Kawaii Studio/Universal Tools/Tail to PhysBones Converter"),
             new Tool("Contact Scanner", "Find every VRC Contact Receiver/Sender on an avatar",
                 "Kawaii Studio/Contact Scanner Window"),
-            new Tool("KS Anti-Rip", "Protect an avatar: the mesh ships scrambled, the key stays on your PC",
+            new Tool("KS Anti-Rip", "Avatar protection, driven from the Kawaii Studio app (UNITY TOOLS > KS Anti-Rip)",
                 "Kawaii Studio/VRC/KS Anti-Rip"),
             new Tool("NSFW Detector", "Scan an avatar for NSFW content before upload",
                 "Kawaii Studio/VRC/NSFW Detector"),

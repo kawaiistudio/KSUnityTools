@@ -15,19 +15,21 @@ namespace KawaiiStudio.VRC.AntiRip
     /// What the Kawaii Studio app may ask this project about KS ANTI-RIP.
     ///
     /// Found by name through KawaiiStudioLinkPlugins, so the Link package does not need to know KS Unity Tools
-    /// exists. Four questions only:
+    /// exists. Five questions only:
     ///   antirip.list     -- the avatars in the open scenes, so the app's KS ANTI RIP section can show them
     ///   antirip.check    -- is everything in order? account, project, editor, avatar (KSAntiRipPreflight)
     ///   antirip.fix      -- repair one of the things the check found, or all of them
     ///   antirip.protect  -- protect one of them, which calls back into the app for the plan
+    ///   antirip.select   -- select and highlight the protected prefab, ready for the VRChat SDK's upload
     ///
-    /// Nothing here decides anything about the protection: the app does. This only looks, applies and reports.
+    /// Nothing here decides anything about the protection: the app does. This only looks, applies and reports. Since
+    /// 3.9.1 it is also the ONLY way in: the Unity window has no controls left (owner, 2026-11-16).
     /// </summary>
     public static class KSLinkTools
     {
         public static bool Knows(string tool) =>
             tool == "antirip.list" || tool == "antirip.protect" ||
-            tool == "antirip.check" || tool == "antirip.fix";
+            tool == "antirip.check" || tool == "antirip.fix" || tool == "antirip.select";
 
         public static string Run(string tool, string argsJson)
         {
@@ -37,8 +39,35 @@ namespace KawaiiStudio.VRC.AntiRip
                 case "antirip.check": return Check(argsJson);
                 case "antirip.fix": return Fix(argsJson);
                 case "antirip.protect": return Protect(argsJson);
+                case "antirip.select": return Select(argsJson);
                 default: throw new ArgumentException("unknown tool " + tool);
             }
+        }
+
+        [Serializable]
+        class SelectArgs
+        {
+            public string asset = "";
+        }
+
+        /// <summary>
+        /// Selects the protected prefab in the Project window and highlights it, so the upload in the VRChat SDK starts
+        /// from the right object. Only protected output is accepted: this is a door the app opens, not a general one.
+        /// </summary>
+        static string Select(string argsJson)
+        {
+            SelectArgs a;
+            try { a = JsonUtility.FromJson<SelectArgs>(argsJson) ?? new SelectArgs(); }
+            catch { a = new SelectArgs(); }
+            string protectedRoot = KawaiiStudioPaths.OutputFolder("Protected");
+            if (string.IsNullOrEmpty(a.asset) || !a.asset.StartsWith(protectedRoot + "/", StringComparison.Ordinal))
+                return Fail("only a protected avatar can be shown from here");
+            var obj = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(a.asset);
+            if (obj == null) return Fail("\"" + a.asset + "\" is not in this project any more");
+            Selection.activeObject = obj;
+            EditorUtility.FocusProjectWindow();
+            EditorGUIUtility.PingObject(obj);
+            return "{\"ok\":true,\"message\":" + Q("Selected " + a.asset) + "}";
         }
 
         [Serializable]

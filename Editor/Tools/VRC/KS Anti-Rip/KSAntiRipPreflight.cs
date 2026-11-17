@@ -189,8 +189,7 @@ namespace KawaiiStudio.VRC.AntiRip
                         return true;
 
                     case "scene.save":
-                        if (!EditorSceneManager.SaveOpenScenes()) { why = "Unity would not save the scene"; return false; }
-                        return true;
+                        return SaveScenes(out why);
 
                     case "project.binary":
                         // A project-wide setting, so it is never applied without the user pressing the button.
@@ -316,18 +315,22 @@ namespace KawaiiStudio.VRC.AntiRip
             // 4. unsaved scenes. The protection reads the avatar out of the scene as it is on disk-adjacent
             //    state, and an unsaved scene is also the one thing an Undo cannot bring back if Unity dies.
             var dirty = new List<string>();
+            bool untitled = false;
             for (int i = 0; i < SceneManager.sceneCount; i++)
             {
                 Scene s = SceneManager.GetSceneAt(i);
+                if (!SavableHere(s)) continue;
                 // A scene never saved has an empty name; say so, rather than print " has unsaved changes."
-                if (s.isLoaded && s.isDirty) dirty.Add(string.IsNullOrEmpty(s.name) ? "An untitled scene" : s.name);
+                if (string.IsNullOrEmpty(s.path)) untitled = true;
+                dirty.Add(string.IsNullOrEmpty(s.name) ? "An untitled scene" : s.name);
             }
             if (dirty.Count > 0)
                 checks.Add(new Check
                 {
                     id = "scene.dirty",
                     title = "Unsaved scene",
-                    detail = string.Join(", ", dirty) + (dirty.Count == 1 ? " has unsaved changes." : " have unsaved changes."),
+                    detail = string.Join(", ", dirty) + (dirty.Count == 1 ? " has unsaved changes." : " have unsaved changes.") +
+                             (untitled ? " An untitled one is saved to Assets/Kawaii Studio/Scenes." : ""),
                     level = LevelWarn,
                     fix = "scene.save",
                     fixLabel = "SAVE SCENES",
@@ -915,6 +918,43 @@ namespace KawaiiStudio.VRC.AntiRip
                 why = e.Message;
                 return false;
             }
+        }
+
+        /// <summary>
+        /// A loaded, modified scene that is ours to save. Scenes inside Packages/ are not: NDMF opens its own
+        /// "___NDMF Preview___" there, and a package folder is not the project's to write into.
+        /// </summary>
+        static bool SavableHere(Scene s) =>
+            s.isLoaded && s.isDirty && !(s.path ?? "").StartsWith("Packages/", StringComparison.Ordinal);
+
+        /// <summary>
+        /// Saves every modified scene WITHOUT a dialog. EditorSceneManager.SaveOpenScenes asks for a file name when a
+        /// scene was never saved -- a Save As window in Unity that nobody is looking at, because this repair is pressed
+        /// in the Kawaii Studio app (owner, 2026-11-16: the whole of KS Anti-Rip is driven from the app). An untitled
+        /// scene goes to Assets/Kawaii Studio/Scenes under a dated name instead.
+        /// </summary>
+        static bool SaveScenes(out string why)
+        {
+            why = "";
+            for (int i = 0; i < SceneManager.sceneCount; i++)
+            {
+                Scene s = SceneManager.GetSceneAt(i);
+                if (!SavableHere(s)) continue;
+                if (string.IsNullOrEmpty(s.path))
+                {
+                    const string folder = "Assets/Kawaii Studio/Scenes";
+                    EnsureFolder(folder);
+                    string target = AssetDatabase.GenerateUniqueAssetPath(
+                        folder + "/Untitled " + DateTime.Now.ToString("yyyy-MM-dd HHmm") + ".unity");
+                    if (!EditorSceneManager.SaveScene(s, target)) { why = "Unity would not save the untitled scene"; return false; }
+                }
+                else if (!EditorSceneManager.SaveScene(s))
+                {
+                    why = "Unity would not save " + s.name;
+                    return false;
+                }
+            }
+            return true;
         }
 
         static bool CreateMenu(string path, string scene, out string why)
