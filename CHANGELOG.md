@@ -4,7 +4,7 @@ All notable changes to KS Unity Tools are documented here.
 
 ## [3.10.0]
 
-**KS ANTI-RIP protects your avatar AT UPLOAD now, without making a copy — like DexProtect's non-destructive mode.**
+**KS ANTI-RIP protects your avatar AT UPLOAD now, without making a copy — non-destructive.**
 Needs the Kawaii Studio app v653 or later. Comes with `com.kawaiistudio.link` 1.2.1 (a Link-window layout fix).
 
 - **Turn it on, then upload normally.** On the app's **KS Anti-Rip** page each avatar has a **Protect on upload**

@@ -62,6 +62,17 @@ namespace KawaiiStudio.VRC.AntiRip
             if (marker != null) skip.Add(marker);
             skip.Add(clone.transform);                       // the root keeps its name
 
+            // Animators below the root (VRCFury gives every animated prop/particle its own) animate paths relative
+            // to THEIR object, so their controllers are rewritten with their own path map below. A subtree driven by
+            // something we cannot rewrite -- an override controller, a legacy Animation -- keeps its names instead.
+            Animator[] childAnimators = clone.GetComponentsInChildren<Animator>(true)
+                .Where(a => a != null && a.transform != clone.transform).ToArray();
+            foreach (Animator a in childAnimators)
+                if (a.runtimeAnimatorController != null && !(a.runtimeAnimatorController is AnimatorController))
+                    foreach (Transform t in a.GetComponentsInChildren<Transform>(true)) skip.Add(t);
+            foreach (Animation legacy in clone.GetComponentsInChildren<Animation>(true))
+                foreach (Transform t in legacy.GetComponentsInChildren<Transform>(true)) skip.Add(t);
+
             // Transform -> new name. Keyed by Transform, never by name string: the 1.x tool used a
             // name->name dictionary, so two objects that happened to share a name collapsed into one entry
             // and every animation that targeted either of them pointed at the wrong object afterwards.
@@ -74,15 +85,32 @@ namespace KawaiiStudio.VRC.AntiRip
             if (rename.Count == 0) return 0;
 
             // Old path -> new path, computed while the hierarchy still has its original names.
-            var pathMap = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (Transform t in clone.GetComponentsInChildren<Transform>(true))
-            {
-                string oldPath = AnimationUtility.CalculateTransformPath(t, clone.transform);
-                string newPath = NewPath(t, clone.transform, rename);
-                if (oldPath != newPath) pathMap[oldPath] = newPath;
-            }
+            Dictionary<string, string> pathMap = PathMap(clone.transform, rename);
+            var childMaps = childAnimators
+                .Where(a => a.runtimeAnimatorController is AnimatorController)
+                .Select(a => (animator: a, map: PathMap(a.transform, rename)))
+                .ToList();
 
-            RewriteAllAnimators(descriptor, folder, pathMap, tag, rng, warnings);
+            Dictionary<AnimatorController, AnimatorController> copies =
+                RewriteAllAnimators(descriptor, folder, pathMap, tag, rng, warnings);
+
+            // The root Animator's own controller is replaced by the playable layers in game, but it still ships in
+            // the bundle: left on the original FX it carried every original clip and path, the whole rename table.
+            var rootAnimator = clone.GetComponent<Animator>();
+            if (rootAnimator != null && rootAnimator.runtimeAnimatorController is AnimatorController rootSource)
+                rootAnimator.runtimeAnimatorController =
+                    copies.TryGetValue(rootSource, out AnimatorController rootCopy)
+                        ? rootCopy
+                        : CopyAndRewrite(rootSource, "root Animator", folder, pathMap,
+                                         new Dictionary<AnimationClip, AnimationClip>(), tag, rng, warnings);
+
+            foreach (var (animator, map) in childMaps)
+            {
+                var source = (AnimatorController)animator.runtimeAnimatorController;
+                AnimatorController copy = CopyAndRewrite(source, "'" + animator.name + "' Animator", folder, map,
+                                                         new Dictionary<AnimationClip, AnimationClip>(), tag, rng, warnings);
+                if (copy != null) animator.runtimeAnimatorController = copy;
+            }
 
             foreach (var pair in rename)
                 pair.Key.name = pair.Value;
@@ -144,6 +172,19 @@ namespace KawaiiStudio.VRC.AntiRip
                     skip.Add(p);
         }
 
+        /// <summary>Old path -> new path for everything under `root`, relative to it.</summary>
+        static Dictionary<string, string> PathMap(Transform root, Dictionary<Transform, string> rename)
+        {
+            var map = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
+            {
+                string oldPath = AnimationUtility.CalculateTransformPath(t, root);
+                string newPath = NewPath(t, root, rename);
+                if (oldPath != newPath) map[oldPath] = newPath;
+            }
+            return map;
+        }
+
         static string NewPath(Transform t, Transform root, Dictionary<Transform, string> rename)
         {
             if (t == root) return "";
@@ -154,40 +195,25 @@ namespace KawaiiStudio.VRC.AntiRip
             return string.Join("/", parts);
         }
 
-        /// <summary>Copies every animator the descriptor uses and rewrites the copies.</summary>
-        static void RewriteAllAnimators(VRCAvatarDescriptor descriptor, string folder,
-                                        Dictionary<string, string> pathMap, string tag,
-                                        System.Random rng, List<string> warnings)
+        /// <summary>Copies every animator the descriptor uses and rewrites the copies. Returns source -> copy.</summary>
+        static Dictionary<AnimatorController, AnimatorController> RewriteAllAnimators(
+            VRCAvatarDescriptor descriptor, string folder, Dictionary<string, string> pathMap, string tag,
+            System.Random rng, List<string> warnings)
         {
-            if (descriptor == null) return;
+            var copies = new Dictionary<AnimatorController, AnimatorController>();
+            if (descriptor == null) return copies;
             var clipCache = new Dictionary<AnimationClip, AnimationClip>();
-            int index = 0;
 
             void Handle(ref VRCAvatarDescriptor.CustomAnimLayer layer, string what)
             {
                 var source = layer.animatorController as AnimatorController;
                 if (source == null) return;
-                string sourcePath = AssetDatabase.GetAssetPath(source);
-                if (string.IsNullOrEmpty(sourcePath)) return;
-
-                string copyPath = folder + "/KS_" + tag + "_anim" + (index++) + ".controller";
-                if (!AssetDatabase.CopyAsset(sourcePath, copyPath))
+                if (!copies.TryGetValue(source, out AnimatorController copy))
                 {
-                    warnings.Add("Could not copy the " + what + " controller, so it was left unobfuscated.");
-                    return;
+                    copy = CopyAndRewrite(source, what, folder, pathMap, clipCache, tag, rng, warnings);
+                    if (copy == null) return;
+                    copies[source] = copy;
                 }
-                var copy = AssetDatabase.LoadAssetAtPath<AnimatorController>(copyPath);
-                if (copy == null) return;
-
-                foreach (var l in copy.layers)
-                    RewriteStateMachine(l.stateMachine, folder, pathMap, clipCache, tag, rng);
-
-                // the layer names themselves: "KS ANTI-RIP" would otherwise announce where to look
-                var layers = copy.layers;
-                for (int i = 0; i < layers.Length; i++)
-                    layers[i].name = "KS_" + tag + "_L" + i;
-                copy.layers = layers;
-
                 layer.animatorController = copy;
                 layer.isDefault = false;
             }
@@ -199,6 +225,49 @@ namespace KawaiiStudio.VRC.AntiRip
             var special = descriptor.specialAnimationLayers;
             for (int i = 0; i < special.Length; i++) Handle(ref special[i], special[i].type.ToString());
             descriptor.specialAnimationLayers = special;
+            return copies;
+        }
+
+        /// <summary>A deep copy of `source` in the folder, every path remapped with `pathMap`. Null on failure.</summary>
+        static AnimatorController CopyAndRewrite(AnimatorController source, string what, string folder,
+                                                 Dictionary<string, string> pathMap,
+                                                 Dictionary<AnimationClip, AnimationClip> clipCache,
+                                                 string tag, System.Random rng, List<string> warnings)
+        {
+            if (source == null || string.IsNullOrEmpty(AssetDatabase.GetAssetPath(source))) return null;
+
+            string copyPath = AssetDatabase.GenerateUniqueAssetPath(folder + "/KS_" + tag + "_anim.controller");
+            AnimatorController copy;
+            try
+            {
+                // A real object-by-object deep copy, NOT AssetDatabase.CopyAsset: at build time this controller
+                // comes from NDMF, whose graph is spread across shared "assets N.asset" containers, so a file
+                // copy hands back a half-copied graph on the wrong controller (the Gesture-mask and "does not
+                // exist in the same StateMachine" failures the owner's upload hit). Clips are kept by reference
+                // here and remapped to this run's output copies by the RewriteStateMachine pass below; the avatar
+                // mask on layer 0 is kept by reference too, which is what the Gesture layer needs.
+                copy = KSAntiRipAnimatorCopy.Copy(source, copyPath, clip => clip);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[KS ANTI-RIP] " + e);
+                copy = null;
+            }
+            if (copy == null)
+            {
+                warnings.Add("Could not copy the " + what + " controller, so it was left unobfuscated.");
+                return null;
+            }
+
+            foreach (var l in copy.layers)
+                RewriteStateMachine(l.stateMachine, folder, pathMap, clipCache, tag, rng);
+
+            // the layer names themselves: "KS ANTI-RIP" would otherwise announce where to look
+            var layers = copy.layers;
+            for (int i = 0; i < layers.Length; i++)
+                layers[i].name = "KS_" + tag + "_L" + i;
+            copy.layers = layers;
+            return copy;
         }
 
         static void RewriteStateMachine(AnimatorStateMachine sm, string folder,
@@ -245,8 +314,11 @@ namespace KawaiiStudio.VRC.AntiRip
             if (source == null) return null;
             if (cache.TryGetValue(source, out AnimationClip done)) return done;
 
+            // Unique across every cache of the run: each Animator has its own, and CreateAsset on a taken path
+            // would silently replace a clip another controller already points at.
+            string clipPath = AssetDatabase.GenerateUniqueAssetPath(folder + "/KS_" + tag + "_a.anim");
             var copy = UnityEngine.Object.Instantiate(source);
-            copy.name = "KS_" + tag + "_a" + cache.Count;
+            copy.name = System.IO.Path.GetFileNameWithoutExtension(clipPath);
 
             // settings (loop time, cycle offset, ...) do not survive ClearCurves, so carry them over
             AnimationClipSettings settings = AnimationUtility.GetAnimationClipSettings(source);
@@ -277,7 +349,7 @@ namespace KawaiiStudio.VRC.AntiRip
             AnimationUtility.SetAnimationClipSettings(copy, settings);
             if (events != null && events.Length > 0) AnimationUtility.SetAnimationEvents(copy, events);
 
-            AssetDatabase.CreateAsset(copy, folder + "/" + copy.name + ".anim");
+            AssetDatabase.CreateAsset(copy, clipPath);
             cache[source] = copy;
             return copy;
         }

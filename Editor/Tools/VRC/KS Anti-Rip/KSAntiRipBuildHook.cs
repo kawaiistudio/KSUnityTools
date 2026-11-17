@@ -8,9 +8,9 @@ using VRC.SDK3.Avatars.Components;
 namespace KawaiiStudio.VRC.AntiRip
 {
     /// <summary>
-    /// Protects an avatar AT UPLOAD, the way DexProtect does, instead of making a protected copy of it.
+    /// Protects an avatar AT UPLOAD instead of making a protected copy of it.
     ///
-    /// WHY (owner, 2026-11-17: "ça doit pas recréer un prefab mais faire comme Dextro, non destructif, directement
+    /// WHY (owner, 2026-11-17: "ça doit pas recréer un prefab mais être non destructif, directement
     /// au moment de l'upload"). The old path built a protected prefab in the project. On an avatar that uses
     /// VRCFury or Modular Avatar that is wrong twice over: the dress and toggle objects those tools add only exist
     /// after they merge at build, so the per-prefab pass never saw them and their animations shipped readable; and

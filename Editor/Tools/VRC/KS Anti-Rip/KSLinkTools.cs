@@ -27,8 +27,8 @@ namespace KawaiiStudio.VRC.AntiRip
     ///
     /// Since 3.10.0 the app does not ask for a protected COPY any more. It turns protection on or off for an avatar
     /// (antirip.mark / antirip.unmark), which adds or removes a KSAntiRipMark component; the real protection then
-    /// happens at UPLOAD, in KSAntiRipBuildHook, on the avatar VRChat builds — non-destructive, like DexProtect
-    /// (owner, 2026-11-17: "pas recréer un prefab, comme Dextro, au moment de l'upload"). antirip.protect stays for
+    /// happens at UPLOAD, in KSAntiRipBuildHook, on the avatar VRChat builds — non-destructive
+    /// (owner, 2026-11-17: "pas recréer un prefab, au moment de l'upload"). antirip.protect stays for
     /// the old make-a-copy path, but the app no longer calls it.
     /// </summary>
     public static class KSLinkTools

@@ -353,8 +353,25 @@ namespace KawaiiStudio.VRC.AntiRip
             }
             else if (existing != null && !string.IsNullOrEmpty(existingPath))
             {
-                AssetDatabase.CopyAsset(existingPath, path);
-                fx = AssetDatabase.LoadAssetAtPath<AnimatorController>(path);
+                // A real object-by-object deep copy, NOT AssetDatabase.CopyAsset: at build time an NDMF-merged FX
+                // controller is spread across shared "assets N.asset" containers, and a file copy would hand back a
+                // half-copied graph on the wrong controller. This branch runs only when name obfuscation is off (with
+                // it on, the obfuscator already deep-copied this controller into the folder and the branch above
+                // reuses it), so clips stay by reference -- no paths were renamed, so none need rewriting.
+                try
+                {
+                    fx = KSAntiRipAnimatorCopy.Copy(existing, path, clip => clip);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError("[KS ANTI-RIP] " + e);
+                    fx = null;
+                }
+                if (fx == null)
+                {
+                    AssetDatabase.CopyAsset(existingPath, path);
+                    fx = AssetDatabase.LoadAssetAtPath<AnimatorController>(path);
+                }
             }
             else
             {

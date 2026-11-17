@@ -44,15 +44,34 @@ namespace KawaiiStudio.VRC.AntiRip
                     EditorStyles.wordWrappedLabel);
                 GUILayout.Space(4);
                 EditorGUILayout.LabelField(
-                    "Nothing to do in Unity. It only applies what the app decides, through Kawaii Studio Link, and " +
-                    "writes the protected copy next to your avatar -- your avatar itself is never modified.",
+                    "Nothing to do in Unity. It only applies what the app decides, through Kawaii Studio Link: when " +
+                    "you turn on Protect on upload for an avatar and upload it, the build is protected -- your avatar " +
+                    "itself is never modified.",
                     EditorStyles.wordWrappedMiniLabel);
                 GUILayout.Space(8);
-                if (GUILayout.Button("Kawaii Studio Link"))
-                    EditorApplication.ExecuteMenuItem("Kawaii Studio/Kawaii Studio Link");
+                if (GUILayout.Button("Open Kawaii Studio Link"))
+                    EditorApplication.delayCall += OpenLinkWindow;
             });
 
             KawaiiStudioGUI.DrawFooter();
+        }
+
+        /// <summary>
+        /// Opens the Kawaii Studio Link window. The Link lives in a sibling package, so it is reached by type (no
+        /// assembly reference needed) and after the current GUI, via delayCall -- ExecuteMenuItem fails with "no
+        /// menu named ..." when it is called before the Link assembly's menu is registered (a domain reload, a fresh
+        /// import), which is exactly when someone opens this window.
+        /// </summary>
+        static void OpenLinkWindow()
+        {
+            var type = System.Type.GetType("KawaiiStudio.KawaiiStudioLinkWindow, KawaiiStudio.Link.Editor");
+            if (type != null)
+            {
+                GetWindow(type, false, "Kawaii Studio Link").Show();
+                return;
+            }
+            if (!EditorApplication.ExecuteMenuItem("Kawaii Studio/Kawaii Studio Link"))
+                Debug.LogWarning("[KS ANTI-RIP] Open it from the menu: Kawaii Studio > Kawaii Studio Link.");
         }
     }
 }

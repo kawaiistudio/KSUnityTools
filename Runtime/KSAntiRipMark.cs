@@ -11,7 +11,7 @@ namespace KawaiiStudio.VRC.AntiRip
     ///
     /// It carries the settings and does nothing on its own. At BUILD time KSAntiRipBuildHook sees it, protects the
     /// avatar VRChat is uploading, and strips the component. Nothing is written back to your scene, and no copy is
-    /// made — the protection happens on the throwaway build avatar, like DexProtect's non-destructive mode.
+    /// made — the protection happens on the throwaway build avatar, non-destructively.
     ///
     /// It implements <see cref="IEditorOnly"/>, so even if the hook does not run the VRChat SDK strips it before
     /// the bundle: this marker never ships.

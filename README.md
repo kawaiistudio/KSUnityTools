@@ -140,7 +140,7 @@
 Needs the Kawaii Studio app (v653 or later) and a Premium, VIP or Legendary plan: the protection is
 computed in the app, and this package only applies it.
 
-- **Protected at upload, like DexProtect.** Turn on **Protect on upload** for an avatar on the app's KS
+- **Protected at upload.** Turn on **Protect on upload** for an avatar on the app's KS
   Anti-Rip page, then upload as you always do: the protection is applied to the build VRChat makes — the
   avatar in your scene is never changed and no copy is made. It runs *after* VRCFury and Modular Avatar
   merge, so the clothing and prop animations they add are scrambled too
