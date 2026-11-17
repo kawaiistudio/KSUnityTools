@@ -1,0 +1,18 @@
+{
+  "name": "KawaiiStudio.VRC.Components",
+  "rootNamespace": "KawaiiStudio",
+  "references": [
+    "VRC.SDKBase"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [
+    "VRC_SDK_VRCSDK3"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

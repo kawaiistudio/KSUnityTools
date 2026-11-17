@@ -5,6 +5,7 @@ using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 using VRC.SDK3.Avatars.Components;
+using VRC.SDK3.Dynamics.PhysBone.Components;
 
 namespace KawaiiStudio.VRC.AntiRip
 {
@@ -12,17 +13,22 @@ namespace KawaiiStudio.VRC.AntiRip
     /// Takes the signposts out of a protected bundle.
     ///
     /// The lock already makes an automated rip useless. What it does not stop is a human opening the bundle in
-    /// Unity, reading a hierarchy of helpfully named objects and a layer called "KS ANTI-RIP", and working out
-    /// what to set. This renames the hierarchy, the layers, the states and the generated assets so there is
-    /// nothing to read.
+    /// Unity, reading a hierarchy of helpfully named objects ("DressVeil", "Lingerie", "Shoes") and the clips that
+    /// drive them, and working out what to set. This renames the hierarchy, the layers, the states and the
+    /// generated assets, and rewrites every animation path to match, so there is nothing left to read. Run at
+    /// BUILD time (after VRCFury / Modular Avatar merge) it reaches the toggles those tools add too, which the old
+    /// per-prefab pass never saw -- that is why ripped protected avatars still had readable clips.
     ///
     /// WHAT IT DELIBERATELY DOES NOT RENAME, because renaming these breaks real avatars:
-    ///   * the armature -- every bone under the humanoid root. PhysBones, contacts, constraints and other
-    ///     creators' tools resolve bones by name, and MMD worlds look for them;
+    ///   * the SKELETON -- every bone a mesh is skinned to, every humanoid bone, every PhysBone chain, and the
+    ///     ancestors that make up their paths. PhysBones, contacts and constraints keep their object references
+    ///     across a rename, but MMD worlds and some tools look bones up BY NAME, so the skeleton keeps its names.
+    ///     Clothing, props and toggle objects are NOT skeleton, even when they sit under the armature, so they are
+    ///     renamed -- that is the whole point;
     ///   * blend shape names -- visemes, eye tracking and MMD all address them by name;
     ///   * animator parameters -- they are named in the expression menu, in OSC tools and in other people's
     ///     assets, and a renamed parameter silently stops working;
-    ///   * the KS_ANTIRIP_PROTECTED mark, which VRChat Archive has to be able to find.
+    ///   * the "Kawaii Studio Bundle" mark, which VRChat Archive has to be able to find.
     ///
     /// NON-DESTRUCTIVE, and this is the sharp edge: AssetDatabase.CopyAsset on a controller copies the
     /// controller but its states still reference the ORIGINAL clip assets. Remapping those in place would
@@ -37,7 +43,20 @@ namespace KawaiiStudio.VRC.AntiRip
                                     string tag, System.Random rng, List<string> warnings)
         {
             var skip = new HashSet<Transform>();
-            CollectArmature(clone, skip);
+            CollectSkeleton(clone, skip);
+
+            // The face/body mesh keeps its name: MMD worlds drive a renderer called "Body" (and the viseme/eye
+            // meshes) by name, and renaming it would break every MMD dance. Its blend shape names are kept anyway;
+            // the object name reveals nothing about the protection, so this costs nothing.
+            if (descriptor != null)
+            {
+                if (descriptor.VisemeSkinnedMesh != null) skip.Add(descriptor.VisemeSkinnedMesh.transform);
+                var eyes = descriptor.customEyeLookSettings.eyelidsSkinnedMesh;
+                if (eyes != null) skip.Add(eyes.transform);
+            }
+            foreach (SkinnedMeshRenderer smr in clone.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                if (smr != null && smr.name.Equals("Body", StringComparison.OrdinalIgnoreCase))
+                    skip.Add(smr.transform);
 
             Transform marker = clone.transform.Find(KSAntiRipProcessor.MarkerName);
             if (marker != null) skip.Add(marker);
@@ -71,13 +90,33 @@ namespace KawaiiStudio.VRC.AntiRip
             return rename.Count;
         }
 
-        /// <summary>Every bone of the humanoid rig, plus everything under the hips, left alone.</summary>
-        static void CollectArmature(GameObject clone, HashSet<Transform> skip)
+        /// <summary>
+        /// The skeleton, and only the skeleton: bones a mesh is skinned to, humanoid bones, PhysBone chains, and
+        /// the ancestors that make up their paths. Everything else -- clothing, props, particle objects, the empty
+        /// parents toggles switch -- is left out so it gets renamed, even when it sits under the armature.
+        ///
+        /// The old pass skipped the ENTIRE subtree under the hips, so a dress or a pair of shoes parented into the
+        /// armature kept its name and its animation stayed readable after a rip. This keeps the bones, not the
+        /// things hanging off them.
+        /// </summary>
+        static void CollectSkeleton(GameObject clone, HashSet<Transform> skip)
         {
-            var animator = clone.GetComponent<Animator>();
-            if (animator == null) return;
+            Transform root = clone.transform;
 
-            if (animator.isHuman)
+            // 1. every bone any skinned mesh is weighted to -- the real skeleton, humanoid or not
+            foreach (SkinnedMeshRenderer smr in clone.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (smr == null) continue;
+                if (smr.rootBone != null) skip.Add(smr.rootBone);
+                Transform[] bones = smr.bones;
+                if (bones != null)
+                    foreach (Transform b in bones)
+                        if (b != null) skip.Add(b);
+            }
+
+            // 2. the humanoid bones by role, so MMD and other tools that look them up by name still find them
+            var animator = clone.GetComponent<Animator>();
+            if (animator != null && animator.isHuman)
             {
                 foreach (HumanBodyBones bone in Enum.GetValues(typeof(HumanBodyBones)))
                 {
@@ -86,23 +125,23 @@ namespace KawaiiStudio.VRC.AntiRip
                     try { t = animator.GetBoneTransform(bone); } catch { }
                     if (t != null) skip.Add(t);
                 }
-                Transform hips = null;
-                try { hips = animator.GetBoneTransform(HumanBodyBones.Hips); } catch { }
-                if (hips != null)
-                {
-                    // the whole skeleton under the hips, including non-humanoid extras (tails, ears)
-                    foreach (Transform t in hips.GetComponentsInChildren<Transform>(true)) skip.Add(t);
-                    // and the chain up to the root, usually "Armature"
-                    for (Transform p = hips.parent; p != null; p = p.parent) skip.Add(p);
-                }
             }
-            else
+
+            // 3. PhysBone chains: their transforms survive a rename by reference, but keeping the names avoids
+            //    surprising any tool that addresses a dynamic bone by name, and costs nothing to read.
+            foreach (VRCPhysBone pb in clone.GetComponentsInChildren<VRCPhysBone>(true))
             {
-                // Not humanoid: an "Armature" by name is the best guess available.
-                foreach (Transform t in clone.GetComponentsInChildren<Transform>(true))
-                    if (t.name.Equals("Armature", StringComparison.OrdinalIgnoreCase))
-                        foreach (Transform c in t.GetComponentsInChildren<Transform>(true)) skip.Add(c);
+                if (pb == null) continue;
+                Transform r = pb.rootTransform != null ? pb.rootTransform : pb.transform;
+                if (r == null) continue;
+                foreach (Transform t in r.GetComponentsInChildren<Transform>(true)) skip.Add(t);
             }
+
+            // 4. the ancestors of everything collected, up to the root, so the skeleton's PATHS stay readable
+            //    (a renamed "Armature" would change the path to every bone under it).
+            foreach (Transform t in skip.ToList())
+                for (Transform p = t.parent; p != null && p != root; p = p.parent)
+                    skip.Add(p);
         }
 
         static string NewPath(Transform t, Transform root, Dictionary<Transform, string> rename)

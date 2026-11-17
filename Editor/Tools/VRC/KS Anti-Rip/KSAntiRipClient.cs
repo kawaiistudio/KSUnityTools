@@ -122,7 +122,7 @@ namespace KawaiiStudio.VRC.AntiRip
 
         /// <summary>Asks for a plan. The app checks the account; a refusal arrives as ok=false with a reason.</summary>
         public static Plan Begin(string avatarId, string avatarName, IList<MeshInfo> meshes,
-                                 float strength, int restoreGroups)
+                                 float strength, int restoreGroups, int maxAddedMegabytes = 0)
         {
             var plan = new Plan();
             if (!Connect()) { plan.error = LastError; return plan; }
@@ -132,6 +132,7 @@ namespace KawaiiStudio.VRC.AntiRip
               .Append(",\"avatarName\":").Append(Quote(avatarName))
               .Append(",\"strength\":").Append(strength.ToString(System.Globalization.CultureInfo.InvariantCulture))
               .Append(",\"restoreGroups\":").Append(restoreGroups)
+              .Append(",\"maxAddedMegabytes\":").Append(maxAddedMegabytes)
               .Append(",\"meshes\":[");
             for (int i = 0; i < meshes.Count; i++)
             {

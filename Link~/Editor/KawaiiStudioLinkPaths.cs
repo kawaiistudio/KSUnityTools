@@ -167,6 +167,6 @@ namespace KawaiiStudio
     /// <summary>The Link package's version: must match Link~/package.json (the release checks it).</summary>
     internal static class KawaiiStudioLinkVersion
     {
-        public const string Current = "1.2.0";
+        public const string Current = "1.2.1";
     }
 }

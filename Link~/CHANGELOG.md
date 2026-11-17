@@ -2,6 +2,13 @@
 
 The Kawaii Studio Link package (`com.kawaiistudio.link`). It ships with KS Unity Tools (a dependency since 3.6.0) and installs alone in a world project.
 
+## [1.2.1]
+
+- **Fixed a GUILayout error in the Link window** (`Getting control N's position in a group with only N controls`).
+  The window reads state the background link thread changes — the log, the history, the connection — and that could
+  change between IMGUI's Layout and Repaint passes, so a section built a different number of controls on each. The
+  window now freezes everything it reads once per repaint, on the Layout pass, so both passes draw the same controls.
+
 ## [1.2.0]
 
 **Other Kawaii Studio packages can answer the app through the Link, without the Link knowing about them.**

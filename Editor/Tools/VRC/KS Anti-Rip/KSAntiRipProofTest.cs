@@ -294,9 +294,12 @@ namespace KawaiiStudio.VRC.AntiRip
 
             public KSAntiRipClient.Plan Begin(string avatarId, string avatarName,
                                               IList<KSAntiRipClient.MeshInfo> meshes,
-                                              float strength, int restoreGroups)
+                                              float strength, int restoreGroups, int maxAddedMegabytes = 0)
             {
-                // One harness run for the whole avatar, as one bridge session would be.
+                // One harness run for the whole avatar, as one bridge session would be. The proof test always runs
+                // DENSE (maxAddedMegabytes ignored): it checks exact restoration, which the dense case is the
+                // hardest form of, and the plandump CLI predates the budget. Sparse is checked separately.
+                _ = maxAddedMegabytes;
                 var psi = new System.Diagnostics.ProcessStartInfo("dotnet")
                 {
                     UseShellExecute = false,

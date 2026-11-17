@@ -137,18 +137,23 @@
 ### KS Anti-Rip
 > Your avatar ships scrambled, and nothing inside the bundle says how to put it back.
 
-Needs the Kawaii Studio app (v650 or later) and a Premium, VIP or Legendary plan: the protection is
+Needs the Kawaii Studio app (v653 or later) and a Premium, VIP or Legendary plan: the protection is
 computed in the app, and this package only applies it.
 
+- **Protected at upload, like DexProtect.** Turn on **Protect on upload** for an avatar on the app's KS
+  Anti-Rip page, then upload as you always do: the protection is applied to the build VRChat makes — the
+  avatar in your scene is never changed and no copy is made. It runs *after* VRCFury and Modular Avatar
+  merge, so the clothing and prop animations they add are scrambled too
 - Vertex scrambling, reversed by blend shapes — **no shader is modified**, so Poiyomi, lilToon and the
   Quest mobile shaders all keep working
 - **The key is not in the bundle**: each restore shape follows one key value, and the values live only
   in a per-avatar `.key` in Kawaii Studio's own Keys folder, outside your Unity project (the app's
   KS Anti-Rip page opens it). **KS OSC KEY** in the app sends them into VRChat while you wear the avatar
 - Other players see you normally — or keep the key on your PC only, and only you see the avatar whole
-- Checks your project before it starts (VRChat account signed in, avatar ownership, parameters, editor
-  state…) and repairs what it can, each repair one Ctrl+Z
-- Non-destructive: everything happens on a copy, your avatar is never modified
+- **Stays under VRChat's size limit**: the scramble is spread over as many vertices as a size budget
+  allows, so an avatar already near 200 MB does not gain tens of MB of restore data
+- PC avatars only (the key is sent by KS OSC Key on your PC); an Android build target is flagged with a
+  one-click switch to Windows
 - Not archived by VRChat Archive
 
 **What it is honest about:** a downloaded bundle is scrambled geometry and its animator holds no answer.

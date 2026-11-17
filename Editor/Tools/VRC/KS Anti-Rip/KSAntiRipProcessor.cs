@@ -51,6 +51,12 @@ namespace KawaiiStudio.VRC.AntiRip
             public bool hideWhileLocked = true;
             public bool obfuscateNames = true;
 
+            /// <summary>
+            /// How much bigger the protected avatar may get, in MB (owner, 2026-11-17). The core turns this into
+            /// how many vertices it scrambles, so a near-200-MB avatar still fits under VRChat's limit. 0 = no cap.
+            /// </summary>
+            public int maxAddedMegabytes = 12;
+
             /// <summary>What the key costs out of VRChat's 256 synced bits: one float (8 bits) per restore shape.</summary>
             public int KeyBits => syncKey ? Math.Max(1, restoreGroups) * 8 : 0;
         }
@@ -77,7 +83,7 @@ namespace KawaiiStudio.VRC.AntiRip
         public interface IPlanSource
         {
             KSAntiRipClient.Plan Begin(string avatarId, string avatarName, IList<KSAntiRipClient.MeshInfo> meshes,
-                                       float strength, int restoreGroups);
+                                       float strength, int restoreGroups, int maxAddedMegabytes = 0);
             KSAntiRipClient.MeshPlan Mesh(string session, string id);
             void End(string session);
             string LastError { get; }
@@ -86,23 +92,87 @@ namespace KawaiiStudio.VRC.AntiRip
         sealed class AppPlanSource : IPlanSource
         {
             public KSAntiRipClient.Plan Begin(string avatarId, string avatarName, IList<KSAntiRipClient.MeshInfo> meshes,
-                                              float strength, int restoreGroups)
-                => KSAntiRipClient.Begin(avatarId, avatarName, meshes, strength, restoreGroups);
+                                              float strength, int restoreGroups, int maxAddedMegabytes = 0)
+                => KSAntiRipClient.Begin(avatarId, avatarName, meshes, strength, restoreGroups, maxAddedMegabytes);
             public KSAntiRipClient.MeshPlan Mesh(string session, string id) => KSAntiRipClient.Mesh(session, id);
             public void End(string session) => KSAntiRipClient.End(session);
             public string LastError => KSAntiRipClient.LastError;
         }
 
+        /// <summary>
+        /// The manual path: protect a COPY of <paramref name="source"/> and save it as a prefab. The original in
+        /// the scene is never touched. The build hook (<see cref="KSAntiRipBuildHook"/>) does not go through here —
+        /// it protects the avatar VRChat is already building, in place, with no copy and no prefab.
+        /// </summary>
         public static Result Protect(GameObject source, Settings settings, IPlanSource planSource = null)
         {
-            planSource = planSource ?? new AppPlanSource();
             var result = new Result();
             if (source == null) { result.message = "No avatar selected."; return result; }
+            if (source.GetComponent<VRCAvatarDescriptor>() == null)
+            {
+                result.message = "That GameObject has no VRC Avatar Descriptor.";
+                return result;
+            }
 
-            var descriptor = source.GetComponent<VRCAvatarDescriptor>();
-            if (descriptor == null) { result.message = "That GameObject has no VRC Avatar Descriptor."; return result; }
+            GameObject clone = UnityEngine.Object.Instantiate(source);
+            clone.name = "KS_PROTECTED_" + source.name;
+            try
+            {
+                string folder = KawaiiStudioPaths.EnsureFolder(
+                    KawaiiStudioPaths.OutputFolder("Protected") + "/" + KawaiiStudioPaths.SafeName(source.name) + "_" +
+                    Guid.NewGuid().ToString("N").Substring(0, 6));
 
-            var pipeline = source.GetComponent<PipelineManager>();
+                ProtectInPlace(clone, settings, planSource, folder, result);
+                if (!result.ok) return result;
+
+                EditorUtility.DisplayProgressBar("KS ANTI-RIP", "Saving…", 0.9f);
+                PrefabUtility.SaveAsPrefabAsset(clone, folder + "/KS_PROTECTED.prefab", out bool saved);
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
+                if (!saved)
+                {
+                    result.ok = false;
+                    result.message = "Could not write the protected prefab to:\n" + folder;
+                    return result;
+                }
+                result.prefabPath = folder + "/KS_PROTECTED.prefab";
+                return result;
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[KS ANTI-RIP] " + e);
+                result.ok = false;
+                result.message = "Protection failed: " + e.Message + "\n\nSee the Console for the full error.";
+                return result;
+            }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
+                if (clone != null) UnityEngine.Object.DestroyImmediate(clone);
+            }
+        }
+
+        /// <summary>
+        /// Protects <paramref name="root"/> IN PLACE: scrambles its skinned meshes, hides the signposts, builds the
+        /// lock, writes the key. No copy is made and no prefab is saved — the caller owns the GameObject. The
+        /// manual path hands in a throwaway clone; the build hook hands in the avatar VRChat is uploading, which is
+        /// already a disposable build copy. Generated assets (scrambled meshes, rewritten clips, the lock
+        /// controller) go into <paramref name="folder"/>.
+        ///
+        /// On return <see cref="Result.ok"/> says whether it worked; on failure <see cref="Result.message"/> says
+        /// why and nothing partial is left wired that would ship a mesh that cannot be opened.
+        /// </summary>
+        public static void ProtectInPlace(GameObject root, Settings settings, IPlanSource planSource, string folder,
+                                          Result result)
+        {
+            planSource = planSource ?? new AppPlanSource();
+            result.ok = false;
+            result.folder = folder;
+
+            var descriptor = root.GetComponent<VRCAvatarDescriptor>();
+            if (descriptor == null) { result.message = "That GameObject has no VRC Avatar Descriptor."; return; }
+
+            var pipeline = root.GetComponent<PipelineManager>();
             string blueprint = pipeline != null ? pipeline.blueprintId : null;
             if (string.IsNullOrEmpty(blueprint))
             {
@@ -111,18 +181,15 @@ namespace KawaiiStudio.VRC.AntiRip
                 result.message = "This avatar has no Blueprint ID yet.\n\n" +
                                  "Upload it once normally first — KS Anti-Rip needs the avatar id to name its key, " +
                                  "and the key is what unlocks it in game.";
-                return result;
+                return;
             }
 
             // What we will ask the core to plan for. Meshes are deduplicated: two renderers sharing one mesh
             // must share one scrambled copy AND one set of weights, or the second never opens.
-            var skinned = source.GetComponentsInChildren<SkinnedMeshRenderer>(true)
-                                .Where(r => r.sharedMesh != null).ToArray();
-            if (skinned.Length == 0)
-            {
-                result.message = "Nothing to protect: this avatar has no skinned meshes.";
-                return result;
-            }
+            var skinned = root.GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                              .Where(r => r.sharedMesh != null).ToArray();
+            if (skinned.Length == 0) { result.message = "Nothing to protect: this avatar has no skinned meshes."; return; }
+
             var uniqueMeshes = new List<Mesh>();
             foreach (var smr in skinned)
                 if (!uniqueMeshes.Contains(smr.sharedMesh)) uniqueMeshes.Add(smr.sharedMesh);
@@ -133,56 +200,41 @@ namespace KawaiiStudio.VRC.AntiRip
 
             EditorUtility.DisplayProgressBar("KS ANTI-RIP", "Asking Kawaii Studio…", 0.1f);
             KSAntiRipClient.Plan plan;
-            try
-            {
-                plan = planSource.Begin(blueprint, source.name, request, settings.strength,
-                                        settings.restoreGroups);
-            }
-            finally
-            {
-                EditorUtility.ClearProgressBar();
-            }
+            try { plan = planSource.Begin(blueprint, root.name, request, settings.strength, settings.restoreGroups, settings.maxAddedMegabytes); }
+            finally { EditorUtility.ClearProgressBar(); }
 
             if (plan == null || !plan.ok)
             {
                 result.message = plan != null && !string.IsNullOrEmpty(plan.error) ? plan.error : planSource.LastError;
                 result.needsPremium = plan != null && plan.needsPremium;
                 if (string.IsNullOrEmpty(result.message)) result.message = "Kawaii Studio did not answer.";
-                return result;
+                return;
             }
-
-            string tag = string.IsNullOrEmpty(plan.tag) ? Guid.NewGuid().ToString("N").Substring(0, 6) : plan.tag;
-            string marker = string.IsNullOrEmpty(plan.marker) ? MarkerName : plan.marker;
-            var rng = new System.Random();
-
-            string folder = KawaiiStudioPaths.EnsureFolder(
-                KawaiiStudioPaths.OutputFolder("Protected") + "/" + KawaiiStudioPaths.SafeName(source.name) + "_" + tag);
-            result.folder = folder;
-            result.keyPath = plan.keyPath;
-
-            GameObject clone = UnityEngine.Object.Instantiate(source);
-            clone.name = "KS_PROTECTED_" + source.name;
 
             try
             {
+                string tag = string.IsNullOrEmpty(plan.tag) ? Guid.NewGuid().ToString("N").Substring(0, 6) : plan.tag;
+                string marker = string.IsNullOrEmpty(plan.marker) ? MarkerName : plan.marker;
+                var rng = new System.Random();
+                result.keyPath = plan.keyPath;
+
                 // The "do not archive me" mark, first under the root exactly like kawaii_inject.py, and the one
                 // thing the name obfuscator never touches so the archive can still read it.
                 var markerObject = new GameObject(marker);
-                markerObject.transform.SetParent(clone.transform, false);
+                markerObject.transform.SetParent(root.transform, false);
                 markerObject.transform.SetSiblingIndex(0);
                 markerObject.SetActive(false);
 
-                var cloneDescriptor = clone.GetComponent<VRCAvatarDescriptor>();
-                var cloneSkinned = clone.GetComponentsInChildren<SkinnedMeshRenderer>(true)
-                                        .Where(r => r.sharedMesh != null).ToArray();
+                var rootSkinned = root.GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                                      .Where(r => r.sharedMesh != null).ToArray();
 
                 // Renderers, not paths: the hierarchy is renamed below, so paths are resolved afterwards.
                 var protectedRenderers = new List<KeyValuePair<SkinnedMeshRenderer, KSAntiRipClient.MeshPlan>>();
                 var applied = new Dictionary<Mesh, KeyValuePair<Mesh, KSAntiRipClient.MeshPlan>>();
 
-                for (int i = 0; i < cloneSkinned.Length; i++)
+                for (int i = 0; i < rootSkinned.Length; i++)
                 {
-                    var smr = cloneSkinned[i];
+                    var smr = rootSkinned[i];
                     Mesh original = smr.sharedMesh;
 
                     if (!applied.TryGetValue(original, out var done))
@@ -197,11 +249,7 @@ namespace KawaiiStudio.VRC.AntiRip
                             0.2f + 0.3f * applied.Count / Math.Max(1, uniqueMeshes.Count));
 
                         KSAntiRipClient.MeshPlan meshPlan = planSource.Mesh(plan.session, request[index].id);
-                        if (meshPlan == null)
-                        {
-                            result.message = planSource.LastError;
-                            return result;
-                        }
+                        if (meshPlan == null) { result.message = planSource.LastError; return; }
 
                         Mesh scrambled = KSAntiRipMesh.Apply(original, meshPlan.offsets, meshPlan.groups, meshPlan.shapeNames);
                         AssetDatabase.CreateAsset(scrambled, folder + "/MSH_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".asset");
@@ -219,14 +267,14 @@ namespace KawaiiStudio.VRC.AntiRip
                 if (result.meshesProtected == 0)
                 {
                     result.message = "Nothing to protect: no mesh could be matched to the plan.";
-                    return result;
+                    return;
                 }
 
                 // Static MeshRenderers cannot carry blend shapes, so they cannot be restored this way. Say it
                 // out loud rather than shipping an avatar with a permanently exploded prop.
-                int statics = clone.GetComponentsInChildren<MeshRenderer>(true)
-                                   .Count(mr => mr.GetComponent<MeshFilter>() != null &&
-                                                mr.GetComponent<MeshFilter>().sharedMesh != null);
+                int statics = root.GetComponentsInChildren<MeshRenderer>(true)
+                                  .Count(mr => mr.GetComponent<MeshFilter>() != null &&
+                                               mr.GetComponent<MeshFilter>().sharedMesh != null);
                 if (statics > 0)
                     result.warnings.Add(statics + " static mesh(es) were left unprotected — blend shapes only exist on skinned meshes.");
 
@@ -235,7 +283,7 @@ namespace KawaiiStudio.VRC.AntiRip
                 // Renaming copies and rewrites every animator the descriptor uses, so it runs BEFORE the lock
                 // is built -- otherwise the lock's own layer would be copied again and renamed away.
                 if (settings.obfuscateNames)
-                    result.objectsRenamed = KSAntiRipNames.Obfuscate(clone, cloneDescriptor, folder, tag, rng, result.warnings);
+                    result.objectsRenamed = KSAntiRipNames.Obfuscate(root, descriptor, folder, tag, rng, result.warnings);
 
                 EditorUtility.DisplayProgressBar("KS ANTI-RIP", "Building the lock…", 0.75f);
 
@@ -243,58 +291,40 @@ namespace KawaiiStudio.VRC.AntiRip
                 var hidePaths = new List<string>();
                 foreach (var entry in protectedRenderers)
                 {
-                    string path = AnimationUtility.CalculateTransformPath(entry.Key.transform, clone.transform);
+                    string path = AnimationUtility.CalculateTransformPath(entry.Key.transform, root.transform);
                     // Shape k of every mesh follows key parameter k: one key for the whole avatar.
                     for (int k = 0; k < entry.Value.shapeNames.Count; k++)
-                        targets.Add(new KSAntiRipLock.ShapeTarget
-                        {
-                            path = path,
-                            shapeName = entry.Value.shapeNames[k],
-                            slot = k,
-                        });
+                        targets.Add(new KSAntiRipLock.ShapeTarget { path = path, shapeName = entry.Value.shapeNames[k], slot = k });
                     if (settings.hideWhileLocked) hidePaths.Add(path);
                 }
 
-                AnimatorController fx = PrepareFxController(cloneDescriptor, folder, result);
+                AnimatorController fx = PrepareFxController(descriptor, folder, result);
                 int layersBefore = fx.layers.Length;
-                KSAntiRipLock.Build(clone, cloneDescriptor, fx, targets, hidePaths, plan.parameters,
+                KSAntiRipLock.Build(root, descriptor, fx, targets, hidePaths, plan.parameters,
                                     settings.syncKey, folder, rng, settings.obfuscateNames);
                 result.lockLayer = fx.layers.Length > layersBefore ? fx.layers[layersBefore].name : "";
 
-                // A scrambled avatar whose lock is not wired can never be opened, key or no key. Refuse to save
-                // one rather than hand the creator an upload they cannot wear.
-                if (!LockIsWired(cloneDescriptor, fx) || string.IsNullOrEmpty(result.lockLayer))
+                // A scrambled avatar whose lock is not wired can never be opened, key or no key. Refuse rather
+                // than hand the creator an upload they cannot wear.
+                if (!LockIsWired(descriptor, fx) || string.IsNullOrEmpty(result.lockLayer))
                 {
-                    result.message = "The lock could not be attached to this avatar's FX layer, so nothing was saved. " +
+                    result.message = "The lock could not be attached to this avatar's FX layer. " +
                                      "Open the avatar's VRC Avatar Descriptor once in the Inspector and try again.";
-                    return result;
+                    return;
                 }
 
-                EditorUtility.DisplayProgressBar("KS ANTI-RIP", "Saving…", 0.9f);
-                PrefabUtility.SaveAsPrefabAsset(clone, folder + "/KS_PROTECTED.prefab", out bool saved);
-                AssetDatabase.SaveAssets();
-                AssetDatabase.Refresh();
-
-                if (!saved)
-                {
-                    result.message = "Could not write the protected prefab to:\n" + folder;
-                    return result;
-                }
-                result.prefabPath = folder + "/KS_PROTECTED.prefab";
                 result.ok = true;
                 result.message = "Protected.";
-                return result;
             }
             catch (Exception e)
             {
                 Debug.LogError("[KS ANTI-RIP] " + e);
+                result.ok = false;
                 result.message = "Protection failed: " + e.Message + "\n\nSee the Console for the full error.";
-                return result;
             }
             finally
             {
                 EditorUtility.ClearProgressBar();
-                if (clone != null) UnityEngine.Object.DestroyImmediate(clone);
                 try { planSource.End(plan.session); } catch { }
             }
         }

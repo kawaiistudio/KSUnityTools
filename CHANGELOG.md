@@ -2,6 +2,29 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.10.0]
+
+**KS ANTI-RIP protects your avatar AT UPLOAD now, without making a copy — like DexProtect's non-destructive mode.**
+Needs the Kawaii Studio app v653 or later. Comes with `com.kawaiistudio.link` 1.2.1 (a Link-window layout fix).
+
+- **Turn it on, then upload normally.** On the app's **KS Anti-Rip** page each avatar has a **Protect on upload**
+  switch. With it on, the avatar is protected automatically every time you upload it in the VRChat SDK — the mesh
+  ships scrambled, the lock is built and the key is written at that moment. No protected prefab is made, and the
+  avatar in your scene is never changed. Keep Kawaii Studio running during the upload.
+- **It now reaches VRCFury and Modular Avatar toggles.** The protection runs at build time, *after* VRCFury and
+  Modular Avatar merge their toggles into the avatar, so the clothing and prop animations they add are scrambled
+  too. Before, a protected avatar built with those tools still shipped readable clips; it does not any more. The
+  hierarchy is randomized and every animation path rewritten, while the skeleton, the viseme/eye meshes and a mesh
+  named "Body" keep their names so MMD and dynamic bones still work.
+- **It fits under VRChat's size limit.** The scramble is spread over only as many vertices as a size budget allows
+  (default +12 MB, set per avatar), so an avatar already close to the 200 MB limit stays legal instead of gaining
+  tens of MB of restore data. The restoration is still exact.
+- **PC only.** KS Anti-Rip is for PC avatars — the key is sent by KS OSC Key on your PC — so an Android/Quest build
+  target is now a clear error with a one-click **switch to Windows**, instead of a note that let you protect an
+  avatar that could never be unlocked.
+- Everything is still driven from the app; the Unity window has no controls. The old "make a protected copy"
+  command remains for scripts but the app no longer uses it.
+
 ## [3.9.1]
 
 **KS ANTI-RIP is driven from the Kawaii Studio app only.**

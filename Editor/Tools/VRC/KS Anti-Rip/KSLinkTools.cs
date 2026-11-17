@@ -24,12 +24,19 @@ namespace KawaiiStudio.VRC.AntiRip
     ///
     /// Nothing here decides anything about the protection: the app does. This only looks, applies and reports. Since
     /// 3.9.1 it is also the ONLY way in: the Unity window has no controls left (owner, 2026-11-16).
+    ///
+    /// Since 3.10.0 the app does not ask for a protected COPY any more. It turns protection on or off for an avatar
+    /// (antirip.mark / antirip.unmark), which adds or removes a KSAntiRipMark component; the real protection then
+    /// happens at UPLOAD, in KSAntiRipBuildHook, on the avatar VRChat builds — non-destructive, like DexProtect
+    /// (owner, 2026-11-17: "pas recréer un prefab, comme Dextro, au moment de l'upload"). antirip.protect stays for
+    /// the old make-a-copy path, but the app no longer calls it.
     /// </summary>
     public static class KSLinkTools
     {
         public static bool Knows(string tool) =>
             tool == "antirip.list" || tool == "antirip.protect" ||
-            tool == "antirip.check" || tool == "antirip.fix" || tool == "antirip.select";
+            tool == "antirip.check" || tool == "antirip.fix" || tool == "antirip.select" ||
+            tool == "antirip.mark" || tool == "antirip.unmark";
 
         public static string Run(string tool, string argsJson)
         {
@@ -40,6 +47,8 @@ namespace KawaiiStudio.VRC.AntiRip
                 case "antirip.fix": return Fix(argsJson);
                 case "antirip.protect": return Protect(argsJson);
                 case "antirip.select": return Select(argsJson);
+                case "antirip.mark": return Mark(argsJson);
+                case "antirip.unmark": return Unmark(argsJson);
                 default: throw new ArgumentException("unknown tool " + tool);
             }
         }
@@ -84,6 +93,19 @@ namespace KawaiiStudio.VRC.AntiRip
         }
 
         [Serializable]
+        class MarkArgs
+        {
+            public string path = "";
+            public string scene = "";
+            public float strength = 5f;
+            public int restoreGroups = 3;
+            public bool syncKey = true;
+            public bool hideWhileLocked = true;
+            public bool obfuscateNames = true;
+            public int maxAddedMegabytes = 12;
+        }
+
+        [Serializable]
         class CheckArgs
         {
             public string path = "";
@@ -98,7 +120,10 @@ namespace KawaiiStudio.VRC.AntiRip
         static string List()
         {
             var sb = new StringBuilder();
-            sb.Append("{\"ok\":true,\"project\":").Append(Q(Application.productName))
+            // canMark tells the app this package understands antirip.mark/unmark (the "Protect on upload" switch).
+            // KS Unity Tools 3.9.1 and earlier do not send it, so the app can show "update KS Unity Tools" instead
+            // of calling a question the project cannot answer -- this matters while v653 is out but 3.10.0 is not.
+            sb.Append("{\"ok\":true,\"canMark\":true,\"project\":").Append(Q(Application.productName))
               .Append(",\"avatars\":[");
 
             bool first = true;
@@ -126,6 +151,10 @@ namespace KawaiiStudio.VRC.AntiRip
                                             .Count(mr => mr.GetComponent<MeshFilter>() != null &&
                                                          mr.GetComponent<MeshFilter>().sharedMesh != null);
 
+                        // whether protection is already turned on for this avatar, so the app's toggle is right
+                        var mark = avatar.GetComponent<KSAntiRipMark>();
+                        bool marked = mark != null && mark.enabled_;
+
                         if (!first) sb.Append(',');
                         first = false;
                         sb.Append("{\"name\":").Append(Q(avatar.name))
@@ -135,6 +164,7 @@ namespace KawaiiStudio.VRC.AntiRip
                           .Append(",\"meshes\":").Append(seen.Count)
                           .Append(",\"vertices\":").Append(vertices)
                           .Append(",\"staticMeshes\":").Append(statics)
+                          .Append(",\"marked\":").Append(marked ? "true" : "false")
                           // the one thing that stops a protection before it starts, so the app can grey the row
                           .Append(",\"ready\":").Append(!string.IsNullOrEmpty(blueprint) && seen.Count > 0 ? "true" : "false")
                           .Append(",\"why\":").Append(Q(
@@ -148,6 +178,62 @@ namespace KawaiiStudio.VRC.AntiRip
 
             sb.Append("]}");
             return sb.ToString();
+        }
+
+        // ── antirip.mark / antirip.unmark ───────────────────────────────────────────────────────
+        //
+        // Turn protection on or off for an avatar, the app's on/off switch. "On" adds (or updates) a KSAntiRipMark
+        // carrying the settings; the avatar is untouched until it is uploaded, when KSAntiRipBuildHook reads the
+        // mark and protects the build copy. Both are Undo-able and mark the scene dirty, so the choice is saved
+        // with the scene and the user can Ctrl+Z it like anything else.
+
+        static string Mark(string argsJson)
+        {
+            MarkArgs a;
+            try { a = JsonUtility.FromJson<MarkArgs>(argsJson) ?? new MarkArgs(); }
+            catch (Exception e) { return Fail("could not read the request: " + e.Message); }
+            if (string.IsNullOrEmpty(a.path)) return Fail("no avatar was named");
+
+            GameObject avatar = FindAvatar(a.path, a.scene);
+            if (avatar == null)
+                return Fail("\"" + a.path + "\" is not in the open scenes any more — reopen it and try again");
+            if (avatar.GetComponent<VRCAvatarDescriptor>() == null)
+                return Fail("\"" + a.path + "\" has no VRC Avatar Descriptor");
+
+            KSAntiRipMark mark = avatar.GetComponent<KSAntiRipMark>();
+            if (mark == null) mark = Undo.AddComponent<KSAntiRipMark>(avatar);
+            Undo.RecordObject(mark, "KS Anti-Rip: protect on upload");
+            mark.enabled_ = true;
+            mark.strength = a.strength <= 0f ? 5f : a.strength;
+            mark.restoreGroups = a.restoreGroups <= 0 ? 3 : a.restoreGroups;
+            mark.syncKey = a.syncKey;
+            mark.hideWhileLocked = a.hideWhileLocked;
+            mark.obfuscateNames = a.obfuscateNames;
+            mark.maxAddedMegabytes = a.maxAddedMegabytes < 0 ? 0 : a.maxAddedMegabytes;
+            EditorUtility.SetDirty(avatar);
+            EditorSceneManager.MarkSceneDirty(avatar.scene);
+            return "{\"ok\":true,\"marked\":true,\"message\":" + Q("This avatar will be protected when you upload it.") + "}";
+        }
+
+        static string Unmark(string argsJson)
+        {
+            MarkArgs a;
+            try { a = JsonUtility.FromJson<MarkArgs>(argsJson) ?? new MarkArgs(); }
+            catch (Exception e) { return Fail("could not read the request: " + e.Message); }
+            if (string.IsNullOrEmpty(a.path)) return Fail("no avatar was named");
+
+            GameObject avatar = FindAvatar(a.path, a.scene);
+            if (avatar == null)
+                return Fail("\"" + a.path + "\" is not in the open scenes any more");
+
+            KSAntiRipMark mark = avatar.GetComponent<KSAntiRipMark>();
+            if (mark != null)
+            {
+                Undo.DestroyObjectImmediate(mark);
+                EditorUtility.SetDirty(avatar);
+                EditorSceneManager.MarkSceneDirty(avatar.scene);
+            }
+            return "{\"ok\":true,\"marked\":false,\"message\":" + Q("Protection off for this avatar.") + "}";
         }
 
         // ── antirip.check / antirip.fix ─────────────────────────────────────────────────────────

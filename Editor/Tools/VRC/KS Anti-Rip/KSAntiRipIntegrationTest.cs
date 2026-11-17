@@ -116,6 +116,11 @@ namespace KawaiiStudio.VRC.AntiRip
                 Check(result.objectsRenamed > 0, $"the hierarchy was obfuscated ({result.objectsRenamed} objects renamed)");
                 Check(prefab.transform.Find(KSAntiRipProcessor.MarkerName) != null,
                       "the archive mark survived the renaming");
+                // the body mesh keeps its name (MMD worlds look up "Body"); the clothing does not
+                Check(prefab.GetComponentsInChildren<Transform>(true).Any(t => t.name == "Body"),
+                      "the body mesh keeps its name");
+                Check(prefab.GetComponentsInChildren<Transform>(true).All(t => t.name != "Dress"),
+                      "the clothing object was renamed away");
 
                 // The restore layer is one state running a Direct BlendTree: child k puts restore shape k at 100,
                 // weighted by key parameter k. So the shape's weight IS the parameter, and nothing else says so.
@@ -242,6 +247,16 @@ namespace KawaiiStudio.VRC.AntiRip
             var child = new GameObject("Body");
             child.transform.SetParent(root.transform, false);
             body = child.AddComponent<SkinnedMeshRenderer>();
+
+            // A clothing object, like a real avatar has: it is NOT the body and NOT a bone, so the obfuscator must
+            // rename it (a body mesh named "Body" is kept for MMD; clothing is the thing a ripper reads). Gives the
+            // "objects renamed" check something to be true about.
+            var dress = new GameObject("Dress");
+            dress.transform.SetParent(root.transform, false);
+            var dressMesh = new Mesh { name = "KS_AntiRip_DressMesh" };
+            dressMesh.vertices = new[] { Vector3.zero, Vector3.right, Vector3.up };
+            dressMesh.triangles = new[] { 0, 1, 2 };
+            dress.AddComponent<SkinnedMeshRenderer>().sharedMesh = dressMesh;
 
             const int n = 600;
             var rng = new System.Random(99);

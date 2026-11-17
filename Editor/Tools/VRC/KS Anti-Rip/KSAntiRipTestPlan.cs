@@ -36,7 +36,7 @@ namespace KawaiiStudio.VRC.AntiRip
 
         public KSAntiRipClient.Plan Begin(string avatarId, string avatarName,
                                           IList<KSAntiRipClient.MeshInfo> meshes,
-                                          float strength, int restoreGroups)
+                                          float strength, int restoreGroups, int maxAddedMegabytes = 0)
         {
             var plan = new KSAntiRipClient.Plan
             {

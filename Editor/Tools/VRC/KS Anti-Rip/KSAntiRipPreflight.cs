@@ -154,7 +154,7 @@ namespace KawaiiStudio.VRC.AntiRip
         /// Flipping asset serialization rewrites every asset Unity touches afterwards and shows up in every
         /// diff; that is a decision, so it stays a deliberate click on its own line.
         /// </summary>
-        static readonly string[] NotInAll = { "project.binary" };
+        static readonly string[] NotInAll = { "project.binary", "platform.windows" };
 
         static string NextRepairable(string path, string scene, int bits, List<string> alreadyTried)
         {
@@ -197,6 +197,18 @@ namespace KawaiiStudio.VRC.AntiRip
                         // Settings > Editor > Asset Serialization puts it back.
                         EditorSettings.serializationMode = SerializationMode.ForceBinary;
                         AssetDatabase.SaveAssets();
+                        return true;
+
+                    case "platform.windows":
+                        // KS Anti-Rip is PC only: the key reaches the avatar through KS OSC Key, a PC program.
+                        // Switching re-imports the project's textures for Windows, which can take minutes, so this
+                        // too is never part of REPAIR ALL.
+                        if (EditorUserBuildSettings.activeBuildTarget == BuildTarget.StandaloneWindows64) return true;
+                        if (!EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Standalone, BuildTarget.StandaloneWindows64))
+                        {
+                            why = "Unity could not switch to Windows. Is the Windows Build Support module installed?";
+                            return false;
+                        }
                         return true;
 
                     case "avatar.pipeline":
@@ -336,17 +348,28 @@ namespace KawaiiStudio.VRC.AntiRip
                     fixLabel = "SAVE SCENES",
                 });
 
-            // 5. the platform, which decides what protection is even possible
-            bool android = EditorUserBuildSettings.activeBuildTarget == BuildTarget.Android;
-            checks.Add(new Check
-            {
-                id = "platform",
-                title = "Build target",
-                detail = android
-                    ? "Android (Quest). Mesh protection works; texture encryption is PC only."
-                    : platform + ". Full protection available.",
-                level = LevelOk,
-            });
+            // 5. the platform. KS Anti-Rip is PC only: the key is sent by KS OSC Key, a program on the wearer's PC,
+            // so a Quest build could never be unlocked.
+            bool windows = EditorUserBuildSettings.activeBuildTarget == BuildTarget.StandaloneWindows64 ||
+                           EditorUserBuildSettings.activeBuildTarget == BuildTarget.StandaloneWindows;
+            checks.Add(windows
+                ? new Check
+                {
+                    id = "platform",
+                    title = "Build target",
+                    detail = platform + ".",
+                    level = LevelOk,
+                }
+                : new Check
+                {
+                    id = "platform",
+                    title = "Build target is " + platform,
+                    detail = "KS Anti-Rip is for PC avatars only: the key is sent by KS OSC Key on your PC. " +
+                             "Switch this project to Windows to protect it.",
+                    level = LevelError,
+                    fix = "platform.windows",
+                    fixLabel = "SWITCH TO WINDOWS",
+                });
 
             // 6. the avatar itself has to still be there
             GameObject avatar = KSLinkTools.FindAvatar(path, scene);

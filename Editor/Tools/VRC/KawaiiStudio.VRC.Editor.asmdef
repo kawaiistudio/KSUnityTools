@@ -3,6 +3,7 @@
   "rootNamespace": "KawaiiStudio",
   "references": [
     "KawaiiStudio.Editor",
+    "KawaiiStudio.VRC.Components",
     "VRC.SDKBase",
     "VRC.SDKBase.Editor",
     "VRC.SDK3A",

@@ -1,6 +1,14 @@
 // Kawaii Studio Link window -- pairs this project with the Kawaii Studio app and shows what the
 // link carries. The work itself (pairing, the poll, the imports) is KawaiiStudioLink, which keeps
 // running with this window closed.
+//
+// IMGUI + a background thread: KawaiiStudioLink's socket thread grows the log and the history, and flips the
+// connection state, at any moment -- including BETWEEN the Layout and the Repaint pass of one OnGUI. When it does,
+// a section builds one control count on Layout and a different one on Repaint, and IMGUI aborts with
+// "Getting control N's position in a group with only N controls". So every volatile value the window reads is
+// captured ONCE, on the Layout pass, into fields, and all the sections draw from those fields -- the two passes
+// then always build the same controls.
+using System;
 using System.IO;
 using System.Linq;
 using UnityEditor;
@@ -20,6 +28,16 @@ namespace KawaiiStudio
         private GameObject _testAvatar;
         private string _testLabel = "";
         private bool _testRunning;
+
+        // the link state the background thread can change under us, frozen on the Layout pass (see the file header)
+        private bool _captured;
+        private KawaiiStudioLink.LinkState _vState;
+        private KawaiiStudioLink.AppStatus _vStatus;
+        private bool _vEnabled, _vImporting, _vIsLinked;
+        private string _vDetail = "", _vProject = "", _vImportingName = "", _vImportingWait = "";
+        private int _vPort;
+        private string[] _vLog = Array.Empty<string>();
+        private KawaiiStudioLink.Transfer[] _vRecent = Array.Empty<KawaiiStudioLink.Transfer>();
 
         [MenuItem("Kawaii Studio/Kawaii Studio Link", priority = 1)]
         public static void ShowWindow()
@@ -59,8 +77,31 @@ namespace KawaiiStudio
             if (KawaiiStudioLink.Importing) Repaint();
         }
 
+        // Freeze everything the background thread can change, once per repaint, on the Layout pass. The Repaint pass
+        // (and any input event in the same cycle) then reads the identical values the Layout pass laid out.
+        private void Capture()
+        {
+            if (_captured && Event.current != null && Event.current.type != EventType.Layout) return;
+            _captured = true;
+            _vState = KawaiiStudioLink.State;
+            _vStatus = KawaiiStudioLink.Status;
+            _vEnabled = KawaiiStudioLink.Enabled;
+            _vDetail = KawaiiStudioLink.Detail ?? "";
+            _vProject = KawaiiStudioLink.Project ?? "";
+            _vPort = KawaiiStudioLink.Port;
+            _vImporting = KawaiiStudioLink.Importing;
+            _vImportingName = KawaiiStudioLink.ImportingName ?? "";
+            _vImportingWait = KawaiiStudioLink.ImportingWaitReason ?? "";
+            _vIsLinked = KawaiiStudioLink.IsLinked;
+            // The lists are mutated on the socket thread; a torn copy just shows stale text for one frame, so keep
+            // the last good snapshot rather than risk a half-copied array.
+            try { _vLog = KawaiiStudioLink.LogLines.ToArray(); } catch { }
+            try { _vRecent = KawaiiStudioLink.History.ToArray(); } catch { }
+        }
+
         private void OnGUI()
         {
+            Capture();
             KawaiiStudioLinkGUI.Initialize();
             KawaiiStudioLinkGUI.DrawWindowBackground(position);
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
@@ -87,8 +128,8 @@ namespace KawaiiStudio
 
         private void DrawConnection()
         {
-            var state = KawaiiStudioLink.State;
-            var status = KawaiiStudioLink.Status;
+            var state = _vState;
+            var status = _vStatus;
             string label;
             Color color;
             switch (state)
@@ -106,25 +147,25 @@ namespace KawaiiStudio
                     color = KawaiiStudioLinkGUI.ErrorColor;
                     break;
                 default:
-                    label = KawaiiStudioLink.Enabled ? "Connecting" : "Not connected";
+                    label = _vEnabled ? "Connecting" : "Not connected";
                     color = KawaiiStudioLinkGUI.MutedTextColor;
                     break;
             }
 
             KawaiiStudioLinkGUI.KeyValueRow("Status", label, color);
-            KawaiiStudioLinkGUI.KeyValueRow("Project", KawaiiStudioLink.Project);
+            KawaiiStudioLinkGUI.KeyValueRow("Project", _vProject);
             if (state == KawaiiStudioLink.LinkState.Linked && status != null)
             {
                 KawaiiStudioLinkGUI.KeyValueRow("App", (string.IsNullOrEmpty(status.app) ? "Kawaii Studio" : status.app) + " v" + status.version);
-                KawaiiStudioLinkGUI.KeyValueRow("Bridge", "127.0.0.1:" + KawaiiStudioLink.Port);
+                KawaiiStudioLinkGUI.KeyValueRow("Bridge", "127.0.0.1:" + _vPort);
             }
-            if (!string.IsNullOrEmpty(KawaiiStudioLink.Detail))
-                KawaiiStudioLinkGUI.Banner(KawaiiStudioLink.Detail,
+            if (!string.IsNullOrEmpty(_vDetail))
+                KawaiiStudioLinkGUI.Banner(_vDetail,
                     state == KawaiiStudioLink.LinkState.Failed ? KawaiiStudioLinkGUI.MessageKind.Error : KawaiiStudioLinkGUI.MessageKind.Warning);
 
             GUILayout.Space(4);
             EditorGUILayout.BeginHorizontal();
-            if (!KawaiiStudioLink.Enabled)
+            if (!_vEnabled)
             {
                 if (KawaiiStudioLinkGUI.PrimaryButton("Connect")) KawaiiStudioLink.Connect();
             }
@@ -136,7 +177,7 @@ namespace KawaiiStudio
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(2);
-            GUILayout.Label(KawaiiStudioLink.Enabled
+            GUILayout.Label(_vEnabled
                 ? "This project links itself whenever it is open and Kawaii Studio runs. Nothing leaves this PC: the link is local."
                 : "Disconnected: this project stays apart from Kawaii Studio until you click Connect.",
                 KawaiiStudioLinkGUI.InfoLabelStyle);
@@ -144,8 +185,8 @@ namespace KawaiiStudio
 
         private void DrawAccount()
         {
-            var status = KawaiiStudioLink.Status;
-            if (KawaiiStudioLink.State != KawaiiStudioLink.LinkState.Linked || status == null)
+            var status = _vStatus;
+            if (_vState != KawaiiStudioLink.LinkState.Linked || status == null)
             {
                 GUILayout.Label("Shown once the link is up.", KawaiiStudioLinkGUI.InfoLabelStyle);
                 return;
@@ -177,19 +218,19 @@ namespace KawaiiStudio
 
         private void DrawSend()
         {
-            var status = KawaiiStudioLink.Status;
+            var status = _vStatus;
             GUILayout.Label("In the Kawaii Studio Scene Editor, click Send to Unity. The export lands in " +
                             KawaiiStudioLinkPaths.Exported + " and is selected here.", KawaiiStudioLinkGUI.InfoLabelStyle);
             GUILayout.Space(4);
 
-            if (KawaiiStudioLink.Importing)
+            if (_vImporting)
             {
-                string wait = KawaiiStudioLink.ImportingWaitReason;
-                KawaiiStudioLinkGUI.Banner("Importing " + KawaiiStudioLink.ImportingName +
+                string wait = _vImportingWait;
+                KawaiiStudioLinkGUI.Banner("Importing " + _vImportingName +
                                        (string.IsNullOrEmpty(wait) ? "." : ". Waiting for Unity to finish " + wait + "."),
                     KawaiiStudioLinkGUI.MessageKind.Info);
             }
-            else if (KawaiiStudioLink.State == KawaiiStudioLink.LinkState.Linked && status != null)
+            else if (_vState == KawaiiStudioLink.LinkState.Linked && status != null)
             {
                 if (status.target)
                     KawaiiStudioLinkGUI.Banner("Send to Unity reaches this project.", KawaiiStudioLinkGUI.MessageKind.Success);
@@ -205,7 +246,7 @@ namespace KawaiiStudio
 
         private void DrawTest()
         {
-            var status = KawaiiStudioLink.Status;
+            var status = _vStatus;
             GUILayout.Label("Builds the selected avatar, or the open world scene, and opens it in the Kawaii Studio Scene Editor. " +
                             "An avatar starts in Play mode, a world on the Photon sim.", KawaiiStudioLinkGUI.InfoLabelStyle);
             GUILayout.Space(4);
@@ -221,14 +262,14 @@ namespace KawaiiStudio
                     KawaiiStudioLinkGUI.Banner("Select an avatar (a GameObject with a VRC Avatar Descriptor), or open a VRChat world scene.", KawaiiStudioLinkGUI.MessageKind.Info);
                     break;
             }
-            if (KawaiiStudioLink.IsLinked && status != null && !status.testInApp)
+            if (_vIsLinked && status != null && !status.testInApp)
                 KawaiiStudioLinkGUI.Banner("This Kawaii Studio cannot open bundles from Unity yet. Update the app.", KawaiiStudioLinkGUI.MessageKind.Warning);
 
             bool play = KawaiiStudioLinkGUI.DrawToggle("Start playing as soon as it opens", KawaiiStudioTestBuild.PlayOnOpen);
             if (play != KawaiiStudioTestBuild.PlayOnOpen) KawaiiStudioTestBuild.PlayOnOpen = play;
 
             GUILayout.Space(4);
-            bool ready = KawaiiStudioLink.IsLinked && _testKind != KawaiiStudioTestBuild.TargetKind.None && !_testRunning;
+            bool ready = _vIsLinked && _testKind != KawaiiStudioTestBuild.TargetKind.None && !_testRunning;
             using (new EditorGUI.DisabledScope(!ready))
             {
                 if (KawaiiStudioLinkGUI.PrimaryButton(_testRunning ? "Building" : "Test in Kawaii Studio"))
@@ -244,20 +285,21 @@ namespace KawaiiStudio
                         });
                 }
             }
-            if (!KawaiiStudioLink.IsLinked)
+            if (!_vIsLinked)
                 GUILayout.Label("Connect first: the build goes to the linked app.", KawaiiStudioLinkGUI.InfoLabelStyle);
         }
 
         private void DrawRecent()
         {
-            var items = KawaiiStudioLink.History;
-            if (items.Count == 0)
+            var items = _vRecent;
+            if (items.Length == 0)
             {
                 GUILayout.Label("Nothing received yet.", KawaiiStudioLinkGUI.InfoLabelStyle);
                 return;
             }
             foreach (var t in items.Take(8))
             {
+                if (t == null) continue;
                 EditorGUILayout.BeginHorizontal();
                 EditorGUILayout.BeginVertical();
                 GUILayout.Label(t.name + "  (" + t.type + ")", KawaiiStudioLinkGUI.H3);
@@ -269,7 +311,7 @@ namespace KawaiiStudio
                 {
                     if (KawaiiStudioLinkGUI.SecondaryButton("Select", GUILayout.Width(70)))
                     {
-                        var obj = AssetDatabase.LoadAssetAtPath<Object>(t.asset);
+                        var obj = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(t.asset);
                         Selection.activeObject = obj;
                         EditorGUIUtility.PingObject(obj);
                     }
@@ -287,13 +329,13 @@ namespace KawaiiStudio
 
         private void DrawLog()
         {
-            var lines = KawaiiStudioLink.LogLines;
-            if (lines.Count == 0)
+            var lines = _vLog;
+            if (lines.Length == 0)
             {
                 GUILayout.Label("Empty.", KawaiiStudioLinkGUI.InfoLabelStyle);
                 return;
             }
-            foreach (string line in lines.Skip(System.Math.Max(0, lines.Count - 10)))
+            foreach (string line in lines.Skip(Math.Max(0, lines.Length - 10)))
                 GUILayout.Label(line, KawaiiStudioLinkGUI.InfoLabelStyle);
         }
     }
