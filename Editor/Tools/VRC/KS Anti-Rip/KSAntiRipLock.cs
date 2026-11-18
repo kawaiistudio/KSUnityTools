@@ -59,7 +59,7 @@ namespace KawaiiStudio.VRC.AntiRip
             GameObject avatar, VRCAvatarDescriptor descriptor, AnimatorController fx,
             IList<ShapeTarget> targets, IList<string> hideRendererPaths, IList<string> keyParameters,
             bool syncKey, string folder, System.Random rng, bool obfuscate = false, bool freezeWhileLocked = false,
-            string badgePath = null)
+            string badgePath = null, bool hideEverything = false, IList<string> notes = null)
         {
             if (keyParameters == null || keyParameters.Count == 0)
                 throw new System.ArgumentException("the lock needs the key parameters", nameof(keyParameters));
@@ -68,6 +68,11 @@ namespace KawaiiStudio.VRC.AntiRip
 
             // Everything below this index is the avatar's own; everything from it on is added here.
             int firstOwnLayer = fx.layers.Length;
+
+            // What the avatar's own animations switch, read BEFORE anything of ours is added: the lock never touches
+            // it, so a toggle keeps working for whoever has the key (see AnimatedByAvatar).
+            HashSet<string> animated = AnimatedByAvatar(avatar, descriptor, fx);
+            int leftToAvatar = 0;
 
             // With obfuscation on, nothing announces itself. 5.0 named things "KS_<tag>_L1234", which was a
             // search term in its own right.
@@ -125,7 +130,15 @@ namespace KawaiiStudio.VRC.AntiRip
             //    for the right value would write the value into the bundle again.
             //    The locked badge (KSAntiRipBadge) is the other side of the same switch: there while the avatar is
             //    locked, gone when the key has arrived. It makes the layer exist even when nothing is hidden.
-            bool hides = hideRendererPaths != null && hideRendererPaths.Count > 0;
+            //    EVERYTHING ELSE TOO (3.13.0; owner, 2026-11-18, wearing a locked avatar: the animations still played).
+            //    Up to 3.12 only the scrambled skinned meshes were hidden; his avatar's 105 static meshes, its particle
+            //    effects, trails, lights and sounds stayed on and kept animating around an invisible body. With hiding
+            //    on, every renderer, light and sound of the avatar is off while it is locked -- except what the avatar's
+            //    own animations switch (left alone, so its toggles keep working once the key is here) and the poster.
+            List<Switch> extra = hideEverything
+                ? Switches(avatar, hideRendererPaths, badgePath, animated, ref leftToAvatar)
+                : new List<Switch>();
+            bool hides = (hideRendererPaths != null && hideRendererPaths.Count > 0) || extra.Count > 0;
             bool badge = !string.IsNullOrEmpty(badgePath);
             if (hides || badge)
             {
@@ -134,12 +147,18 @@ namespace KawaiiStudio.VRC.AntiRip
                 var shown = new AnimationClip { name = Name("KS_Shown") };
                 // Driven in BOTH states: with Write Defaults off, a property animated in one state and dropped in
                 // the other keeps its last value, which would leave the avatar invisible forever.
-                if (hides)
+                if (hideRendererPaths != null)
                     foreach (string path in hideRendererPaths)
                     {
                         hidden.SetCurve(path, typeof(SkinnedMeshRenderer), "m_Enabled", Const(0f));
                         shown.SetCurve(path, typeof(SkinnedMeshRenderer), "m_Enabled", Const(1f));
                     }
+                // the rest: off while locked, and back to exactly what it was in the avatar once the key is here
+                foreach (Switch s in extra)
+                {
+                    hidden.SetCurve(s.path, s.type, "m_Enabled", Const(0f));
+                    shown.SetCurve(s.path, s.type, "m_Enabled", Const(1f));
+                }
                 if (badge)
                 {
                     hidden.SetCurve(badgePath, typeof(GameObject), "m_IsActive", Const(1f));
@@ -178,10 +197,127 @@ namespace KawaiiStudio.VRC.AntiRip
 
             // 4. the freeze layer: no key after the grace period, and the wearer cannot walk and the menu does nothing
             if (freezeWhileLocked)
-                BuildFreeze(fx, keyParameters[0], firstOwnLayer, folder, Name);
+                BuildFreeze(fx, keyParameters[0], firstOwnLayer, folder, Name,
+                            Stillness(avatar, badgePath, animated, ref leftToAvatar));
 
             // 5. the expression parameters
             AddExpressionParameters(descriptor, keyParameters, syncKey, folder);
+
+            if (leftToAvatar > 0 && notes != null)
+                notes.Add(leftToAvatar + " part(s) of the avatar keep running while it is locked: the avatar's own " +
+                          "animations switch them, and the lock leaves those alone so its toggles still work with the key.");
+        }
+
+        /// <summary>One "m_Enabled" the lock turns off while locked; it is on in the avatar.</summary>
+        public struct Switch
+        {
+            public string path;
+            public System.Type type;
+            public string property;
+        }
+
+        /// <summary>
+        /// Everything the avatar's OWN animations drive, as "path|property": every clip of its playable layers (VRCFury
+        /// and Modular Avatar have merged theirs in by now), and of every Animator below the root, under that
+        /// Animator's path. Keyed without the component type on purpose: a curve on "m_Enabled" at a path makes every
+        /// component there the avatar's business.
+        ///
+        /// WHY THE LOCK STAYS OFF THESE. Its layers come after the avatar's, so whatever they write wins. A lock that
+        /// also wrote a property a toggle drives would pin it: the jacket the menu turns off would come back the moment
+        /// the key arrives, for the very people allowed to wear the avatar.
+        /// </summary>
+        public static HashSet<string> AnimatedByAvatar(GameObject avatar, VRCAvatarDescriptor descriptor, AnimatorController fx)
+        {
+            var set = new HashSet<string>(System.StringComparer.Ordinal);
+            void Add(AnimationClip clip, string prefix)
+            {
+                if (clip == null) return;
+                foreach (EditorCurveBinding b in AnimationUtility.GetCurveBindings(clip))
+                    set.Add(Join(prefix, b.path) + "|" + b.propertyName);
+            }
+
+            var controllers = new List<RuntimeAnimatorController>();
+            if (fx != null) controllers.Add(fx);
+            if (descriptor != null)
+            {
+                if (descriptor.baseAnimationLayers != null)
+                    controllers.AddRange(descriptor.baseAnimationLayers.Select(l => l.animatorController).Where(c => c != null));
+                if (descriptor.specialAnimationLayers != null)
+                    controllers.AddRange(descriptor.specialAnimationLayers.Select(l => l.animatorController).Where(c => c != null));
+            }
+            foreach (RuntimeAnimatorController c in controllers.Distinct())
+                foreach (AnimationClip clip in c.animationClips) Add(clip, "");
+
+            if (avatar != null)
+                foreach (Animator a in avatar.GetComponentsInChildren<Animator>(true))
+                {
+                    if (a.gameObject == avatar || a.runtimeAnimatorController == null) continue;
+                    string prefix = AnimationUtility.CalculateTransformPath(a.transform, avatar.transform);
+                    foreach (AnimationClip clip in a.runtimeAnimatorController.animationClips) Add(clip, prefix);
+                }
+            return set;
+        }
+
+        static string Join(string prefix, string path) =>
+            string.IsNullOrEmpty(prefix) ? path ?? "" : string.IsNullOrEmpty(path) ? prefix : prefix + "/" + path;
+
+        static bool Under(string path, string root) =>
+            !string.IsNullOrEmpty(root) && (path == root || path.StartsWith(root + "/", System.StringComparison.Ordinal));
+
+        /// <summary>
+        /// The renderers, lights and sounds the show layer turns off while locked: on in the avatar, not the poster,
+        /// not one of the scrambled meshes (those are switched as before), and not driven by the avatar's own
+        /// animations (counted in <paramref name="leftToAvatar"/>).
+        /// </summary>
+        static List<Switch> Switches(GameObject avatar, IList<string> scrambled, string badgePath,
+                                     HashSet<string> animated, ref int leftToAvatar)
+        {
+            var list = new List<Switch>();
+            if (avatar == null) return list;
+            var seen = new HashSet<string>(System.StringComparer.Ordinal);
+            foreach (Component c in avatar.GetComponentsInChildren<Component>(true))
+            {
+                bool on;
+                if (c is Renderer r) on = r.enabled;
+                else if (c is Light l) on = l.enabled;
+                else if (c is AudioSource s) on = s.enabled;
+                else continue;
+                if (!on) continue;   // already off: nothing to hide, and nothing to put back
+                string path = AnimationUtility.CalculateTransformPath(c.transform, avatar.transform);
+                if (Under(path, badgePath)) continue;
+                if (c is SkinnedMeshRenderer && scrambled != null && scrambled.Contains(path)) continue;
+                if (animated.Contains(path + "|m_Enabled")) { leftToAvatar++; continue; }
+                if (!seen.Add(path + "|" + c.GetType().FullName)) continue;   // a curve reaches the first of a type only
+                list.Add(new Switch { path = path, type = c.GetType(), property = "m_Enabled" });
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// What the freeze stills on top of the layers: every Animator below the root (spinning props, wings...) and
+        /// every particle system's emission. On in the avatar, not driven by its own animations.
+        /// </summary>
+        static List<Switch> Stillness(GameObject avatar, string badgePath, HashSet<string> animated, ref int leftToAvatar)
+        {
+            var list = new List<Switch>();
+            if (avatar == null) return list;
+            foreach (Animator a in avatar.GetComponentsInChildren<Animator>(true))
+            {
+                if (a.gameObject == avatar || !a.enabled) continue;
+                string path = AnimationUtility.CalculateTransformPath(a.transform, avatar.transform);
+                if (Under(path, badgePath)) continue;
+                if (animated.Contains(path + "|m_Enabled")) { leftToAvatar++; continue; }
+                list.Add(new Switch { path = path, type = typeof(Animator), property = "m_Enabled" });
+            }
+            foreach (ParticleSystem p in avatar.GetComponentsInChildren<ParticleSystem>(true))
+            {
+                if (!p.emission.enabled) continue;
+                string path = AnimationUtility.CalculateTransformPath(p.transform, avatar.transform);
+                if (Under(path, badgePath)) continue;
+                if (animated.Contains(path + "|EmissionModule.enabled")) { leftToAvatar++; continue; }
+                list.Add(new Switch { path = path, type = typeof(ParticleSystem), property = "EmissionModule.enabled" });
+            }
+            return list;
         }
 
         /// <summary>
@@ -207,9 +343,16 @@ namespace KawaiiStudio.VRC.AntiRip
         /// sets that parameter to anything over OSC walks again -- in an avatar that is still scrambled.
         ///
         /// Layer 0 is left out: Unity always plays the first layer at full weight, whatever is asked.
+        ///
+        /// A STATUE, NOT JUST A LOCKED MENU (3.13.0; owner, 2026-11-18: "l'animator est lock mais les animations se
+        /// play pareil, ça devrait s'être figé tant que la key est pas injectée"). Frozen also takes the avatar's
+        /// Gesture, Additive and Action layers to nothing (hands, breathing, emotes), turns off every Animator below the
+        /// root and every particle system's emission (<paramref name="still"/>); Thaw gives the Gesture and Additive
+        /// layers their full weight back and switches those back on. Action is left to the avatar on thaw: it sits at
+        /// nothing until one of its own states raises it. Only the Base layer still plays, standing in place.
         /// </summary>
         static void BuildFreeze(AnimatorController fx, string keyParameter, int firstOwnLayer, string folder,
-                                System.Func<string, string> Name)
+                                System.Func<string, string> Name, IList<Switch> still = null)
         {
             AnimatorControllerLayer[] layers = fx.layers;
             bool writeDefaults = DominantWriteDefaults(fx);
@@ -219,6 +362,24 @@ namespace KawaiiStudio.VRC.AntiRip
             idle.SetCurve("_", typeof(GameObject), "m_IsActive", AnimationCurve.Linear(0f, 1f, 1f, 1f));
             AssetDatabase.CreateAsset(idle, folder + "/" + idle.name + ".anim");
 
+            // Frozen and Thaw each drive the stilled parts, off and back on. Driven in Thaw too, for the same reason as
+            // the show layer: with Write Defaults off, what Frozen wrote would otherwise stay.
+            AnimationClip stop = idle, go = idle;
+            if (still != null && still.Count > 0)
+            {
+                stop = new AnimationClip { name = Name("KS_Still") };
+                go = new AnimationClip { name = Name("KS_Move") };
+                foreach (AnimationClip c in new[] { stop, go })
+                    c.SetCurve("_", typeof(GameObject), "m_IsActive", AnimationCurve.Linear(0f, 1f, 1f, 1f));
+                foreach (Switch s in still)
+                {
+                    stop.SetCurve(s.path, s.type, s.property, Const(0f));
+                    go.SetCurve(s.path, s.type, s.property, Const(1f));
+                }
+                AssetDatabase.CreateAsset(stop, folder + "/" + stop.name + ".anim");
+                AssetDatabase.CreateAsset(go, folder + "/" + go.name + ".anim");
+            }
+
             var machine = new AnimatorStateMachine { name = Name(FreezeLayerName), hideFlags = HideFlags.HideInHierarchy };
             AssetDatabase.AddObjectToAsset(machine, fx);
             AnimatorState wait = machine.AddState(Name("Wait"));
@@ -227,7 +388,7 @@ namespace KawaiiStudio.VRC.AntiRip
             AnimatorState thaw = machine.AddState(Name("Thaw"));
             foreach (AnimatorState s in new[] { wait, open, frozen, thaw })
             {
-                s.motion = idle;
+                s.motion = s == frozen ? stop : s == thaw ? go : idle;
                 s.writeDefaultValues = writeDefaults;
             }
             machine.defaultState = wait;
@@ -250,6 +411,25 @@ namespace KawaiiStudio.VRC.AntiRip
             // position lock, the way GoGo Loco's stationary option does it
             frozen.AddStateMachineBehaviour<VRCAnimatorLocomotionControl>().disableLocomotion = true;
             thaw.AddStateMachineBehaviour<VRCAnimatorLocomotionControl>().disableLocomotion = false;
+
+            // the other playable layers: hands, breathing and emotes stop too (3.13.0)
+            foreach (VRC_PlayableLayerControl.BlendableLayer playable in new[]
+                     {
+                         VRC_PlayableLayerControl.BlendableLayer.Gesture,
+                         VRC_PlayableLayerControl.BlendableLayer.Additive,
+                         VRC_PlayableLayerControl.BlendableLayer.Action,
+                     })
+            {
+                var off = frozen.AddStateMachineBehaviour<VRCPlayableLayerControl>();
+                off.layer = playable;
+                off.goalWeight = 0f;
+                off.blendDuration = 0f;
+                if (playable == VRC_PlayableLayerControl.BlendableLayer.Action) continue;   // its own states raise it
+                var on = thaw.AddStateMachineBehaviour<VRCPlayableLayerControl>();
+                on.layer = playable;
+                on.goalWeight = 1f;
+                on.blendDuration = 0f;
+            }
 
             // animator blocker: every layer of the avatar's own weighs nothing while frozen
             for (int i = 1; i < firstOwnLayer && i < layers.Length; i++)

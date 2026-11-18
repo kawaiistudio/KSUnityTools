@@ -2,6 +2,29 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.13.0]
+
+**KS ANTI-RIP: a locked avatar is a poster and a statue.**
+Works with the Kawaii Studio app from v657 (v664 for the upload log). `com.kawaiistudio.link` stays 1.2.1.
+
+- **The poster alone.** The 3D heart is gone: it stood at eye level in front of the wearer and filled their own view.
+  The poster with the words and the logo stays, centred in front of the chest, and now reads the right way in a
+  mirror too (it came out back to front there).
+- **Everything hidden while locked.** With "Hide it until it is unlocked" on, up to 3.12 only the scrambled skinned
+  meshes were hidden: static meshes, particle effects, trails, lights and sounds stayed on and kept playing around an
+  invisible body. Now every renderer, light and sound of the avatar is off until the key arrives, and back exactly as
+  it was afterwards.
+- **A real statue when frozen.** On top of the position lock and the menu, the freeze now stops hands, breathing and
+  emotes (the Gesture, Additive and Action layers), every Animator inside the avatar, and every particle emitter.
+  Everything comes back when the key arrives.
+- **Toggles are never broken.** Anything the avatar's own animations switch (a jacket toggle, a particle toggle) is
+  left to the avatar, so it keeps working for the people who have the key. The app's log says how many such parts
+  stay running while locked.
+- **New test: the upload hook, on and off.** With protection off (no mark, or the mark switched off in the app) the
+  upload copy comes out exactly as it went in and nothing is written to the project; with it on, the copy is
+  protected and the build files are gone afterwards. `Kawaii Studio > VRC > Debug > KS Anti-Rip upload hook test`.
+- The avatar's name reaches the app without the SDK's "(Clone)".
+
 ## [3.12.2]
 
 **KS ANTI-RIP: a protected upload with the locked badge is no longer refused by the VRChat SDK.**

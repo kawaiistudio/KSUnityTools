@@ -34,6 +34,18 @@ namespace KawaiiStudio.VRC.AntiRip
         /// </summary>
         public int callbackOrder => int.MaxValue - 1024;
 
+        /// <summary>For <see cref="KSAntiRipHookTest"/> only: a plan source and a report sink in place of the Kawaii
+        /// Studio app, so the hook runs whole -- the exact code an upload runs -- without the app. Null in every real
+        /// build.</summary>
+        internal static KSAntiRipProcessor.IPlanSource PlanSourceForTests;
+        internal static Action<string, System.Collections.Generic.IList<string>> ReportForTests;
+
+        static void Report(string message, System.Collections.Generic.IList<string> details = null)
+        {
+            if (ReportForTests != null) ReportForTests(message, details);
+            else KSAntiRipClient.Report(message, details);
+        }
+
         public bool OnPreprocessAvatar(GameObject avatarGameObject)
         {
             if (avatarGameObject == null) return true;
@@ -67,14 +79,14 @@ namespace KawaiiStudio.VRC.AntiRip
 
                 string folder = EnsureBuildFolder();
                 var result = new KSAntiRipProcessor.Result();
-                KSAntiRipProcessor.ProtectInPlace(avatarGameObject, settings, null, folder, result);
+                KSAntiRipProcessor.ProtectInPlace(avatarGameObject, settings, PlanSourceForTests, folder, result);
 
                 if (!result.ok)
                 {
                     // A protection that could not run must STOP the upload, never let a half-scrambled or
                     // unprotected avatar go out silently under the owner's name.
                     Debug.LogError("[KS ANTI-RIP] " + result.message);
-                    KSAntiRipClient.Report("the protection could not run, so the upload was stopped: " + result.message);
+                    Report("the protection could not run, so the upload was stopped: " + result.message);
                     KSAntiRipSdkReport.Forget();   // the SDK's "build failed" that follows says nothing more
                     EditorUtility.DisplayDialog("KS Anti-Rip",
                         "This avatar is set to be protected, but the protection could not run, so the upload was " +
@@ -90,14 +102,14 @@ namespace KawaiiStudio.VRC.AntiRip
 
                 Debug.Log($"[KS ANTI-RIP] protected at upload: {result.meshesProtected} mesh(es), " +
                           $"{result.verticesProtected:N0} vertices{names}, key -> {result.keyPath}");
-                KSAntiRipClient.Report($"protected {result.meshesProtected} mesh(es), {result.verticesProtected:N0} vertices{names}; " +
+                Report($"protected {result.meshesProtected} mesh(es), {result.verticesProtected:N0} vertices{names}; " +
                                        "the VRChat SDK builds it now", result.warnings);
                 return true;
             }
             catch (Exception e)
             {
                 Debug.LogError("[KS ANTI-RIP] build hook failed: " + e);
-                KSAntiRipClient.Report("the protection hit an error, so the upload was stopped: " + e.Message);
+                Report("the protection hit an error, so the upload was stopped: " + e.Message);
                 KSAntiRipSdkReport.Forget();
                 EditorUtility.DisplayDialog("KS Anti-Rip",
                     "This avatar is set to be protected, but the protection hit an error, so the upload was " +

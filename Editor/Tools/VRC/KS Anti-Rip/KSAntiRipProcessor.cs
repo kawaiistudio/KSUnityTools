@@ -215,7 +215,11 @@ namespace KawaiiStudio.VRC.AntiRip
 
             EditorUtility.DisplayProgressBar("KS ANTI-RIP", "Asking Kawaii Studio…", 0.1f);
             KSAntiRipClient.Plan plan;
-            try { plan = planSource.Begin(blueprint, root.name, request, settings.strength, settings.restoreGroups, settings.maxAddedMegabytes); }
+            // The SDK's build copy is named "<avatar>(Clone)": the app's log and the key's record show the avatar's name.
+            string avatarName = root.name.EndsWith("(Clone)", StringComparison.Ordinal)
+                ? root.name.Substring(0, root.name.Length - "(Clone)".Length).TrimEnd()
+                : root.name;
+            try { plan = planSource.Begin(blueprint, avatarName, request, settings.strength, settings.restoreGroups, settings.maxAddedMegabytes); }
             finally { EditorUtility.ClearProgressBar(); }
 
             if (plan == null || !plan.ok)
@@ -336,7 +340,7 @@ namespace KawaiiStudio.VRC.AntiRip
                 int layersBefore = fx.layers.Length;
                 KSAntiRipLock.Build(root, descriptor, fx, targets, hidePaths, plan.parameters,
                                     settings.syncKey, folder, rng, settings.obfuscateNames, settings.freezeWhileLocked,
-                                    badgePath);
+                                    badgePath, hideEverything: settings.hideWhileLocked, notes: result.warnings);
                 result.lockLayer = fx.layers.Length > layersBefore ? fx.layers[layersBefore].name : "";
                 // the freeze layer is always the last one the lock adds
                 result.freezeLayer = settings.freezeWhileLocked && fx.layers.Length > layersBefore + 1

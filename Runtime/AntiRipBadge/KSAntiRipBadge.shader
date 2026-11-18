@@ -1,10 +1,14 @@
-// KS ANTI-RIP: the words of the locked badge (KSAntiRipBadge.cs) -- the panel with the text and the logo, in front of
-// the 3D heart (KSAntiRipHeart.shader).
+// KS ANTI-RIP: the poster of a locked avatar (KSAntiRipBadge.cs) -- the text and the logo. Since 3.13.0 it is the
+// whole badge: the 3D heart is gone (owner, 2026-11-18: "remove le coeur en 3D, on mettra juste l'affiche").
 //
 // One quad that always faces whoever looks at it, turning around the vertical axis only so it stays upright, and in
-// VR towards the middle of both eyes so the two eyes agree. It stands a little towards the viewer, so the heart is
-// always behind it. Unlit and brighter than white where the art is bright: a world with bloom makes the letters
-// shine, a world without shows them as drawn. A slow pulse.
+// VR towards the middle of both eyes so the two eyes agree. Unlit and brighter than white where the art is bright: a
+// world with bloom makes the letters shine, a world without shows them as drawn. A slow pulse.
+//
+// IN A MIRROR it reads the right way (3.13.0). A mirror renders from the reflected camera and flips the picture, so a
+// poster that faces the camera came out back to front (the owner's in-game screenshot, 2026-11-18): VRChat tells a
+// shader it is drawing for a mirror with _VRChatMirrorMode (0 normal, 1 mirror in VR, 2 mirror on desktop), and the
+// picture is read from the other side there.
 //
 // A viewer who blocks custom shaders gets VRChat's unlit cutout fallback: the same picture, not turning.
 Shader "Kawaii Studio/Anti-Rip Badge"
@@ -15,7 +19,7 @@ Shader "Kawaii Studio/Anti-Rip Badge"
         _Intensity ("Brightness", Range(1, 4)) = 1.55
         _Pulse ("Pulse", Range(0, 0.5)) = 0.14
         _PulseSpeed ("Pulse speed", Range(0, 6)) = 2.0
-        _Push ("Towards the viewer", Range(0, 0.5)) = 0.2
+        _Push ("Towards the viewer", Range(0, 0.5)) = 0
         _Cutoff ("Alpha cutoff (fallback only)", Range(0, 1)) = 0.35
     }
     SubShader
@@ -44,6 +48,7 @@ Shader "Kawaii Studio/Anti-Rip Badge"
 
             sampler2D _MainTex;
             float _Intensity, _Pulse, _PulseSpeed, _Push;
+            float _VRChatMirrorMode;   // set by VRChat: 0 normal, 1 or 2 while drawing a mirror (0 in the editor)
 
             struct appdata
             {
@@ -83,6 +88,8 @@ Shader "Kawaii Studio/Anti-Rip Badge"
                 float3 world = centre + right * (v.vertex.x * sx) + float3(0, 1, 0) * (v.vertex.y * sy) + facing * (_Push * sx);
                 o.pos = mul(UNITY_MATRIX_VP, float4(world, 1));
                 o.uv = v.uv;
+                // a mirror flips what it shows: read the picture from the other side, so the words come out right
+                if (_VRChatMirrorMode > 0.5) o.uv.x = 1.0 - o.uv.x;
                 return o;
             }
 

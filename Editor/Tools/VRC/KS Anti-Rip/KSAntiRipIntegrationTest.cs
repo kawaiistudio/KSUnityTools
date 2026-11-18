@@ -203,14 +203,15 @@ namespace KawaiiStudio.VRC.AntiRip
                     var badgeRenderer = badge.GetComponent<MeshRenderer>();
                     var badgeMesh = badge.GetComponent<MeshFilter>() != null ? badge.GetComponent<MeshFilter>().sharedMesh : null;
                     Material[] badgeMaterials = badgeRenderer != null ? badgeRenderer.sharedMaterials : new Material[0];
-                    Check(badgeMaterials.Length == 2 && badgeMaterials.All(x => x != null && x.shader != null),
-                          "it has its two materials: the heart and the panel");
-                    Check(badgeMaterials.Length == 2 && badgeMaterials[0] != null && badgeMaterials[0].shader.name == KSAntiRipBadge.HeartShaderName,
-                          "the heart is drawn with the heart shader (" + KSAntiRipBadge.HeartShaderName + ")");
-                    Check(badgeMaterials.Length == 2 && badgeMaterials[1] != null && badgeMaterials[1].shader.name == KSAntiRipBadge.ShaderName,
-                          "the panel is drawn with the badge shader (" + KSAntiRipBadge.ShaderName + ")");
-                    string picture = badgeMaterials.Length == 2 && badgeMaterials[1] != null && badgeMaterials[1].mainTexture != null
-                        ? AssetDatabase.GetAssetPath(badgeMaterials[1].mainTexture) : "";
+                    // 3.13.0: the poster alone -- the 3D heart filled the wearer's own view
+                    Check(badgeMaterials.Length == 1 && badgeMaterials[0] != null && badgeMaterials[0].shader != null &&
+                          badgeMaterials[0].shader.name == KSAntiRipBadge.ShaderName,
+                          "it is the poster alone: one material, the badge shader (" + KSAntiRipBadge.ShaderName + ")");
+                    Check(badgeMaterials.Length == 1 && badgeMaterials[0] != null && badgeMaterials[0].HasProperty("_Push") &&
+                          Mathf.Approximately(badgeMaterials[0].GetFloat("_Push"), 0f),
+                          "it is not pushed towards the viewer, so it never comes closer to the wearer's own eyes");
+                    string picture = badgeMaterials.Length == 1 && badgeMaterials[0] != null && badgeMaterials[0].mainTexture != null
+                        ? AssetDatabase.GetAssetPath(badgeMaterials[0].mainTexture) : "";
                     Check(picture.Length > 0 && picture != KSAntiRipBadge.TexturePath && picture.StartsWith(result.folder + "/"),
                           "with its own copy of the badge picture, in the build folder (" + picture + ")");
                     var pictureImport = AssetImporter.GetAtPath(picture) as TextureImporter;
@@ -218,28 +219,10 @@ namespace KawaiiStudio.VRC.AntiRip
                     Check(pictureImport != null && !(pictureImport.mipmapEnabled && !pictureImport.streamingMipmaps),
                           "imported the way the VRChat SDK accepts it (mip maps " + (pictureImport != null && pictureImport.mipmapEnabled ? "on" : "off") +
                           ", streaming " + (pictureImport != null && pictureImport.streamingMipmaps ? "on" : "off") + ")");
-                    Check(badgeMesh != null && badgeMesh.subMeshCount == 2 && badgeMesh.GetTriangles(1).Length == 6,
-                          "one mesh in two parts, the panel being two triangles");
-                    int heartTriangles = badgeMesh != null && badgeMesh.subMeshCount == 2 ? badgeMesh.GetTriangles(0).Length / 3 : 0;
-                    Check(heartTriangles > 500 && heartTriangles < 4000, "the heart is a real 3D shape, and a light one (" + heartTriangles + " triangles)");
-                    if (badgeMesh != null && badgeMesh.subMeshCount == 2)
-                    {
-                        // a closed, outward-facing shape: every normal points away from the heart's middle
-                        Vector3[] bv = badgeMesh.vertices, bn = badgeMesh.normals;
-                        var heartIndices = new System.Collections.Generic.HashSet<int>(badgeMesh.GetTriangles(0));
-                        Vector3 centre = Vector3.zero;
-                        foreach (int i in heartIndices) centre += bv[i];
-                        centre /= Mathf.Max(1, heartIndices.Count);
-                        float depth = 0f;
-                        int inward = 0;
-                        foreach (int i in heartIndices)
-                        {
-                            depth = Mathf.Max(depth, Mathf.Abs(bv[i].z));
-                            if (Mathf.Abs(bv[i].z) > 0.02f && Vector3.Dot(bn[i], new Vector3(0f, 0f, bv[i].z)) < 0f) inward++;
-                        }
-                        Check(depth > 0.08f, $"it has depth, front and back ({depth * 2f:F2} of a badge width)");
-                        Check(inward == 0, "its faces all look outwards (" + inward + " inward)");
-                    }
+                    Check(badgeMesh != null && badgeMesh.subMeshCount == 1 && badgeMesh.triangles.Length == 6 && badgeMesh.vertexCount == 4,
+                          "one quad: four corners, two triangles");
+                    Check(badgeMesh != null && Mathf.Abs(badgeMesh.bounds.center.y) < 0.001f,
+                          "the poster is centred on its object, where the heart used to sit above it");
                     Check(badgeMesh != null && badgeMesh.bounds.size.z > 1f, "its bounds are a box, so turning to the viewer never culls it");
                     float eye = descriptor.ViewPosition.y > 0.2f ? descriptor.ViewPosition.y : 1.5f;
                     Check(badge.position.y > 0.2f && badge.position.y < eye && badge.lossyScale.x >= 0.39f && badge.lossyScale.x <= 1.41f,
@@ -252,8 +235,7 @@ namespace KawaiiStudio.VRC.AntiRip
                     Check(Mathf.Approximately(keyValue, 0f), "key arrived: the show layer switches the badge off (" + keyValue + ")");
                 }
                 Check(avatar.GetComponentsInChildren<MeshRenderer>(true).SelectMany(r => r.sharedMaterials)
-                          .All(x => x == null || x.shader == null ||
-                                    (x.shader.name != KSAntiRipBadge.ShaderName && x.shader.name != KSAntiRipBadge.HeartShaderName)),
+                          .All(x => x == null || x.shader == null || x.shader.name != KSAntiRipBadge.ShaderName),
                       "the badge was NOT added to the source avatar");
 
                 // 5. the key parameters
