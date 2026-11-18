@@ -2,6 +2,22 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.11.0]
+
+**KS ANTI-RIP: the last readable names are gone — materials, textures, meshes and sounds ship under random names.**
+Same Kawaii Studio app as 3.10.0 (v653 or later); `com.kawaiistudio.link` stays 1.2.1.
+
+- A ripped protected avatar used to read like a parts list: its hierarchy and clips were already random, but its
+  materials, textures, meshes and sounds kept their names ("Body_Skin", "Lingerie_Lace", "Scream"…). With name
+  obfuscation on (the default), they now ship under random names too. Measured on a real avatar: 311 materials,
+  501 textures, 104 meshes and 34 sounds renamed; what is left readable is Unity's own built-in assets (Cube, Sphere,
+  Default-Particle…) and baked `.asset` meshes of your project, which are never touched.
+- **Your project is never modified.** Materials ship as renamed copies made for that build; textures, meshes and
+  sounds are renamed only in memory while the SDK builds, and get their names back as soon as it finishes. Verified:
+  every file the avatar uses is byte-identical after a protected build, and every asset has its own name back.
+- Nothing changes in game: the same 220 menu toggles, radials, gestures, contacts and PhysBones were checked plain
+  against protected, and every material slot samples the same textures.
+
 ## [3.10.2]
 
 **KS ANTI-RIP: a protected avatar now closes exactly in game, and GoGo Loco keeps its states.**

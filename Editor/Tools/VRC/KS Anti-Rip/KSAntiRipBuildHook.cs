@@ -75,8 +75,14 @@ namespace KawaiiStudio.VRC.AntiRip
                     return false;
                 }
 
+                // The asset names (materials, textures, meshes, sounds) go with the rest of the signposts. Only after
+                // the protection succeeded, and only with name obfuscation on, like the hierarchy renaming.
+                string names = "";
+                if (settings.obfuscateNames)
+                    names = ", renamed " + KSAntiRipAssetNames.Apply(avatarGameObject, folder, result.warnings);
+
                 Debug.Log($"[KS ANTI-RIP] protected at upload: {result.meshesProtected} mesh(es), " +
-                          $"{result.verticesProtected:N0} vertices, key -> {result.keyPath}");
+                          $"{result.verticesProtected:N0} vertices{names}, key -> {result.keyPath}");
                 return true;
             }
             catch (Exception e)
