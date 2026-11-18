@@ -224,9 +224,12 @@ namespace KawaiiStudio.VRC.AntiRip
                     Check(badgeMesh != null && Mathf.Abs(badgeMesh.bounds.center.y) < 0.001f,
                           "the poster is centred on its object, where the heart used to sit above it");
                     Check(badgeMesh != null && badgeMesh.bounds.size.z > 1f, "its bounds are a box, so turning to the viewer never culls it");
-                    float eye = descriptor.ViewPosition.y > 0.2f ? descriptor.ViewPosition.y : 1.5f;
-                    Check(badge.position.y > 0.2f && badge.position.y < eye && badge.lossyScale.x >= 0.39f && badge.lossyScale.x <= 1.41f,
-                          $"it sits in front of the chest, sized to the avatar ({badge.lossyScale.x:F2} m at height {badge.position.y:F2} m)");
+                    // 3.13.1: in front of the eyes, where the wearer reads it straight on (no head bone here: on the root)
+                    Vector3 view = descriptor.ViewPosition.y > 0.2f ? descriptor.ViewPosition : new Vector3(0f, 1.5f, 0.1f);
+                    float width = Mathf.Clamp(view.y * 0.2f, 0.12f, 0.6f), ahead = Mathf.Clamp(view.y * 0.21f, 0.12f, 0.6f);
+                    Check(Mathf.Abs(badge.position.y - view.y) < 0.01f && Mathf.Abs(badge.position.z - (view.z + ahead)) < 0.01f &&
+                          Mathf.Abs(badge.lossyScale.x - width) < 0.01f,
+                          $"it sits in front of the eyes, sized to the avatar ({badge.lossyScale.x:F2} m wide, {ahead:F2} m ahead, at {badge.position.y:F2} m)");
                     // the show layer switches it: there while locked, gone once the key has arrived
                     AnimatorState lockedState = show.stateMachine != null ? show.stateMachine.defaultState : null;
                     AnimatorState keyState = lockedState != null && lockedState.transitions.Length > 0 ? lockedState.transitions[0].destinationState : null;

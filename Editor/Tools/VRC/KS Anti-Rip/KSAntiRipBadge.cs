@@ -81,18 +81,28 @@ namespace KawaiiStudio.VRC.AntiRip
             renderer.lightProbeUsage = LightProbeUsage.Off;
             renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
 
-            // In front of the chest and sized to the avatar: readable from across a room, and the wearer sees it by
-            // looking down. The eye height is the one size the descriptor always knows.
-            float eye = descriptor != null && descriptor.ViewPosition.y > 0.2f ? descriptor.ViewPosition.y : 1.5f;
-            float size = Mathf.Clamp(eye * 0.62f, 0.4f, 1.4f);
+            // IN FRONT OF THE FACE, ON THE HEAD (3.13.1; owner, 2026-11-18: "mets-la devant mon visage, in head,
+            // directement devant la vue ... le message sera passé directement ... évidemment ma caméra doit voir le
+            // message correctement"). Whoever wears the avatar without its key reads "ask me if you want to use this
+            // avatar" right in front of their eyes, and everyone else reads it where the face would be. Sized to the
+            // avatar from its eye height, the one size the descriptor always knows.
             Transform r = root.transform;
-            badge.transform.position = r.position + r.rotation * new Vector3(0f, eye * 0.62f, eye * 0.3f);
+            Vector3 view = descriptor != null && descriptor.ViewPosition.y > 0.2f ? descriptor.ViewPosition : new Vector3(0f, 1.5f, 0.1f);
+            float eyeHeight = view.y * Mathf.Max(0.0001f, Mathf.Abs(r.lossyScale.y));
+            float width = Mathf.Clamp(eyeHeight * 0.2f, 0.12f, 0.6f);        // 30 cm on an avatar 1.5 m to the eyes
+            float distance = Mathf.Clamp(eyeHeight * 0.21f, 0.12f, 0.6f);    // and 31 cm in front of them
+            badge.transform.position = r.TransformPoint(view) + r.forward * distance;
             // Its face towards the avatar's front: what a viewer on the fallback shaders sees, which do not turn it.
             badge.transform.rotation = r.rotation * Quaternion.Euler(0f, 180f, 0f);
-            Vector3 s = r.lossyScale;
-            badge.transform.localScale = new Vector3(size / Mathf.Max(0.0001f, Mathf.Abs(s.x)),
-                                                     size / Mathf.Max(0.0001f, Mathf.Abs(s.y)),
-                                                     size / Mathf.Max(0.0001f, Mathf.Abs(s.z)));
+            // On the head bone it follows the head, so it stays in front of the wearer's view; VRChat shrinks the head
+            // to nothing in first person, so a VRC Head Chop keeps this one object at full size for the wearer.
+            // Without a humanoid head, or a VRChat SDK without Head Chop, it stays on the root at the same place.
+            Transform head = HeadOf(root);
+            if (head != null && KeepInFirstPerson(badge, root)) badge.transform.SetParent(head, true);
+            Vector3 s = badge.transform.parent.lossyScale;
+            badge.transform.localScale = new Vector3(width / Mathf.Max(0.0001f, Mathf.Abs(s.x)),
+                                                     width / Mathf.Max(0.0001f, Mathf.Abs(s.y)),
+                                                     width / Mathf.Max(0.0001f, Mathf.Abs(s.z)));
             badge.SetActive(true);
 
             return AnimationUtility.CalculateTransformPath(badge.transform, root.transform);
@@ -167,6 +177,48 @@ namespace KawaiiStudio.VRC.AntiRip
                 return null;
             }
             return AssetDatabase.LoadAssetAtPath<Texture2D>(copy);
+        }
+
+        /// <summary>The avatar's head bone, or null when it has no humanoid Animator.</summary>
+        static Transform HeadOf(GameObject root)
+        {
+            try
+            {
+                var animator = root.GetComponent<Animator>();
+                return animator != null && animator.isHuman ? animator.GetBoneTransform(HumanBodyBones.Head) : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Keeps the poster at full size in first person: VRChat shrinks the head bone to nothing for the wearer, and
+        /// everything under it with it. The way VRCFury's "Show in first person" does it: a VRC Head Chop bone at scale 1.
+        /// On its own component when the avatar has room for one more, else added to one of the avatar's own; false
+        /// when neither is possible (the poster then stays on the root).
+        /// </summary>
+        static bool KeepInFirstPerson(GameObject badge, GameObject root)
+        {
+#if KS_HAS_HEAD_CHOP
+            var bone = new VRCHeadChop.HeadChopBone
+            {
+                transform = badge.transform,
+                scaleFactor = 1f,
+                applyCondition = VRCHeadChop.HeadChopBone.ApplyCondition.AlwaysApply,
+            };
+            VRCHeadChop[] existing = root.GetComponentsInChildren<VRCHeadChop>(true);
+            VRCHeadChop chop = existing.Length < VRCHeadChop.MaxComponentCount
+                ? badge.AddComponent<VRCHeadChop>()
+                : System.Linq.Enumerable.FirstOrDefault(existing, c => c.targetBones == null || c.targetBones.Length < 32);
+            if (chop == null) return false;
+            var bones = new List<VRCHeadChop.HeadChopBone>(chop.targetBones ?? new VRCHeadChop.HeadChopBone[0]) { bone };
+            chop.targetBones = bones.ToArray();
+            return true;
+#else
+            return false;
+#endif
         }
 
         static void Unusable(IList<string> warnings, string why)

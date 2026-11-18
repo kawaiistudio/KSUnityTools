@@ -2,6 +2,19 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.13.1]
+
+**KS ANTI-RIP: the poster is in front of the wearer's eyes.**
+Works with the Kawaii Studio app from v657; v665 makes the key arrive after the app updates itself.
+`com.kawaiistudio.link` stays 1.2.1.
+
+- The poster now hangs on the head, about 30 cm in front of the eyes (sized to the avatar): someone wearing the avatar
+  without its key reads "ask me if you want to use this avatar" straight in front of them, wherever they look, and
+  everyone else reads it where the face would be. A VRC Head Chop keeps it at full size in first person (VRChat
+  otherwise shrinks everything on the head for the wearer). Up close it turns fully to the camera, so it reads
+  straight on; from further away it stays upright as before. Needs VRChat SDK 3.5.2 or newer for the head; with an
+  older SDK, or an avatar without a humanoid head, it stays at the same place without following the head.
+
 ## [3.13.0]
 
 **KS ANTI-RIP: a locked avatar is a poster and a statue.**

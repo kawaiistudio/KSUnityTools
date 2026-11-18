@@ -20,6 +20,7 @@ Shader "Kawaii Studio/Anti-Rip Badge"
         _Pulse ("Pulse", Range(0, 0.5)) = 0.14
         _PulseSpeed ("Pulse speed", Range(0, 6)) = 2.0
         _Push ("Towards the viewer", Range(0, 0.5)) = 0
+        _Near ("Faces the camera fully within (widths)", Range(0, 10)) = 3
         _Cutoff ("Alpha cutoff (fallback only)", Range(0, 1)) = 0.35
     }
     SubShader
@@ -47,7 +48,7 @@ Shader "Kawaii Studio/Anti-Rip Badge"
             #include "UnityCG.cginc"
 
             sampler2D _MainTex;
-            float _Intensity, _Pulse, _PulseSpeed, _Push;
+            float _Intensity, _Pulse, _PulseSpeed, _Push, _Near;
             float _VRChatMirrorMode;   // set by VRChat: 0 normal, 1 or 2 while drawing a mirror (0 in the editor)
 
             struct appdata
@@ -77,15 +78,28 @@ Shader "Kawaii Studio/Anti-Rip Badge"
                 #else
                     float3 eye = _WorldSpaceCameraPos;
                 #endif
-                float3 toEye = eye - centre;
-                toEye.y = 0;
-                float d = length(toEye);
-                float3 facing = d > 0.0001 ? toEye / d : float3(0, 0, 1);
-                // the viewer's right: the art reads left to right for them
-                float3 right = normalize(cross(facing, float3(0, 1, 0)));
                 float sx = length(float3(unity_ObjectToWorld[0].x, unity_ObjectToWorld[1].x, unity_ObjectToWorld[2].x));
                 float sy = length(float3(unity_ObjectToWorld[0].y, unity_ObjectToWorld[1].y, unity_ObjectToWorld[2].y));
-                float3 world = centre + right * (v.vertex.x * sx) + float3(0, 1, 0) * (v.vertex.y * sy) + facing * (_Push * sx);
+                float3 toEye = eye - centre;
+                float3 right, up, facing;
+                if (length(toEye) < _Near * sx)
+                {
+                    // CLOSE UP -- the wearer, whose eyes it sits in front of (3.13.1): square to the camera, tilt and
+                    // all, so it reads straight on wherever they look. The view matrix's rows are the camera's axes.
+                    right = UNITY_MATRIX_V[0].xyz;
+                    up = UNITY_MATRIX_V[1].xyz;
+                    facing = normalize(toEye);
+                }
+                else
+                {
+                    toEye.y = 0;
+                    float d = length(toEye);
+                    facing = d > 0.0001 ? toEye / d : float3(0, 0, 1);
+                    // the viewer's right: the art reads left to right for them
+                    right = normalize(cross(facing, float3(0, 1, 0)));
+                    up = float3(0, 1, 0);
+                }
+                float3 world = centre + right * (v.vertex.x * sx) + up * (v.vertex.y * sy) + facing * (_Push * sx);
                 o.pos = mul(UNITY_MATRIX_VP, float4(world, 1));
                 o.uv = v.uv;
                 // a mirror flips what it shows: read the picture from the other side, so the words come out right

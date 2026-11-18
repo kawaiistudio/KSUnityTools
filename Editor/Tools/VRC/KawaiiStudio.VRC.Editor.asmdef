@@ -25,6 +25,12 @@
   "defineConstraints": [
     "VRC_SDK_VRCSDK3"
   ],
-  "versionDefines": [],
+  "versionDefines": [
+    {
+      "name": "com.vrchat.base",
+      "expression": "3.5.2",
+      "define": "KS_HAS_HEAD_CHOP"
+    }
+  ],
   "noEngineReferences": false
 }
