@@ -43,9 +43,12 @@ namespace KawaiiStudio.VRC.AntiRip
             if (mark == null || !mark.enabled_)
             {
                 if (mark != null) UnityEngine.Object.DestroyImmediate(mark);
+                KSAntiRipSdkReport.Forget();
                 return true;   // not a KS-protected upload: leave it exactly alone
             }
 
+            // From here the app's KS ANTI-RIP log hears how this upload ends (3.12.2).
+            KSAntiRipSdkReport.Watch();
             try
             {
                 // Strip the mark first: it must never ship, and if protection throws we still want it gone.
@@ -71,6 +74,8 @@ namespace KawaiiStudio.VRC.AntiRip
                     // A protection that could not run must STOP the upload, never let a half-scrambled or
                     // unprotected avatar go out silently under the owner's name.
                     Debug.LogError("[KS ANTI-RIP] " + result.message);
+                    KSAntiRipClient.Report("the protection could not run, so the upload was stopped: " + result.message);
+                    KSAntiRipSdkReport.Forget();   // the SDK's "build failed" that follows says nothing more
                     EditorUtility.DisplayDialog("KS Anti-Rip",
                         "This avatar is set to be protected, but the protection could not run, so the upload was " +
                         "stopped:\n\n" + result.message, "OK");
@@ -85,11 +90,15 @@ namespace KawaiiStudio.VRC.AntiRip
 
                 Debug.Log($"[KS ANTI-RIP] protected at upload: {result.meshesProtected} mesh(es), " +
                           $"{result.verticesProtected:N0} vertices{names}, key -> {result.keyPath}");
+                KSAntiRipClient.Report($"protected {result.meshesProtected} mesh(es), {result.verticesProtected:N0} vertices{names}; " +
+                                       "the VRChat SDK builds it now", result.warnings);
                 return true;
             }
             catch (Exception e)
             {
                 Debug.LogError("[KS ANTI-RIP] build hook failed: " + e);
+                KSAntiRipClient.Report("the protection hit an error, so the upload was stopped: " + e.Message);
+                KSAntiRipSdkReport.Forget();
                 EditorUtility.DisplayDialog("KS Anti-Rip",
                     "This avatar is set to be protected, but the protection hit an error, so the upload was " +
                     "stopped:\n\n" + e.Message + "\n\nSee the Console for details.", "OK");

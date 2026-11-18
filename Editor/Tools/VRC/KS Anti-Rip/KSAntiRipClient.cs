@@ -237,6 +237,33 @@ namespace KawaiiStudio.VRC.AntiRip
             Send("POST", "/unity/antirip/end", "{\"session\":" + Quote(session) + "}", null, 8000);
         }
 
+        /// <summary>
+        /// Tells the app what happened in Unity, for KS ANTI-RIP's log there (3.12.2): the protection applied or
+        /// refused, then the VRChat SDK's verdict with its own reasons. Best effort and quick: an app that does not know
+        /// the route (before v664) or does not answer changes nothing -- a report must never hold up or fail a build.
+        /// </summary>
+        public static void Report(string message, IList<string> details = null)
+        {
+            if (string.IsNullOrEmpty(message)) return;
+            try
+            {
+                if (!Connect()) return;
+                var sb = new StringBuilder();
+                sb.Append("{\"message\":").Append(Quote(message)).Append(",\"details\":[");
+                if (details != null)
+                    for (int i = 0; i < details.Count && i < 8; i++)
+                    {
+                        if (i > 0) sb.Append(',');
+                        sb.Append(Quote(details[i] ?? ""));
+                    }
+                sb.Append("]}");
+                string saved = LastError;
+                Send("POST", "/unity/antirip/report", sb.ToString(), null, 3000);
+                LastError = saved;   // a report's own trouble is not the protection's error
+            }
+            catch { }
+        }
+
         // ── plumbing ────────────────────────────────────────────────────────────────────────────
 
         /// <summary>base64 of raw little-endian float32 triples, straight back into Vector3[].</summary>

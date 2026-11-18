@@ -2,6 +2,22 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.12.2]
+
+**KS ANTI-RIP: a protected upload with the locked badge is no longer refused by the VRChat SDK.**
+Works with the Kawaii Studio app from v657; v664 shows Unity's side of the upload in its KS Anti-Rip log.
+`com.kawaiistudio.link` stays 1.2.1.
+
+- Since 3.12.0, every protected upload with the badge on stopped with "Avatar validation failed". The VRChat SDK
+  refuses any texture with mip maps but without "Streaming Mip Maps", and the badge's picture came into each project
+  with Unity's default import settings, which are exactly that. Its "Auto Fix" could not help: only the uploaded copy
+  has the badge, not the avatar in the scene. Each upload now uses its own copy of the picture, imported the way the
+  SDK accepts it, and deleted with the rest of the build's files. If that copy cannot be made, the badge is left out
+  with a note and the avatar is still protected.
+- Unity now tells the Kawaii Studio app how a protected upload went: protected (with any notes), then accepted by
+  VRChat, or stopped by the VRChat SDK with the SDK's own reasons. Until now those reasons were only in Unity's console,
+  printed after the "Avatar validation failed" line.
+
 ## [3.12.1]
 
 **KS ANTI-RIP no longer stops an upload because the Kawaii Studio app was restarted.**

@@ -209,9 +209,15 @@ namespace KawaiiStudio.VRC.AntiRip
                           "the heart is drawn with the heart shader (" + KSAntiRipBadge.HeartShaderName + ")");
                     Check(badgeMaterials.Length == 2 && badgeMaterials[1] != null && badgeMaterials[1].shader.name == KSAntiRipBadge.ShaderName,
                           "the panel is drawn with the badge shader (" + KSAntiRipBadge.ShaderName + ")");
-                    Check(badgeMaterials.Length == 2 && badgeMaterials[1] != null && badgeMaterials[1].mainTexture != null &&
-                          AssetDatabase.GetAssetPath(badgeMaterials[1].mainTexture) == KSAntiRipBadge.TexturePath,
-                          "with the badge picture of the package");
+                    string picture = badgeMaterials.Length == 2 && badgeMaterials[1] != null && badgeMaterials[1].mainTexture != null
+                        ? AssetDatabase.GetAssetPath(badgeMaterials[1].mainTexture) : "";
+                    Check(picture.Length > 0 && picture != KSAntiRipBadge.TexturePath && picture.StartsWith(result.folder + "/"),
+                          "with its own copy of the badge picture, in the build folder (" + picture + ")");
+                    var pictureImport = AssetImporter.GetAtPath(picture) as TextureImporter;
+                    // VRChat SDK, VerifyAvatarMipMapStreaming: a mipmapped texture without streaming stops the upload
+                    Check(pictureImport != null && !(pictureImport.mipmapEnabled && !pictureImport.streamingMipmaps),
+                          "imported the way the VRChat SDK accepts it (mip maps " + (pictureImport != null && pictureImport.mipmapEnabled ? "on" : "off") +
+                          ", streaming " + (pictureImport != null && pictureImport.streamingMipmaps ? "on" : "off") + ")");
                     Check(badgeMesh != null && badgeMesh.subMeshCount == 2 && badgeMesh.GetTriangles(1).Length == 6,
                           "one mesh in two parts, the panel being two triangles");
                     int heartTriangles = badgeMesh != null && badgeMesh.subMeshCount == 2 ? badgeMesh.GetTriangles(0).Length / 3 : 0;

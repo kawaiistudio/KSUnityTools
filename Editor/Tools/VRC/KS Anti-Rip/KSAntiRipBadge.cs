@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -52,7 +53,8 @@ namespace KawaiiStudio.VRC.AntiRip
             // With names obfuscated the caller passes a random one: the badge's own assets do not announce themselves
             // any more than the rest (its shaders and its picture do -- they are the signature).
             if (string.IsNullOrEmpty(assetName)) assetName = "KS_Badge";
-            var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(TexturePath);
+            Texture2D texture = Picture(folder, assetName, warnings, out bool pictureUnusable);
+            if (pictureUnusable) return null;
             Shader panelShader = AssetDatabase.LoadAssetAtPath<Shader>(ShaderPath);
             if (panelShader == null) panelShader = Shader.Find(ShaderName);
             Shader heartShader = AssetDatabase.LoadAssetAtPath<Shader>(HeartShaderPath);
@@ -101,6 +103,83 @@ namespace KawaiiStudio.VRC.AntiRip
             badge.SetActive(true);
 
             return AnimationUtility.CalculateTransformPath(badge.transform, root.transform);
+        }
+
+        /// <summary>
+        /// The panel's picture, as THIS build's own copy in <paramref name="folder"/>, imported the way the VRChat SDK
+        /// accepts it.
+        ///
+        /// WHY A COPY (3.12.2; owner, 2026-11-18, upload stopped on "Avatar validation failed"). The SDK validates the
+        /// processed avatar after every preprocess callback, and refuses any texture whose importer has mip maps
+        /// without "Streaming Mip Maps" (VRCSdkControlPanelAvatarBuilder.VerifyAvatarMipMapStreaming). The package's
+        /// own KSLockBadge.png carries no .meta of ours -- the repository does not track them -- so every project
+        /// imports it with Unity's defaults: mip maps on, streaming off. 3.12.0 put it straight on the badge, and every
+        /// protected upload with the badge on stopped there; Editor.log said "This avatar has mipmapped textures
+        /// without 'Streaming Mip Maps' enabled." (the 22:03 upload, before the badge, went through). The SDK's own
+        /// "Auto Fix" never shows for it either: the scene avatar has no badge, only the build copy does.
+        ///
+        /// A copy imported here does not depend on whatever .meta a project made, and never touches the package. It
+        /// lives in the build folder and goes with it once the bundle is built.
+        ///
+        /// <paramref name="unusable"/> is true when the picture exists but could not be made acceptable: the badge is
+        /// then left out with a warning, because a badge must never stop an upload the protection itself allows.
+        /// </summary>
+        static Texture2D Picture(string folder, string assetName, IList<string> warnings, out bool unusable)
+        {
+            unusable = false;
+            if (AssetDatabase.LoadAssetAtPath<Texture2D>(TexturePath) == null) return null;   // the caller says it is missing
+
+            string copy = folder + "/" + assetName + "_t.png";
+            if (!AssetDatabase.CopyAsset(TexturePath, copy))
+            {
+                // A package Unity will not copy from (read-only cache): the bytes, imported fresh.
+                try
+                {
+                    File.Copy(Path.GetFullPath(TexturePath), Path.GetFullPath(copy), true);
+                    AssetDatabase.ImportAsset(copy, ImportAssetOptions.ForceSynchronousImport);
+                }
+                catch (System.Exception e)
+                {
+                    Unusable(warnings, "it could not be copied into the build (" + e.Message + ")");
+                    unusable = true;
+                    return null;
+                }
+            }
+
+            var importer = AssetImporter.GetAtPath(copy) as TextureImporter;
+            if (importer == null)
+            {
+                Unusable(warnings, "Unity did not import it as a texture");
+                unusable = true;
+                return null;
+            }
+            importer.textureType = TextureImporterType.Default;
+            importer.sRGBTexture = true;
+            importer.alphaSource = TextureImporterAlphaSource.FromInput;
+            importer.alphaIsTransparency = true;
+            importer.mipmapEnabled = true;            // it is read from across a room: without mips it shimmers
+            importer.streamingMipmaps = true;         // ...and the VRChat SDK refuses mips without streaming
+            importer.streamingMipmapsPriority = 0;
+            importer.wrapMode = TextureWrapMode.Clamp;
+            importer.maxTextureSize = 1024;
+            importer.textureCompression = TextureImporterCompression.CompressedHQ;
+            importer.SaveAndReimport();
+
+            // The SDK's own test, on what was actually saved.
+            importer = AssetImporter.GetAtPath(copy) as TextureImporter;
+            if (importer == null || (importer.mipmapEnabled && !importer.streamingMipmaps))
+            {
+                Unusable(warnings, "its import settings could not be saved");
+                unusable = true;
+                return null;
+            }
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(copy);
+        }
+
+        static void Unusable(IList<string> warnings, string why)
+        {
+            if (warnings != null)
+                warnings.Add("The locked badge was left out: its picture " + why + ". The avatar is protected all the same.");
         }
 
         /// <summary>
