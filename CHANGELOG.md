@@ -2,6 +2,19 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.11.1]
+
+**KS ANTI-RIP no longer leaves its build files in your project.**
+Same Kawaii Studio app as 3.11.0; `com.kawaiistudio.link` stays 1.2.1.
+
+- Every protected upload left a folder `Assets/Kawaii Studio/Protected/_build_…` behind, holding the scrambled meshes
+  and clips made for that build — 812 MB on a real avatar, and one more folder per upload. They are only needed while
+  the VRChat SDK packs the bundle. They are now deleted as soon as the SDK has finished building (the same moment
+  Modular Avatar and NDMF delete their own temporary assets), and anything an earlier or failed build left there is
+  cleared at the start of the next protected build.
+- Only the `_build_…` folders this tool makes are removed. Nothing else under `Protected` is touched, and a project
+  that does not use KS Anti-Rip gets no folder created.
+
 ## [3.11.0]
 
 **KS ANTI-RIP: the last readable names are gone — materials, textures, meshes and sounds ship under random names.**
