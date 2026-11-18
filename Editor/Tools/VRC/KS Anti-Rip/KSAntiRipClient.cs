@@ -58,6 +58,9 @@ namespace KawaiiStudio.VRC.AntiRip
 
         static string _token = "";
         static int _port;
+        /// <summary>The last request found that the app this editor paired with is gone: its token was refused (401),
+        /// or nothing listens on its port any more. Begin pairs again and retries once when it sees this.</summary>
+        static bool _lostApp;
 
         public static string LastError { get; private set; } = "";
 
@@ -142,7 +145,21 @@ namespace KawaiiStudio.VRC.AntiRip
             }
             sb.Append("]}");
 
+            _lostApp = false;
             string reply = Send("POST", "/unity/antirip/begin", sb.ToString(), null, 120000);
+            // THE APP RESTARTED SINCE THIS EDITOR PAIRED (3.12.1). Every update of Kawaii Studio restarts it, and the
+            // pairing token this editor held is then refused -- which used to stop the upload with "Kawaii Studio
+            // restarted. Try again." (owner, 2026-11-17, the upload right after the app updated itself). That is not
+            // the user's problem: pair again with the app that is running now and ask once more. Only here, at the
+            // start of a plan -- a restart in the MIDDLE of one (Mesh) loses the session and still has to stop.
+            if (reply == null && _lostApp)
+            {
+                _lostApp = false;
+                _token = "";
+                _port = 0;
+                if (!Connect()) { plan.error = LastError; return plan; }
+                reply = Send("POST", "/unity/antirip/begin", sb.ToString(), null, 120000);
+            }
             if (reply == null) { plan.error = LastError; return plan; }
             return ParseBegin(reply);
         }
@@ -266,7 +283,16 @@ namespace KawaiiStudio.VRC.AntiRip
                 if (e.Response is HttpWebResponse http && http.StatusCode == HttpStatusCode.Unauthorized)
                 {
                     _token = "";   // the app restarted: pair again on the next call
+                    _lostApp = true;
                     LastError = "Kawaii Studio restarted. Try again.";
+                    return null;
+                }
+                // Nothing listens on the port any more: the app was closed, or came back on another port.
+                if (e.Response == null && e.Status == WebExceptionStatus.ConnectFailure)
+                {
+                    _token = "";
+                    _lostApp = true;
+                    LastError = "Kawaii Studio is not running. KS Anti-Rip needs the app: the protection itself lives there.";
                     return null;
                 }
                 // /begin only 404s when the app predates KS ANTI-RIP: the route does not exist yet. That is the

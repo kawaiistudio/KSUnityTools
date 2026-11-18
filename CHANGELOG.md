@@ -2,6 +2,16 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.12.1]
+
+**KS ANTI-RIP no longer stops an upload because the Kawaii Studio app was restarted.**
+Same Kawaii Studio app as 3.12.0; `com.kawaiistudio.link` stays 1.2.1.
+
+- Every update of the Kawaii Studio app restarts it, and the first protected upload after that stopped with
+  "Kawaii Studio restarted. Try again.": Unity still held its connection to the app that had closed. Unity now connects
+  again by itself at the start of the protection and carries on. The same when the app was closed and reopened.
+- A restart of the app in the middle of a protection still stops that upload: the plan it was following is gone.
+
 ## [3.12.0]
 
 **KS ANTI-RIP: a locked avatar shows a badge, cannot walk, and its menu does nothing.**
