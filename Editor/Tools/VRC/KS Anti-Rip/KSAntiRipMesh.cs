@@ -1,4 +1,5 @@
 using System;
+using UnityEditor;
 using UnityEngine;
 
 namespace KawaiiStudio.VRC.AntiRip
@@ -40,8 +41,21 @@ namespace KawaiiStudio.VRC.AntiRip
             if (offsets.Length != n)
                 throw new ArgumentException($"the plan is for {offsets.Length} vertices, this mesh has {n}");
 
-            for (int i = 0; i < n; i++) verts[i] += offsets[i];
+            bool moved = false;
+            for (int i = 0; i < n; i++)
+            {
+                if (offsets[i] != Vector3.zero) moved = true;
+                verts[i] += offsets[i];
+            }
             copy.vertices = verts;
+
+            // The copy inherits the source's Mesh Compression, and FBX imports often use Medium or High. Unity
+            // re-quantises a compressed mesh's vertex positions when it builds the bundle, so the scrambled vertices,
+            // now spread over metres, ship rounded to centimetres and the right key no longer closes the mesh. Measured
+            // on 2026-11-17 on a real avatar: 3 of 30 meshes came back up to 1.55 cm off from the bundle, while the same
+            // meshes built in memory restored to 0.008 mm. A scrambled copy must ship at full precision; a copy whose
+            // vertices did not move (the size budget skipped it) keeps the source's compression and costs nothing more.
+            if (moved) MeshUtility.SetMeshCompression(copy, ModelImporterMeshCompression.Off);
 
             // The avatar's own shapes (visemes, expressions) are deltas relative to the base, so a uniform
             // per-vertex displacement leaves them valid. AddBlendShapeFrame appends, it does not replace.

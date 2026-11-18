@@ -2,6 +2,27 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.10.2]
+
+**KS ANTI-RIP: a protected avatar now closes exactly in game, and GoGo Loco keeps its states.**
+Same Kawaii Studio app as 3.10.0 (v653 or later); `com.kawaiistudio.link` stays 1.2.1.
+
+- **Fixes meshes that came back slightly crumpled even with the key.** A protected mesh kept the Mesh Compression of
+  the model it came from (Medium or High on many FBX imports), and Unity rounds a compressed mesh's vertex positions
+  when it builds the bundle — so the scrambled vertices, spread over metres, shipped rounded to the centimetre.
+  Measured on a real 30-mesh avatar: 3 meshes came back up to 1.5 cm off with the right key. Scrambled meshes now
+  ship uncompressed, and every mesh restored from the uploaded bundle itself is within 0.01 mm of the original.
+- **Fixes GoGo Loco (and any controller whose sub-state machine starts in a nested one) entering the wrong state.**
+  The animator copy lost a sub-state machine's default state when that state lived one level deeper, so two GoGo Loco
+  sub-state machines started at the wrong state once protected.
+- Size, measured on that 387,000-vertex avatar: +6 MB download, +27 MB uncompressed (the restore shapes plus the
+  scrambled meshes stored at full precision). An avatar already within ~30 MB of VRChat's 500 MB uncompressed limit
+  should lower its size budget before protecting.
+- Verified end to end on that avatar (VRCFury + Modular Avatar + GoGo Loco), plain build against protected build:
+  the same objects, components and animator graphs; 220 menu toggles, radials, gestures, contacts and PhysBones give
+  the same result protected as plain at every moment sampled; and the protected avatar loads hidden, then appears
+  exactly as the plain one once KS OSC Key sends the key.
+
 ## [3.10.1]
 
 **KS ANTI-RIP no longer breaks the animations of props that have their own Animator.**

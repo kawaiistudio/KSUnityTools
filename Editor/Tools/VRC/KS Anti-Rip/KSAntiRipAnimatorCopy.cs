@@ -105,6 +105,23 @@ namespace KawaiiStudio.VRC.AntiRip
             foreach (Object o in owned)
                 Repoint(map[o], map, mapClip);
 
+            // 5. Every state machine's default state, set again now that the WHOLE graph points at the copies. A default
+            //    state may live in a NESTED sub-state machine (GoGo Loco's Base and Action layers do this). Unity
+            //    validates m_DefaultState when a state machine is written in step 4, and at that moment the nested
+            //    machines below it could still list the source's states, so Unity dropped the default and took the first
+            //    state it found instead. Measured 2026-11-17 on a real avatar: two GoGo Loco sub-state machines entered
+            //    at the wrong state once protected.
+            foreach (Object o in owned)
+            {
+                var sourceMachine = o as AnimatorStateMachine;
+                if (sourceMachine == null) continue;
+                var copyMachine = (AnimatorStateMachine)map[o];
+                AnimatorState wanted = sourceMachine.defaultState;
+                Object mapped;
+                if (wanted != null && map.TryGetValue(wanted, out mapped) && copyMachine.defaultState != mapped)
+                    copyMachine.defaultState = (AnimatorState)mapped;
+            }
+
             EditorUtility.SetDirty(controllerCopy);
             return controllerCopy;
         }
