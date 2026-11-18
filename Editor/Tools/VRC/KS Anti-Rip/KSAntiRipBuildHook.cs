@@ -55,6 +55,8 @@ namespace KawaiiStudio.VRC.AntiRip
                     restoreGroups = mark.restoreGroups,
                     syncKey = mark.syncKey,
                     hideWhileLocked = mark.hideWhileLocked,
+                    freezeWhileLocked = mark.freezeWhileLocked,
+                    lockedBadge = mark.lockedBadge,
                     obfuscateNames = mark.obfuscateNames,
                     maxAddedMegabytes = mark.maxAddedMegabytes,
                 };

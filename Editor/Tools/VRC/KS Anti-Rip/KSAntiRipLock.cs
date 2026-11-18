@@ -5,6 +5,7 @@ using UnityEditor.Animations;
 using UnityEngine;
 using VRC.SDK3.Avatars.Components;
 using VRC.SDK3.Avatars.ScriptableObjects;
+using VRC.SDKBase;
 
 namespace KawaiiStudio.VRC.AntiRip
 {
@@ -35,6 +36,13 @@ namespace KawaiiStudio.VRC.AntiRip
         /// <summary>Readable layer names when obfuscation is off. With it on, every name is random.</summary>
         public const string LayerName = "KS ANTI-RIP";
         public const string ShowLayerName = "KS ANTI-RIP Show";
+        public const string FreezeLayerName = "KS ANTI-RIP Freeze";
+
+        /// <summary>
+        /// How long the avatar may go without its key before it is frozen. Long enough that an allowed wearer never
+        /// sees it: Kawaii Studio sends the key within a second or two of the avatar loading. See <see cref="BuildFreeze"/>.
+        /// </summary>
+        public const float FreezeGraceSeconds = 5f;
 
         public class ShapeTarget
         {
@@ -50,12 +58,16 @@ namespace KawaiiStudio.VRC.AntiRip
         public static void Build(
             GameObject avatar, VRCAvatarDescriptor descriptor, AnimatorController fx,
             IList<ShapeTarget> targets, IList<string> hideRendererPaths, IList<string> keyParameters,
-            bool syncKey, string folder, System.Random rng, bool obfuscate = false)
+            bool syncKey, string folder, System.Random rng, bool obfuscate = false, bool freezeWhileLocked = false,
+            string badgePath = null)
         {
             if (keyParameters == null || keyParameters.Count == 0)
                 throw new System.ArgumentException("the lock needs the key parameters", nameof(keyParameters));
             if (targets.Any(t => t.slot < 0 || t.slot >= keyParameters.Count))
                 throw new System.ArgumentException("a restore shape points at a key parameter that does not exist");
+
+            // Everything below this index is the avatar's own; everything from it on is added here.
+            int firstOwnLayer = fx.layers.Length;
 
             // With obfuscation on, nothing announces itself. 5.0 named things "KS_<tag>_L1234", which was a
             // search term in its own right.
@@ -111,17 +123,27 @@ namespace KawaiiStudio.VRC.AntiRip
             // 3. the show layer: renderers hidden until the key has arrived, so nobody is shown an exploded mesh.
             //    "Arrived" is "key parameter 0 is not zero" -- deliberately NOT "the key is right", because testing
             //    for the right value would write the value into the bundle again.
-            if (hideRendererPaths != null && hideRendererPaths.Count > 0)
+            //    The locked badge (KSAntiRipBadge) is the other side of the same switch: there while the avatar is
+            //    locked, gone when the key has arrived. It makes the layer exist even when nothing is hidden.
+            bool hides = hideRendererPaths != null && hideRendererPaths.Count > 0;
+            bool badge = !string.IsNullOrEmpty(badgePath);
+            if (hides || badge)
             {
                 bool writeDefaults = DominantWriteDefaults(fx);
                 var hidden = new AnimationClip { name = Name("KS_Hidden") };
                 var shown = new AnimationClip { name = Name("KS_Shown") };
                 // Driven in BOTH states: with Write Defaults off, a property animated in one state and dropped in
                 // the other keeps its last value, which would leave the avatar invisible forever.
-                foreach (string path in hideRendererPaths)
+                if (hides)
+                    foreach (string path in hideRendererPaths)
+                    {
+                        hidden.SetCurve(path, typeof(SkinnedMeshRenderer), "m_Enabled", Const(0f));
+                        shown.SetCurve(path, typeof(SkinnedMeshRenderer), "m_Enabled", Const(1f));
+                    }
+                if (badge)
                 {
-                    hidden.SetCurve(path, typeof(SkinnedMeshRenderer), "m_Enabled", Const(0f));
-                    shown.SetCurve(path, typeof(SkinnedMeshRenderer), "m_Enabled", Const(1f));
+                    hidden.SetCurve(badgePath, typeof(GameObject), "m_IsActive", Const(1f));
+                    shown.SetCurve(badgePath, typeof(GameObject), "m_IsActive", Const(0f));
                 }
                 AssetDatabase.CreateAsset(hidden, folder + "/" + hidden.name + ".anim");
                 AssetDatabase.CreateAsset(shown, folder + "/" + shown.name + ".anim");
@@ -154,8 +176,111 @@ namespace KawaiiStudio.VRC.AntiRip
                 });
             }
 
-            // 4. the expression parameters
+            // 4. the freeze layer: no key after the grace period, and the wearer cannot walk and the menu does nothing
+            if (freezeWhileLocked)
+                BuildFreeze(fx, keyParameters[0], firstOwnLayer, folder, Name);
+
+            // 5. the expression parameters
             AddExpressionParameters(descriptor, keyParameters, syncKey, folder);
+        }
+
+        /// <summary>
+        /// FREEZE WHILE LOCKED (owner, 2026-11-17: "lock position + animator ... animator blocker, menu qui fera rien,
+        /// position lock comme l'option de GoGo Loco, si pas de key"). An avatar worn without its key is already
+        /// scrambled or hidden; with this it is also unusable: the wearer cannot walk, and the avatar's own FX layers
+        /// weigh nothing, so its menu toggles do nothing.
+        ///
+        ///   Wait   -- the key is here --------------------> Open     (does nothing at all)
+        ///   Wait   -- <see cref="FreezeGraceSeconds"/> later --> Frozen   (locomotion off, the avatar's FX layers to 0)
+        ///   Frozen -- the key is here --------------------> Thaw     (locomotion on, the layers back to their weights)
+        ///   Thaw   ------------------------------------------> Open
+        ///   Open   -- the key is gone ---------------------> Wait
+        ///
+        /// THE GRACE PERIOD IS WHAT KEEPS ALLOWED WEARERS SAFE. Their key arrives a second or two after the avatar
+        /// loads, so they go Wait -> Open, and Open carries no behaviour: nothing of their avatar's own logic (GoGo
+        /// Loco's stationary mode, a system that sets layer weights when it starts) is ever touched. Only an avatar
+        /// that really sat without a key is frozen, and only that one is put back -- to its controller's default
+        /// weights, which is the best that can be known here.
+        ///
+        /// "The key is here" is "key parameter 0 is not zero", as for the show layer and for the same reason: testing
+        /// for the right value would write the value into the bundle. So this is a deterrent, not a wall: someone who
+        /// sets that parameter to anything over OSC walks again -- in an avatar that is still scrambled.
+        ///
+        /// Layer 0 is left out: Unity always plays the first layer at full weight, whatever is asked.
+        /// </summary>
+        static void BuildFreeze(AnimatorController fx, string keyParameter, int firstOwnLayer, string folder,
+                                System.Func<string, string> Name)
+        {
+            AnimatorControllerLayer[] layers = fx.layers;
+            bool writeDefaults = DominantWriteDefaults(fx);
+
+            // One second that animates nothing real, so every state has a length the grace period counts against.
+            var idle = new AnimationClip { name = Name("KS_Wait") };
+            idle.SetCurve("_", typeof(GameObject), "m_IsActive", AnimationCurve.Linear(0f, 1f, 1f, 1f));
+            AssetDatabase.CreateAsset(idle, folder + "/" + idle.name + ".anim");
+
+            var machine = new AnimatorStateMachine { name = Name(FreezeLayerName), hideFlags = HideFlags.HideInHierarchy };
+            AssetDatabase.AddObjectToAsset(machine, fx);
+            AnimatorState wait = machine.AddState(Name("Wait"));
+            AnimatorState open = machine.AddState(Name("Open"));
+            AnimatorState frozen = machine.AddState(Name("Frozen"));
+            AnimatorState thaw = machine.AddState(Name("Thaw"));
+            foreach (AnimatorState s in new[] { wait, open, frozen, thaw })
+            {
+                s.motion = idle;
+                s.writeDefaultValues = writeDefaults;
+            }
+            machine.defaultState = wait;
+
+            // Wait -> Open comes first, so a key that is already here always wins over the clock.
+            When(wait, open, AnimatorConditionMode.Greater, keyParameter);
+            AnimatorStateTransition late = wait.AddTransition(frozen);
+            late.hasExitTime = true;
+            late.exitTime = FreezeGraceSeconds;      // the clip is one second long
+            late.hasFixedDuration = true;
+            late.duration = 0f;
+            When(frozen, thaw, AnimatorConditionMode.Greater, keyParameter);
+            AnimatorStateTransition done = thaw.AddTransition(open);
+            done.hasExitTime = true;
+            done.exitTime = 0.1f;
+            done.hasFixedDuration = true;
+            done.duration = 0f;
+            When(open, wait, AnimatorConditionMode.Less, keyParameter);
+
+            // position lock, the way GoGo Loco's stationary option does it
+            frozen.AddStateMachineBehaviour<VRCAnimatorLocomotionControl>().disableLocomotion = true;
+            thaw.AddStateMachineBehaviour<VRCAnimatorLocomotionControl>().disableLocomotion = false;
+
+            // animator blocker: every layer of the avatar's own weighs nothing while frozen
+            for (int i = 1; i < firstOwnLayer && i < layers.Length; i++)
+            {
+                var off = frozen.AddStateMachineBehaviour<VRCAnimatorLayerControl>();
+                off.playable = VRC_AnimatorLayerControl.BlendableLayer.FX;
+                off.layer = i;
+                off.goalWeight = 0f;
+                off.blendDuration = 0f;
+
+                var on = thaw.AddStateMachineBehaviour<VRCAnimatorLayerControl>();
+                on.playable = VRC_AnimatorLayerControl.BlendableLayer.FX;
+                on.layer = i;
+                on.goalWeight = layers[i].defaultWeight;
+                on.blendDuration = 0f;
+            }
+
+            fx.AddLayer(new AnimatorControllerLayer
+            {
+                name = machine.name,
+                stateMachine = machine,
+                defaultWeight = 1f,
+            });
+        }
+
+        static void When(AnimatorState from, AnimatorState to, AnimatorConditionMode mode, string keyParameter)
+        {
+            AnimatorStateTransition t = from.AddTransition(to);
+            t.hasExitTime = false;
+            t.duration = 0f;
+            t.AddCondition(mode, 0.001f, keyParameter);
         }
 
         static void AddExpressionParameters(VRCAvatarDescriptor descriptor, IList<string> keyParameters,

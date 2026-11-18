@@ -2,6 +2,26 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.12.0]
+
+**KS ANTI-RIP: a locked avatar shows a badge, cannot walk, and its menu does nothing.**
+Works with the Kawaii Studio app from v657; v660 adds the two switches under Settings. `com.kawaiistudio.link` stays 1.2.1.
+
+- **The locked badge.** Someone wearing a protected avatar without its key used to be an empty space. Now one object
+  stands in its place: a 3D pink heart that turns, beats and glows, and in front of it a panel, "ANTI-RIP PROTECTION —
+  ask me if you want to use this avatar — powered by Kawaii Studio". The panel always faces whoever looks at it, the
+  heart has its own halo and shines more in worlds with bloom, and the whole thing is switched off the moment the key
+  arrives. It costs one mesh, two materials and about 1,900 triangles, and is added to the build only.
+- **Frozen while locked.** Worn without its key for more than 5 seconds, the avatar stops its wearer walking (the way
+  GoGo Loco's stationary option does) and its own FX layers weigh nothing, so its menu toggles do nothing. When the
+  key arrives later, everything is put back.
+- **People you allow never notice.** Their key arrives within a second or two, well inside the 5 seconds, and in that
+  case nothing at all is applied to the avatar — no layer weight, no locomotion setting is touched.
+- Both are on by default and are settings of the avatar's protection (`lockedBadge`, `freezeWhileLocked`).
+- Honest limit: the freeze, like the hiding, reacts to "a key is present", not "the key is right" — testing for the
+  right value would write it into the bundle. Someone who sets the key parameters to anything over OSC walks again, in
+  an avatar that is still scrambled. Layer 0 of the FX controller cannot be blocked (Unity always plays it in full).
+
 ## [3.11.1]
 
 **KS ANTI-RIP no longer leaves its build files in your project.**

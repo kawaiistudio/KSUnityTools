@@ -31,6 +31,14 @@ namespace KawaiiStudio.VRC.AntiRip
         public bool hideWhileLocked = true;
         public bool obfuscateNames = true;
 
+        [Tooltip("Worn without its key for more than a few seconds, the avatar stops its wearer walking and its menu " +
+                 "does nothing. An allowed wearer never sees it: the key arrives first.")]
+        public bool freezeWhileLocked = true;
+
+        [Tooltip("While the avatar is locked, the Kawaii Studio badge is shown in its place: ANTI-RIP PROTECTION, ask " +
+                 "me if you want to use this avatar. It goes away the moment the key arrives.")]
+        public bool lockedBadge = true;
+
         [Tooltip("How much bigger the protected avatar may get. The scramble is spread over as many vertices as " +
                  "this budget buys; the rest of the mesh is left in place so a near-200-MB avatar still fits.")]
         public int maxAddedMegabytes = 12;

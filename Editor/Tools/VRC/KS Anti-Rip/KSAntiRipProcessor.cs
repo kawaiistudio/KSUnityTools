@@ -52,6 +52,19 @@ namespace KawaiiStudio.VRC.AntiRip
             public bool obfuscateNames = true;
 
             /// <summary>
+            /// Worn without its key for longer than KSAntiRipLock.FreezeGraceSeconds, the avatar stops its wearer
+            /// walking and its own FX layers weigh nothing, so its menu does nothing (owner, 2026-11-17). An allowed
+            /// wearer's key arrives well inside the grace period and nothing is ever applied to them.
+            /// </summary>
+            public bool freezeWhileLocked = true;
+
+            /// <summary>
+            /// While the avatar is locked, show the Kawaii Studio badge in its place ("ANTI-RIP PROTECTION -- ask me
+            /// if you want to use this avatar"), gone the moment the key arrives. See KSAntiRipBadge.
+            /// </summary>
+            public bool lockedBadge = true;
+
+            /// <summary>
             /// How much bigger the protected avatar may get, in MB (owner, 2026-11-17). The core turns this into
             /// how many vertices it scrambles, so a near-200-MB avatar still fits under VRChat's limit. 0 = no cap.
             /// </summary>
@@ -73,6 +86,8 @@ namespace KawaiiStudio.VRC.AntiRip
             public int verticesProtected;
             public int objectsRenamed;
             public string lockLayer = "";
+            public string freezeLayer = "";      // empty when the avatar is not frozen while locked
+            public string badgePath = "";        // the locked badge's path from the root; empty when there is none
             public List<string> warnings = new List<string>();
         }
 
@@ -298,11 +313,34 @@ namespace KawaiiStudio.VRC.AntiRip
                     if (settings.hideWhileLocked) hidePaths.Add(path);
                 }
 
+                // The locked badge: the one thing shown while the avatar is locked. Added last, so the archive mark
+                // stays the first child of the root, and under a name that says nothing when names are obfuscated.
+                string badgePath = null;
+                if (settings.lockedBadge)
+                {
+                    string badgeName = KSAntiRipBadge.ObjectName, badgeAssets = "KS_Badge";
+                    if (settings.obfuscateNames)
+                    {
+                        const string letters = "abcdefghijklmnopqrstuvwxyz";
+                        var chars = new char[10];
+                        for (int i = 0; i < chars.Length; i++) chars[i] = letters[rng.Next(letters.Length)];
+                        badgeName = new string(chars);
+                        for (int i = 0; i < chars.Length; i++) chars[i] = letters[rng.Next(letters.Length)];
+                        badgeAssets = new string(chars);
+                    }
+                    badgePath = KSAntiRipBadge.Add(root, descriptor, folder, badgeName, result.warnings, badgeAssets);
+                    result.badgePath = badgePath ?? "";
+                }
+
                 AnimatorController fx = PrepareFxController(descriptor, folder, result);
                 int layersBefore = fx.layers.Length;
                 KSAntiRipLock.Build(root, descriptor, fx, targets, hidePaths, plan.parameters,
-                                    settings.syncKey, folder, rng, settings.obfuscateNames);
+                                    settings.syncKey, folder, rng, settings.obfuscateNames, settings.freezeWhileLocked,
+                                    badgePath);
                 result.lockLayer = fx.layers.Length > layersBefore ? fx.layers[layersBefore].name : "";
+                // the freeze layer is always the last one the lock adds
+                result.freezeLayer = settings.freezeWhileLocked && fx.layers.Length > layersBefore + 1
+                    ? fx.layers[fx.layers.Length - 1].name : "";
 
                 // A scrambled avatar whose lock is not wired can never be opened, key or no key. Refuse rather
                 // than hand the creator an upload they cannot wear.

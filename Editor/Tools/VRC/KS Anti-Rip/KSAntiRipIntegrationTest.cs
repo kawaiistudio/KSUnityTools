@@ -143,6 +143,113 @@ namespace KawaiiStudio.VRC.AntiRip
                                                              t => t.conditions.Any(c => c.parameter == issued[0]))));
                 Check(show.stateMachine != null, "a show layer hides the renderers until key parameter 0 arrives");
 
+                // the freeze layer: no key after the grace period, and the wearer cannot walk and the menu does nothing
+                var freeze = fx.layers.FirstOrDefault(l => l.name == result.freezeLayer);
+                Check(!string.IsNullOrEmpty(result.freezeLayer) && freeze.stateMachine != null,
+                      "a freeze layer was added (" + result.freezeLayer + ")");
+                if (freeze.stateMachine != null)
+                {
+                    Check(fx.layers[fx.layers.Length - 1].name == result.freezeLayer, "it is the last layer of the controller");
+                    Check(result.freezeLayer != KSAntiRipLock.FreezeLayerName, "it does not announce itself by name");
+                    AnimatorState waitState = freeze.stateMachine.defaultState;
+                    var all = freeze.stateMachine.states.Select(s => s.state).ToArray();
+                    Check(all.Length == 4, "it has its four states: wait, open, frozen, thaw (" + all.Length + ")");
+                    Check(waitState != null && waitState.behaviours.Length == 0, "the state an avatar starts in does nothing");
+                    Check(waitState != null && waitState.transitions.Length == 2 &&
+                          !waitState.transitions[0].hasExitTime &&
+                          waitState.transitions[0].conditions.Length == 1 &&
+                          waitState.transitions[0].conditions[0].parameter == issued[0] &&
+                          waitState.transitions[0].conditions[0].mode == AnimatorConditionMode.Greater,
+                          "a key that is already here leaves it at once, before the clock is looked at");
+                    AnimatorState openState = waitState != null && waitState.transitions.Length > 0 ? waitState.transitions[0].destinationState : null;
+                    Check(openState != null && openState.behaviours.Length == 0,
+                          "and lands in a state with no behaviour: an allowed wearer's avatar is never touched");
+                    AnimatorStateTransition late = waitState != null && waitState.transitions.Length > 1 ? waitState.transitions[1] : null;
+                    Check(late != null && late.hasExitTime && Mathf.Approximately(late.exitTime, KSAntiRipLock.FreezeGraceSeconds) &&
+                          late.conditions.Length == 0,
+                          "without a key it freezes after the grace period (" + KSAntiRipLock.FreezeGraceSeconds + " s)");
+                    var waitClip = waitState != null ? waitState.motion as AnimationClip : null;
+                    Check(waitClip != null && Mathf.Approximately(waitClip.length, 1f), "the grace period counts against a one-second clip");
+                    AnimatorState frozenState = late != null ? late.destinationState : null;
+                    var stop = frozenState != null ? frozenState.behaviours.OfType<VRCAnimatorLocomotionControl>().ToArray() : new VRCAnimatorLocomotionControl[0];
+                    Check(stop.Length == 1 && stop[0].disableLocomotion, "frozen: the wearer cannot walk");
+                    AnimatorState thawState = frozenState != null && frozenState.transitions.Length == 1 ? frozenState.transitions[0].destinationState : null;
+                    Check(thawState != null && frozenState.transitions[0].conditions.Length == 1 &&
+                          frozenState.transitions[0].conditions[0].parameter == issued[0] &&
+                          frozenState.transitions[0].conditions[0].mode == AnimatorConditionMode.Greater,
+                          "the key arriving later thaws it");
+                    var go2 = thawState != null ? thawState.behaviours.OfType<VRCAnimatorLocomotionControl>().ToArray() : new VRCAnimatorLocomotionControl[0];
+                    Check(go2.Length == 1 && !go2[0].disableLocomotion, "thaw: the wearer walks again");
+                    Check(thawState != null && thawState.transitions.Length == 1 && thawState.transitions[0].destinationState == openState,
+                          "and the avatar ends in the same open state");
+                    Check(openState != null && openState.transitions.Length == 1 && openState.transitions[0].destinationState == waitState &&
+                          openState.transitions[0].conditions[0].mode == AnimatorConditionMode.Less,
+                          "a key that goes away starts the clock again");
+                    Check(all.SelectMany(s => s.transitions).SelectMany(t => t.conditions).All(c => Mathf.Approximately(c.threshold, 0.001f)),
+                          "no condition of the freeze layer holds a key value: they all test for \"not zero\"");
+                }
+                FreezeBlocksLayers(Check, result.folder);
+
+                // the locked badge: the one thing shown while the avatar is locked
+                Check(!string.IsNullOrEmpty(result.badgePath), "a locked badge was added (" + result.badgePath + ")");
+                Transform badge = string.IsNullOrEmpty(result.badgePath) ? null : prefab.transform.Find(result.badgePath);
+                Check(badge != null && badge.parent == prefab.transform, "it is one object, directly under the avatar root");
+                if (badge != null)
+                {
+                    Check(badge.name != KSAntiRipBadge.ObjectName, "it does not announce itself by name");
+                    Check(badge.gameObject.activeSelf, "it is ON by default: an avatar starts locked");
+                    Check(badge.GetSiblingIndex() == prefab.transform.childCount - 1 && marker != null && marker.GetSiblingIndex() == 0,
+                          "it is the LAST child, so the archive mark is still the first");
+                    var badgeRenderer = badge.GetComponent<MeshRenderer>();
+                    var badgeMesh = badge.GetComponent<MeshFilter>() != null ? badge.GetComponent<MeshFilter>().sharedMesh : null;
+                    Material[] badgeMaterials = badgeRenderer != null ? badgeRenderer.sharedMaterials : new Material[0];
+                    Check(badgeMaterials.Length == 2 && badgeMaterials.All(x => x != null && x.shader != null),
+                          "it has its two materials: the heart and the panel");
+                    Check(badgeMaterials.Length == 2 && badgeMaterials[0] != null && badgeMaterials[0].shader.name == KSAntiRipBadge.HeartShaderName,
+                          "the heart is drawn with the heart shader (" + KSAntiRipBadge.HeartShaderName + ")");
+                    Check(badgeMaterials.Length == 2 && badgeMaterials[1] != null && badgeMaterials[1].shader.name == KSAntiRipBadge.ShaderName,
+                          "the panel is drawn with the badge shader (" + KSAntiRipBadge.ShaderName + ")");
+                    Check(badgeMaterials.Length == 2 && badgeMaterials[1] != null && badgeMaterials[1].mainTexture != null &&
+                          AssetDatabase.GetAssetPath(badgeMaterials[1].mainTexture) == KSAntiRipBadge.TexturePath,
+                          "with the badge picture of the package");
+                    Check(badgeMesh != null && badgeMesh.subMeshCount == 2 && badgeMesh.GetTriangles(1).Length == 6,
+                          "one mesh in two parts, the panel being two triangles");
+                    int heartTriangles = badgeMesh != null && badgeMesh.subMeshCount == 2 ? badgeMesh.GetTriangles(0).Length / 3 : 0;
+                    Check(heartTriangles > 500 && heartTriangles < 4000, "the heart is a real 3D shape, and a light one (" + heartTriangles + " triangles)");
+                    if (badgeMesh != null && badgeMesh.subMeshCount == 2)
+                    {
+                        // a closed, outward-facing shape: every normal points away from the heart's middle
+                        Vector3[] bv = badgeMesh.vertices, bn = badgeMesh.normals;
+                        var heartIndices = new System.Collections.Generic.HashSet<int>(badgeMesh.GetTriangles(0));
+                        Vector3 centre = Vector3.zero;
+                        foreach (int i in heartIndices) centre += bv[i];
+                        centre /= Mathf.Max(1, heartIndices.Count);
+                        float depth = 0f;
+                        int inward = 0;
+                        foreach (int i in heartIndices)
+                        {
+                            depth = Mathf.Max(depth, Mathf.Abs(bv[i].z));
+                            if (Mathf.Abs(bv[i].z) > 0.02f && Vector3.Dot(bn[i], new Vector3(0f, 0f, bv[i].z)) < 0f) inward++;
+                        }
+                        Check(depth > 0.08f, $"it has depth, front and back ({depth * 2f:F2} of a badge width)");
+                        Check(inward == 0, "its faces all look outwards (" + inward + " inward)");
+                    }
+                    Check(badgeMesh != null && badgeMesh.bounds.size.z > 1f, "its bounds are a box, so turning to the viewer never culls it");
+                    float eye = descriptor.ViewPosition.y > 0.2f ? descriptor.ViewPosition.y : 1.5f;
+                    Check(badge.position.y > 0.2f && badge.position.y < eye && badge.lossyScale.x >= 0.39f && badge.lossyScale.x <= 1.41f,
+                          $"it sits in front of the chest, sized to the avatar ({badge.lossyScale.x:F2} m at height {badge.position.y:F2} m)");
+                    // the show layer switches it: there while locked, gone once the key has arrived
+                    AnimatorState lockedState = show.stateMachine != null ? show.stateMachine.defaultState : null;
+                    AnimatorState keyState = lockedState != null && lockedState.transitions.Length > 0 ? lockedState.transitions[0].destinationState : null;
+                    float lockedValue = BadgeActive(lockedState, result.badgePath), keyValue = BadgeActive(keyState, result.badgePath);
+                    Check(Mathf.Approximately(lockedValue, 1f), "locked: the show layer keeps the badge on (" + lockedValue + ")");
+                    Check(Mathf.Approximately(keyValue, 0f), "key arrived: the show layer switches the badge off (" + keyValue + ")");
+                }
+                Check(avatar.GetComponentsInChildren<MeshRenderer>(true).SelectMany(r => r.sharedMaterials)
+                          .All(x => x == null || x.shader == null ||
+                                    (x.shader.name != KSAntiRipBadge.ShaderName && x.shader.name != KSAntiRipBadge.HeartShaderName)),
+                      "the badge was NOT added to the source avatar");
+
                 // 5. the key parameters
                 var ps = descriptor.expressionParameters;
                 Check(ps != null, "the prefab has expression parameters");
@@ -235,6 +342,64 @@ namespace KawaiiStudio.VRC.AntiRip
             for (int i = 0; i < Mathf.Min(got.Length, want.Length); i++)
                 err = Mathf.Max(err, (got[i] - want[i]).magnitude);
             return err;
+        }
+
+        /// <summary>What a state's clip sets the badge's m_IsActive to; -1 when it does not drive it.</summary>
+        static float BadgeActive(AnimatorState state, string badgePath)
+        {
+            var clip = state != null ? state.motion as AnimationClip : null;
+            if (clip == null) return -1f;
+            foreach (EditorCurveBinding b in AnimationUtility.GetCurveBindings(clip))
+                if (b.path == badgePath && b.type == typeof(GameObject) && b.propertyName == "m_IsActive")
+                    return AnimationUtility.GetEditorCurve(clip, b).Evaluate(0f);
+            return -1f;
+        }
+
+        /// <summary>
+        /// The animator blocker, on a controller with layers of its own: while frozen every one of them weighs
+        /// nothing, the thaw gives each its own weight back, and neither touches layer 0 or the lock's own layers.
+        /// </summary>
+        static void FreezeBlocksLayers(Action<bool, string> Check, string folder)
+        {
+            var controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/_freeze_test.controller");
+            controller.AddLayer("Toggles");
+            controller.AddLayer("Half");
+            controller.AddLayer("Off");
+            AnimatorControllerLayer[] own = controller.layers;
+            own[1].defaultWeight = 1f;
+            own[2].defaultWeight = 0.5f;
+            own[3].defaultWeight = 0f;
+            controller.layers = own;
+            var dummy = new GameObject("freeze_test");
+            try
+            {
+                KSAntiRipLock.Build(dummy, null, controller, new System.Collections.Generic.List<KSAntiRipLock.ShapeTarget>(),
+                                    new System.Collections.Generic.List<string>(), new[] { "k0", "k1" }, true, folder,
+                                    new System.Random(7), false, true);
+                AnimatorControllerLayer[] layers = controller.layers;
+                Check(layers.Length == 6 && layers[4].name == KSAntiRipLock.LayerName && layers[5].name == KSAntiRipLock.FreezeLayerName,
+                      "animator blocker: the lock added its restore layer and its freeze layer after the avatar's four (" + layers.Length + ")");
+                AnimatorState[] states = layers[layers.Length - 1].stateMachine.states.Select(s => s.state).ToArray();
+                AnimatorState frozen = states.FirstOrDefault(s => s.behaviours.OfType<VRCAnimatorLocomotionControl>().Any(b => b.disableLocomotion));
+                AnimatorState thaw = states.FirstOrDefault(s => s.behaviours.OfType<VRCAnimatorLocomotionControl>().Any(b => !b.disableLocomotion));
+                Check(frozen != null && thaw != null && frozen != thaw, "animator blocker: it has a frozen state and a thaw state");
+                if (frozen == null || thaw == null) return;
+                var off = frozen.behaviours.OfType<VRCAnimatorLayerControl>().ToArray();
+                var on = thaw.behaviours.OfType<VRCAnimatorLayerControl>().ToArray();
+                Check(off.Select(b => b.layer).SequenceEqual(new[] { 1, 2, 3 }) && off.All(b => Mathf.Approximately(b.goalWeight, 0f)),
+                      "frozen: the avatar's layers 1, 2 and 3 weigh nothing, so its menu does nothing");
+                Check(on.Select(b => b.layer).SequenceEqual(new[] { 1, 2, 3 }) &&
+                      Mathf.Approximately(on[0].goalWeight, 1f) && Mathf.Approximately(on[1].goalWeight, 0.5f) && Mathf.Approximately(on[2].goalWeight, 0f),
+                      "thaw: each layer gets its own weight back (1, 0.5, 0)");
+                Check(off.Concat(on).All(b => b.playable == global::VRC.SDKBase.VRC_AnimatorLayerControl.BlendableLayer.FX && Mathf.Approximately(b.blendDuration, 0f)),
+                      "both act on the FX controller, at once");
+                Check(states.Where(s => s != frozen && s != thaw).All(s => s.behaviours.Length == 0),
+                      "the two other states carry no behaviour");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(dummy);
+            }
         }
 
         static GameObject BuildSyntheticAvatar(out SkinnedMeshRenderer body, out Mesh mesh)

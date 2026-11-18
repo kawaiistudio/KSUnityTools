@@ -88,6 +88,8 @@ namespace KawaiiStudio.VRC.AntiRip
             public int restoreGroups = 3;
             public bool syncKey = true;    // others see the avatar whole; false keeps the key on this PC only
             public bool hideWhileLocked = true;
+            public bool freezeWhileLocked = true;   // an app that does not send these two (before v660) gets the defaults
+            public bool lockedBadge = true;
             public bool obfuscateNames = true;
             public bool force = false;     // protect even though the check found blocking problems
         }
@@ -101,6 +103,8 @@ namespace KawaiiStudio.VRC.AntiRip
             public int restoreGroups = 3;
             public bool syncKey = true;
             public bool hideWhileLocked = true;
+            public bool freezeWhileLocked = true;   // an app that does not send these two (before v660) gets the defaults
+            public bool lockedBadge = true;
             public bool obfuscateNames = true;
             public int maxAddedMegabytes = 12;
         }
@@ -208,6 +212,8 @@ namespace KawaiiStudio.VRC.AntiRip
             mark.restoreGroups = a.restoreGroups <= 0 ? 3 : a.restoreGroups;
             mark.syncKey = a.syncKey;
             mark.hideWhileLocked = a.hideWhileLocked;
+            mark.freezeWhileLocked = a.freezeWhileLocked;
+            mark.lockedBadge = a.lockedBadge;
             mark.obfuscateNames = a.obfuscateNames;
             mark.maxAddedMegabytes = a.maxAddedMegabytes < 0 ? 0 : a.maxAddedMegabytes;
             EditorUtility.SetDirty(avatar);
@@ -282,6 +288,8 @@ namespace KawaiiStudio.VRC.AntiRip
                 restoreGroups = args.restoreGroups <= 0 ? 3 : args.restoreGroups,
                 syncKey = args.syncKey,
                 hideWhileLocked = args.hideWhileLocked,
+                freezeWhileLocked = args.freezeWhileLocked,
+                lockedBadge = args.lockedBadge,
                 obfuscateNames = args.obfuscateNames,
             };
 
