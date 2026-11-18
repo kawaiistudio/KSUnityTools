@@ -91,6 +91,7 @@ namespace KawaiiStudio.VRC.AntiRip
             public bool freezeWhileLocked = true;   // an app that does not send these two (before v660) gets the defaults
             public bool lockedBadge = true;
             public bool obfuscateNames = true;
+            public bool shaderRestore = false;      // an app before v667 does not send it: off
             public bool force = false;     // protect even though the check found blocking problems
         }
 
@@ -107,6 +108,7 @@ namespace KawaiiStudio.VRC.AntiRip
             public bool lockedBadge = true;
             public bool obfuscateNames = true;
             public int maxAddedMegabytes = 12;
+            public bool shaderRestore = false;      // an app before v667 does not send it: off
         }
 
         [Serializable]
@@ -127,7 +129,9 @@ namespace KawaiiStudio.VRC.AntiRip
             // canMark tells the app this package understands antirip.mark/unmark (the "Protect on upload" switch).
             // KS Unity Tools 3.9.1 and earlier do not send it, so the app can show "update KS Unity Tools" instead
             // of calling a question the project cannot answer -- this matters while v653 is out but 3.10.0 is not.
-            sb.Append("{\"ok\":true,\"canMark\":true,\"project\":").Append(Q(Application.productName))
+            // canShader (3.14): this package can close meshes through the avatar's own shader. The app shows that
+            // switch only when the project says so -- with 3.13.1 and earlier it would be a switch that does nothing.
+            sb.Append("{\"ok\":true,\"canMark\":true,\"canShader\":true,\"project\":").Append(Q(Application.productName))
               .Append(",\"avatars\":[");
 
             bool first = true;
@@ -216,6 +220,7 @@ namespace KawaiiStudio.VRC.AntiRip
             mark.lockedBadge = a.lockedBadge;
             mark.obfuscateNames = a.obfuscateNames;
             mark.maxAddedMegabytes = a.maxAddedMegabytes < 0 ? 0 : a.maxAddedMegabytes;
+            mark.shaderRestore = a.shaderRestore;
             EditorUtility.SetDirty(avatar);
             EditorSceneManager.MarkSceneDirty(avatar.scene);
             return "{\"ok\":true,\"marked\":true,\"message\":" + Q("This avatar will be protected when you upload it.") + "}";
@@ -291,6 +296,7 @@ namespace KawaiiStudio.VRC.AntiRip
                 freezeWhileLocked = args.freezeWhileLocked,
                 lockedBadge = args.lockedBadge,
                 obfuscateNames = args.obfuscateNames,
+                shaderRestore = args.shaderRestore,
             };
 
             // The gate, not a courtesy: a protection that ends in an upload VRChat refuses has still rewritten

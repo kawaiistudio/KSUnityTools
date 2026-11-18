@@ -33,6 +33,13 @@ namespace KawaiiStudio.VRC.AntiRip
         public const string AssetFolder = "Packages/com.kawaiistudio.ksunitytools/Runtime/AntiRipBadge";
         public const string TexturePath = AssetFolder + "/KSLockBadge.png";
         public const string ShaderPath = AssetFolder + "/KSAntiRipBadge.shader";
+        // 3.14: the poster only a viewer who blocks the wearer's shaders sees (KSAntiRipFallbackPoster.shader)
+        public const string FallbackObjectName = "KS Anti-Rip Fallback Poster";
+        public const string FallbackShaderName = "Kawaii Studio/Anti-Rip Fallback Poster";
+        public const string FallbackShaderPath = AssetFolder + "/KSAntiRipFallbackPoster.shader";
+
+        /// <summary>One copy of the picture per build folder: the badge and the fallback poster share it.</summary>
+        static readonly Dictionary<string, Texture2D> PictureOf = new Dictionary<string, Texture2D>(System.StringComparer.Ordinal);
 
         // The poster in its own space: one unit wide, centred on the object, the picture is 2:1.
         const float PanelHeight = 0.5f;
@@ -130,6 +137,15 @@ namespace KawaiiStudio.VRC.AntiRip
         static Texture2D Picture(string folder, string assetName, IList<string> warnings, out bool unusable)
         {
             unusable = false;
+            if (PictureOf.TryGetValue(folder, out Texture2D made) && made != null) return made;
+            Texture2D fresh = MakePicture(folder, assetName, warnings, out unusable);
+            if (fresh != null) PictureOf[folder] = fresh;
+            return fresh;
+        }
+
+        static Texture2D MakePicture(string folder, string assetName, IList<string> warnings, out bool unusable)
+        {
+            unusable = false;
             if (AssetDatabase.LoadAssetAtPath<Texture2D>(TexturePath) == null) return null;   // the caller says it is missing
 
             string copy = folder + "/" + assetName + "_t.png";
@@ -177,6 +193,82 @@ namespace KawaiiStudio.VRC.AntiRip
                 return null;
             }
             return AssetDatabase.LoadAssetAtPath<Texture2D>(copy);
+        }
+
+        /// <summary>
+        /// 3.14: the poster for a viewer who blocks the wearer's shaders, when meshes are closed by the avatar's own
+        /// shader. Its own shader draws nothing, so with shaders shown nobody sees it; VRChat's unlit cut-out fallback
+        /// draws the picture for whoever blocks them. On the chest, facing the avatar's front (the fallback does not turn
+        /// it to the viewer), double-sided. Enabled in the avatar: while the avatar is locked the lock's show layer turns
+        /// it off like every other renderer, and the locked badge (whose own fallback draws the same picture) speaks.
+        /// Returns its path from the root, or null with a warning when its picture or shader is missing.
+        /// </summary>
+        public static string AddFallbackPoster(GameObject root, VRCAvatarDescriptor descriptor, string folder, string objectName,
+                                               IList<string> warnings, string assetName = "KS_Fallback")
+        {
+            if (string.IsNullOrEmpty(assetName)) assetName = "KS_Fallback";
+            Texture2D texture = Picture(folder, assetName, warnings, out bool unusable);
+            if (unusable) return null;
+            Shader shader = AssetDatabase.LoadAssetAtPath<Shader>(FallbackShaderPath);
+            if (shader == null) shader = Shader.Find(FallbackShaderName);
+            if (texture == null || shader == null)
+            {
+                warnings?.Add("The poster for viewers who block shaders was left out: its " + (texture == null ? "picture" : "shader") +
+                              " is missing from KS Unity Tools. Reinstall the package to get it back.");
+                return null;
+            }
+
+            var material = new Material(shader) { name = assetName + "_f" };
+            material.mainTexture = texture;
+            if (material.HasProperty("_Cutoff")) material.SetFloat("_Cutoff", 0.35f);
+            AssetDatabase.CreateAsset(material, folder + "/" + assetName + "_f.mat");
+
+            Mesh mesh = BuildMesh();
+            mesh.name = assetName + "_f";
+            AssetDatabase.CreateAsset(mesh, folder + "/" + assetName + "_f.asset");
+
+            var poster = new GameObject(string.IsNullOrEmpty(objectName) ? FallbackObjectName : objectName);
+            poster.transform.SetParent(root.transform, false);
+            poster.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var renderer = poster.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            renderer.lightProbeUsage = LightProbeUsage.Off;
+            renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+
+            // Sized and placed from the eye height, like the badge: about half of it wide, at chest height, just in front.
+            Transform r = root.transform;
+            Vector3 view = descriptor != null && descriptor.ViewPosition.y > 0.2f ? descriptor.ViewPosition : new Vector3(0f, 1.5f, 0.1f);
+            float eyeHeight = view.y * Mathf.Max(0.0001f, Mathf.Abs(r.lossyScale.y));
+            float width = Mathf.Clamp(eyeHeight * 0.55f, 0.3f, 1.4f);
+            float forward = Mathf.Clamp(eyeHeight * 0.12f, 0.08f, 0.3f);
+            poster.transform.position = r.TransformPoint(new Vector3(0f, view.y * 0.72f, view.z)) + r.forward * forward;
+            poster.transform.rotation = r.rotation * Quaternion.Euler(0f, 180f, 0f);
+            Transform chest = ChestOf(root);
+            if (chest != null) poster.transform.SetParent(chest, true);
+            Vector3 s = poster.transform.parent.lossyScale;
+            poster.transform.localScale = new Vector3(width / Mathf.Max(0.0001f, Mathf.Abs(s.x)),
+                                                      width / Mathf.Max(0.0001f, Mathf.Abs(s.y)),
+                                                      width / Mathf.Max(0.0001f, Mathf.Abs(s.z)));
+            poster.SetActive(true);
+            return AnimationUtility.CalculateTransformPath(poster.transform, root.transform);
+        }
+
+        /// <summary>The chest (or spine, or hips) bone of a humanoid avatar, or null.</summary>
+        static Transform ChestOf(GameObject root)
+        {
+            try
+            {
+                var animator = root.GetComponent<Animator>();
+                if (animator == null || !animator.isHuman) return null;
+                return animator.GetBoneTransform(HumanBodyBones.Chest) ?? animator.GetBoneTransform(HumanBodyBones.Spine) ??
+                       animator.GetBoneTransform(HumanBodyBones.Hips);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         /// <summary>The avatar's head bone, or null when it has no humanoid Animator.</summary>

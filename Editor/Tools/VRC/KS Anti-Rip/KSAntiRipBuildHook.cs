@@ -74,6 +74,7 @@ namespace KawaiiStudio.VRC.AntiRip
                     lockedBadge = mark.lockedBadge,
                     obfuscateNames = mark.obfuscateNames,
                     maxAddedMegabytes = mark.maxAddedMegabytes,
+                    shaderRestore = mark.shaderRestore,
                 };
                 UnityEngine.Object.DestroyImmediate(mark);
 

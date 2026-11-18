@@ -52,6 +52,18 @@ namespace KawaiiStudio.VRC.AntiRip
         }
 
         /// <summary>
+        /// 3.14: a material property the patched shader reads as the key (KSAntiRipShaderPatch). The lock drives it
+        /// exactly like a restore shape -- child k sets it to 1, weighted by key parameter k, so the material sees
+        /// k/127, the key value. Nothing in the bundle holds anything but "1".
+        /// </summary>
+        public class MaterialTarget
+        {
+            public string path;        // hierarchy path of the SkinnedMeshRenderer whose material is driven
+            public string property;    // the shader property, e.g. "_abcdefghi"
+            public int slot;           // which key parameter drives it
+        }
+
+        /// <summary>
         /// Adds the restore layer (and the show layer when renderers are hidden while locked) to the avatar's
         /// FX controller, and the key parameters to its expression parameters.
         /// </summary>
@@ -59,12 +71,15 @@ namespace KawaiiStudio.VRC.AntiRip
             GameObject avatar, VRCAvatarDescriptor descriptor, AnimatorController fx,
             IList<ShapeTarget> targets, IList<string> hideRendererPaths, IList<string> keyParameters,
             bool syncKey, string folder, System.Random rng, bool obfuscate = false, bool freezeWhileLocked = false,
-            string badgePath = null, bool hideEverything = false, IList<string> notes = null)
+            string badgePath = null, bool hideEverything = false, IList<string> notes = null,
+            IList<MaterialTarget> materialTargets = null)
         {
             if (keyParameters == null || keyParameters.Count == 0)
                 throw new System.ArgumentException("the lock needs the key parameters", nameof(keyParameters));
             if (targets.Any(t => t.slot < 0 || t.slot >= keyParameters.Count))
                 throw new System.ArgumentException("a restore shape points at a key parameter that does not exist");
+            if (materialTargets != null && materialTargets.Any(t => t.slot < 0 || t.slot >= keyParameters.Count))
+                throw new System.ArgumentException("a shader key property points at a key parameter that does not exist");
 
             // Everything below this index is the avatar's own; everything from it on is added here.
             int firstOwnLayer = fx.layers.Length;
@@ -98,6 +113,10 @@ namespace KawaiiStudio.VRC.AntiRip
                 var clip = new AnimationClip { name = Name("KS_Restore_" + k) };
                 foreach (ShapeTarget t in targets.Where(t => t.slot == k))
                     clip.SetCurve(t.path, typeof(SkinnedMeshRenderer), "blendShape." + t.shapeName, Const(100f));
+                // 3.14: the shader key property, driven the same way -- 1 here, times the key parameter's k/127.
+                if (materialTargets != null)
+                    foreach (MaterialTarget t in materialTargets.Where(t => t.slot == k))
+                        clip.SetCurve(t.path, typeof(SkinnedMeshRenderer), "material." + t.property, Const(1f));
                 AssetDatabase.CreateAsset(clip, folder + "/" + clip.name + ".anim");
                 children[k] = new ChildMotion
                 {

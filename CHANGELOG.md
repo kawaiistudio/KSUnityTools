@@ -2,6 +2,32 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.14.0]
+
+**KS ANTI-RIP: meshes and textures closed by the avatar's own shader (optional, PC).**
+Works with the Kawaii Studio app from v668 (v667 closes the meshes but not the textures). `com.kawaiistudio.link`
+stays 1.2.1. Off by default: nothing changes until you turn it on in the app.
+
+- **A new switch, "Close Poiyomi meshes with their own shader".** The parts of a mesh whose every material is a locked
+  Poiyomi shader are closed at upload by a copy of that shader, patched for the purpose. What puts them back is not in
+  the avatar file at all: the shader computes it from your key while the avatar is worn. The other parts of the same
+  mesh keep the usual restore shapes, so a body with a Poiyomi skin and lilToon clothes is protected all over.
+- **Their main textures too.** The colour texture of those materials is cut into blocks that change place, turn and
+  swap colour channels, all from the key; the shader puts it back as it reads it. A ripped copy shows a mosaic. A texture
+  that another, unprotected part of the avatar also uses stays as it is (it would ship readable anyway).
+- **Whoever blocks your shaders** does not see those parts (VRChat's fallback is set to Hidden), and sees a Kawaii
+  Studio poster on your chest instead. With shaders shown nobody sees that poster.
+- **PC only.** An Android or iOS upload keeps the usual method whatever the switch says.
+- A renderer whose materials your own animations swap keeps the usual method (the swapped-in material is not a patched
+  one).
+- Every pass of a patched shader is compiled before the upload goes on; a shader that will not take the change keeps
+  the usual method for its mesh, and one that will not take the texture change keeps its texture readable. Neither
+  stops the upload.
+
+Known limits: lilToon materials are not closed this way (they keep restore shapes); Poiyomi 7.x keeps its texture
+readable; the laid-out texture loses a little sharpness at a distance (box-filtered mip maps, no anisotropic filtering),
+not visible at normal size.
+
 ## [3.13.1]
 
 **KS ANTI-RIP: the poster is in front of the wearer's eyes.**

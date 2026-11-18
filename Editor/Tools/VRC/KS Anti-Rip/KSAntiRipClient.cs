@@ -27,6 +27,10 @@ namespace KawaiiStudio.VRC.AntiRip
         {
             public string id = "";
             public int vertexCount;
+            /// <summary>3.14: this mesh has vertices its shader can close; ask the app for their numbers.</summary>
+            public bool shader;
+            /// <summary>How many: they take no restore shape, so the app does not count them in the size budget.</summary>
+            public int shaderVertices;
         }
 
         public class Plan
@@ -45,6 +49,43 @@ namespace KawaiiStudio.VRC.AntiRip
             /// </summary>
             public List<string> parameters = new List<string>();
             public List<MeshInfo> meshes = new List<MeshInfo>();
+
+            // 3.14, empty unless a mesh asked for the shader method and the app (v667+) answered it. The text is
+            // pasted into a copy of the avatar's shader as it is; shaderProperties[k] is the material property that
+            // follows key parameter k. Like the arrays, nothing here is the key.
+            public string shaderCode = "";
+            public string shaderCall = "";
+            public string shaderIdField = "";
+            public List<string> shaderProperties = new List<string>();
+            public bool HasShader => !string.IsNullOrEmpty(shaderCode) && !string.IsNullOrEmpty(shaderCall) &&
+                                     !string.IsNullOrEmpty(shaderIdField) && shaderProperties.Count > 0;
+
+            // 3.14, textures (app v668+): the texture function's text and name, the per-material id property, the
+            // block size, and per texture asked for, its id. Layouts are collected with Texture().
+            public string textureCode = "";
+            public string textureFn = "";
+            public string textureTidProperty = "";
+            public int textureBlock;
+            public readonly Dictionary<string, uint> textureTids = new Dictionary<string, uint>(StringComparer.Ordinal);
+            public bool HasTextures => HasShader && !string.IsNullOrEmpty(textureCode) && !string.IsNullOrEmpty(textureFn) &&
+                                       !string.IsNullOrEmpty(textureTidProperty) && textureBlock > 0 && textureTids.Count > 0;
+        }
+
+        /// <summary>3.14: a texture this package can lay out, by id, at its imported size.</summary>
+        public class TextureInfo
+        {
+            public string id = "";
+            public int width, height;
+        }
+
+        /// <summary>3.14: where each block of one texture goes. dest[i] is the block source block i moves to; state[i]
+        /// is flip x (1), flip y (2), transpose (4), channel order in bits 3..5.</summary>
+        public class TexturePlan
+        {
+            public string id = "";
+            public uint tid;
+            public uint[] dest = new uint[0];
+            public byte[] state = new byte[0];
         }
 
         public class MeshPlan
@@ -54,6 +95,9 @@ namespace KawaiiStudio.VRC.AntiRip
             public Vector3[] offsets = new Vector3[0];
             public List<Vector3[]> groups = new List<Vector3[]>();
             public List<string> shapeNames = new List<string>();
+            /// <summary>3.14: per vertex, its id and its two amounts; empty when the mesh did not ask.</summary>
+            public Vector2[] shaderIds = new Vector2[0];
+            public Vector2[] shaderAmounts = new Vector2[0];
         }
 
         static string _token = "";
@@ -125,7 +169,8 @@ namespace KawaiiStudio.VRC.AntiRip
 
         /// <summary>Asks for a plan. The app checks the account; a refusal arrives as ok=false with a reason.</summary>
         public static Plan Begin(string avatarId, string avatarName, IList<MeshInfo> meshes,
-                                 float strength, int restoreGroups, int maxAddedMegabytes = 0)
+                                 float strength, int restoreGroups, int maxAddedMegabytes = 0,
+                                 IList<TextureInfo> textures = null)
         {
             var plan = new Plan();
             if (!Connect()) { plan.error = LastError; return plan; }
@@ -135,13 +180,29 @@ namespace KawaiiStudio.VRC.AntiRip
               .Append(",\"avatarName\":").Append(Quote(avatarName))
               .Append(",\"strength\":").Append(strength.ToString(System.Globalization.CultureInfo.InvariantCulture))
               .Append(",\"restoreGroups\":").Append(restoreGroups)
-              .Append(",\"maxAddedMegabytes\":").Append(maxAddedMegabytes)
-              .Append(",\"meshes\":[");
+              .Append(",\"maxAddedMegabytes\":").Append(maxAddedMegabytes);
+            // 3.14: the textures to lay out (an app before v668 ignores the field)
+            if (textures != null && textures.Count > 0)
+            {
+                sb.Append(",\"textures\":[");
+                for (int i = 0; i < textures.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    sb.Append("{\"id\":").Append(Quote(textures[i].id))
+                      .Append(",\"width\":").Append(textures[i].width)
+                      .Append(",\"height\":").Append(textures[i].height).Append('}');
+                }
+                sb.Append(']');
+            }
+            sb.Append(",\"meshes\":[");
             for (int i = 0; i < meshes.Count; i++)
             {
                 if (i > 0) sb.Append(',');
                 sb.Append("{\"id\":").Append(Quote(meshes[i].id))
-                  .Append(",\"vertexCount\":").Append(meshes[i].vertexCount).Append('}');
+                  .Append(",\"vertexCount\":").Append(meshes[i].vertexCount);
+                if (meshes[i].shader)
+                    sb.Append(",\"shader\":true,\"shaderVertices\":").Append(meshes[i].shaderVertices);
+                sb.Append('}');
             }
             sb.Append("]}");
 
@@ -184,6 +245,18 @@ namespace KawaiiStudio.VRC.AntiRip
             plan.marker = Str(reply, "marker");
             plan.keyPath = Str(reply, "keyPath");
             plan.parameters.AddRange(StrList(reply, "parameters"));
+            plan.shaderCode = Str(reply, "shaderCode");
+            plan.shaderCall = Str(reply, "shaderCall");
+            plan.shaderIdField = Str(reply, "shaderIdField");
+            plan.shaderProperties.AddRange(StrList(reply, "shaderProperties"));
+            plan.textureCode = Str(reply, "textureCode");
+            plan.textureFn = Str(reply, "textureFn");
+            plan.textureTidProperty = Str(reply, "textureTidProperty");
+            plan.textureBlock = Int(reply, "textureBlock");
+            List<string> tids = StrList(reply, "textureTids"), tidIds = StrList(reply, "textureIds");
+            for (int i = 0; i < tidIds.Count && i < tids.Count; i++)
+                if (uint.TryParse(tids[i], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out uint t) && t > 0)
+                    plan.textureTids[tidIds[i]] = t;
             if (plan.parameters.Count == 0)
             {
                 plan.ok = false;
@@ -210,6 +283,8 @@ namespace KawaiiStudio.VRC.AntiRip
             mesh.offsets = Unpack(Str(reply, "offsets"));
             foreach (string g in StrList(reply, "groups")) mesh.groups.Add(Unpack(g));
             mesh.shapeNames.AddRange(StrList(reply, "shapeNames"));
+            mesh.shaderIds = UnpackPairs(Str(reply, "shaderIds"));
+            mesh.shaderAmounts = UnpackPairs(Str(reply, "shaderAmounts"));
 
             if (mesh.offsets.Length != mesh.vertexCount || mesh.groups.Count == 0 ||
                 mesh.groups.Count != mesh.shapeNames.Count)
@@ -217,7 +292,57 @@ namespace KawaiiStudio.VRC.AntiRip
                 LastError = "The app sent a plan this version cannot read. Update Kawaii Studio and KS Unity Tools.";
                 return null;
             }
+            // Shader numbers that do not fit the mesh are dropped, not fatal: the mesh then keeps the restore shapes.
+            if (mesh.shaderIds.Length != mesh.vertexCount || mesh.shaderAmounts.Length != mesh.vertexCount)
+            {
+                mesh.shaderIds = new Vector2[0];
+                mesh.shaderAmounts = new Vector2[0];
+            }
             return mesh;
+        }
+
+        /// <summary>3.14: collects one texture's layout. Returns null with LastError set.</summary>
+        public static TexturePlan Texture(string session, string id)
+        {
+            string reply = Send("GET", "/unity/antirip/texture?session=" + Uri.EscapeDataString(session) +
+                                       "&id=" + Uri.EscapeDataString(id), null, null, 60000);
+            if (reply == null) return null;
+            return ParseTexture(id, reply);
+        }
+
+        /// <summary>The /unity/antirip/texture reply, read. Null with LastError set when it cannot be used.</summary>
+        public static TexturePlan ParseTexture(string id, string reply)
+        {
+            if (!Flag(reply, "ok")) { LastError = Error(reply); return null; }
+            var t = new TexturePlan { id = id, tid = (uint)Math.Max(0, Int(reply, "tid")) };
+            string dest = Str(reply, "dest"), state = Str(reply, "state");
+            try
+            {
+                byte[] db = string.IsNullOrEmpty(dest) ? new byte[0] : Convert.FromBase64String(dest);
+                t.dest = new uint[db.Length / 4];
+                Buffer.BlockCopy(db, 0, t.dest, 0, t.dest.Length * 4);
+                t.state = string.IsNullOrEmpty(state) ? new byte[0] : Convert.FromBase64String(state);
+            }
+            catch (FormatException e) { LastError = "The app sent a texture layout this version cannot read: " + e.Message; return null; }
+            if (t.tid == 0 || t.dest.Length == 0 || t.dest.Length != t.state.Length)
+            {
+                LastError = "The app sent a texture layout this version cannot read.";
+                return null;
+            }
+            return t;
+        }
+
+        /// <summary>base64 of raw little-endian float32 pairs.</summary>
+        static Vector2[] UnpackPairs(string base64)
+        {
+            if (string.IsNullOrEmpty(base64)) return new Vector2[0];
+            byte[] bytes = Convert.FromBase64String(base64);
+            int count = bytes.Length / 8;
+            var floats = new float[count * 2];
+            Buffer.BlockCopy(bytes, 0, floats, 0, count * 8);
+            var result = new Vector2[count];
+            for (int i = 0; i < count; i++) result[i] = new Vector2(floats[i * 2], floats[i * 2 + 1]);
+            return result;
         }
 
         /// <summary>A JSON array of strings, each decoded.</summary>
