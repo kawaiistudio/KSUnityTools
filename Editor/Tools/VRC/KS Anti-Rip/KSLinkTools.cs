@@ -179,6 +179,26 @@ namespace KawaiiStudio.VRC.AntiRip
                           .Append(",\"vertices\":").Append(vertices)
                           .Append(",\"staticMeshes\":").Append(statics)
                           .Append(",\"marked\":").Append(marked ? "true" : "false")
+                          // 3.16.3: the scene has changes not saved yet -- a mark set by the app lives in it, and is
+                          // lost if Unity closes without saving (the app says so; it never saves the scene itself)
+                          .Append(",\"sceneDirty\":").Append(scene.isDirty ? "true" : "false");
+                        // 3.16.3: what the mark really holds, so the app shows it instead of its own defaults (owner,
+                        // 2026-11-19: the options ticked in the app did not apply in Unity -- the page never read them)
+                        if (mark != null)
+                            sb.Append(",\"settings\":{\"strength\":").Append(mark.strength.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                              .Append(",\"restoreGroups\":").Append(mark.restoreGroups)
+                              .Append(",\"syncKey\":").Append(mark.syncKey ? "true" : "false")
+                              .Append(",\"hideWhileLocked\":").Append(mark.hideWhileLocked ? "true" : "false")
+                              .Append(",\"freezeWhileLocked\":").Append(mark.freezeWhileLocked ? "true" : "false")
+                              .Append(",\"lockedBadge\":").Append(mark.lockedBadge ? "true" : "false")
+                              .Append(",\"obfuscateNames\":").Append(mark.obfuscateNames ? "true" : "false")
+                              .Append(",\"maxAddedMegabytes\":").Append(mark.maxAddedMegabytes)
+                              .Append(",\"shaderRestore\":").Append(mark.shaderRestore ? "true" : "false")
+                              .Append(",\"renameBlendShapes\":").Append(mark.renameBlendShapes ? "true" : "false")
+                              .Append(",\"longKey\":").Append(mark.longKey ? "true" : "false")
+                              .Append(",\"protectStaticMeshes\":").Append(mark.protectStaticMeshes ? "true" : "false")
+                              .Append('}');
+                        sb
                           // the one thing that stops a protection before it starts, so the app can grey the row
                           .Append(",\"ready\":").Append(!string.IsNullOrEmpty(blueprint) && seen.Count > 0 ? "true" : "false")
                           .Append(",\"why\":").Append(Q(

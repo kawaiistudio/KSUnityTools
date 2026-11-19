@@ -2,6 +2,16 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.16.3]
+
+**KS ANTI-RIP: the app shows the settings your avatar really has.** When the Kawaii Studio app lists your avatars, each
+protected one now comes with the settings saved in its protection (every switch and slider), and whether its scene has
+changes not saved yet. Before, the app showed its own defaults, so an avatar protected with older settings looked
+right in the app and uploaded with what Unity had. With app v675 the page shows what Unity has, and changes you make
+there are applied to the avatar at once. The protection is saved with your scene: save the scene in Unity (Ctrl+S)
+after turning it on or changing a setting, or it is lost when Unity closes. The app now says so when the scene is not
+saved.
+
 ## [3.16.2]
 
 **KS ANTI-RIP: optional neutral blend shape names.** A new switch, "Neutral blend shape names" (off by default),
