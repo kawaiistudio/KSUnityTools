@@ -76,6 +76,12 @@ namespace KawaiiStudio.VRC.AntiRip
             /// </summary>
             public bool shaderRestore = true;
 
+            /// <summary>
+            /// 3.16.2, opt-in: every blend shape gets a neutral name, and the descriptor and every animation follow
+            /// (KSAntiRipNames.RenameBlendShapes). Off by default: MMD worlds drive blend shapes by their standard names.
+            /// </summary>
+            public bool renameBlendShapes = false;
+
             /// <summary>What the key costs out of VRChat's 256 synced bits: one float (8 bits) per restore shape.</summary>
             public int KeyBits => syncKey ? Math.Max(1, restoreGroups) * 8 : 0;
         }
@@ -91,6 +97,7 @@ namespace KawaiiStudio.VRC.AntiRip
             public int meshesProtected;
             public int verticesProtected;
             public int objectsRenamed;
+            public int blendShapesRenamed;   // 3.16.2, only with Settings.renameBlendShapes
             public string lockLayer = "";
             public string freezeLayer = "";      // empty when the avatar is not frozen while locked
             public string badgePath = "";        // the locked badge's path from the root; empty when there is none
@@ -456,6 +463,14 @@ namespace KawaiiStudio.VRC.AntiRip
                 // is built -- otherwise the lock's own layer would be copied again and renamed away.
                 if (settings.obfuscateNames)
                     result.objectsRenamed = KSAntiRipNames.Obfuscate(root, descriptor, folder, tag, rng, result.warnings);
+
+                // 3.16.2, opt-in: blend shape names too. After the object rename (paths are resolved on the final
+                // names) and before the lock, which addresses the restore shapes by name -- those are kept.
+                if (settings.renameBlendShapes)
+                {
+                    var restoreShapes = new HashSet<string>(protectedRenderers.SelectMany(e => e.plan.shapeNames), StringComparer.Ordinal);
+                    result.blendShapesRenamed = KSAntiRipNames.RenameBlendShapes(root, descriptor, folder, restoreShapes, rng, result.warnings);
+                }
 
                 EditorUtility.DisplayProgressBar("KS ANTI-RIP", "Building the lock…", 0.75f);
 

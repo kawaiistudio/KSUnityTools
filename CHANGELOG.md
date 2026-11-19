@@ -2,6 +2,15 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.16.2]
+
+**KS ANTI-RIP: optional neutral blend shape names.** A new switch, "Neutral blend shape names" (off by default),
+gives every blend shape of the protected upload a name that says nothing, so a ripped avatar no longer tells which
+shape is the smile or the blink. The avatar descriptor's visemes and jaw-flap shape and every animation that moves a
+blend shape follow the new names, so visemes, blinking, expressions and face tracking keep working. Leave it off if you
+dance in MMD worlds: they move the face by the standard names, so it would stay still. Your project's meshes and
+animations are never changed: the renamed copies are made for the upload only. Needs the app update to show the switch.
+
 ## [3.16.1]
 
 **KS ANTI-RIP: people whose Safety blocks your animations see the Kawaii Studio poster, not a field of shards.**

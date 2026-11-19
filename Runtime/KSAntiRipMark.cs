@@ -47,5 +47,10 @@ namespace KawaiiStudio.VRC.AntiRip
                  "shapes. Someone who blocks the wearer's shaders sees the Kawaii Studio poster instead of the avatar. " +
                  "PC only. On by default (3.16.1); the meshes it cannot close keep the restore shapes.")]
         public bool shaderRestore = true;
+
+        [Tooltip("Give every blend shape a name that says nothing (visemes, blinks and expressions keep working; the " +
+                 "descriptor and the animations follow). Off by default: MMD worlds drive blend shapes by their standard " +
+                 "names, so with this on the face stays still in MMD dances.")]
+        public bool renameBlendShapes = false;
     }
 }

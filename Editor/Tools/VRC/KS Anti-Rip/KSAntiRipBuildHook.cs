@@ -76,6 +76,7 @@ namespace KawaiiStudio.VRC.AntiRip
                     obfuscateNames = mark.obfuscateNames,
                     maxAddedMegabytes = mark.maxAddedMegabytes,
                     shaderRestore = mark.shaderRestore,
+                    renameBlendShapes = mark.renameBlendShapes,
                 };
                 UnityEngine.Object.DestroyImmediate(mark);
 

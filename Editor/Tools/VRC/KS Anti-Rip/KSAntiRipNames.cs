@@ -118,6 +118,269 @@ namespace KawaiiStudio.VRC.AntiRip
             return rename.Count;
         }
 
+        // ── 3.16.2: blend shape names ───────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// OPT-IN (owner, 2026-11-19: "Option à cocher"). Gives every blend shape of the avatar's skinned meshes a name
+        /// that says nothing -- "smile", "blink", "vrc.v_aa" otherwise tell whoever opens the bundle what each shape
+        /// does -- and makes everything that names them follow: the descriptor's visemes and jaw-flap shape, and every
+        /// animation clip of the descriptor's layers, of the root Animator and of the Animators below it.
+        ///
+        /// WHY IT IS A SWITCH AND NOT ON BY DEFAULT: MMD worlds drive blend shapes by their standard names, so an
+        /// avatar with this on keeps a still face in MMD dances. Visemes, eye-look blinking (by index), expressions
+        /// and face tracking (both through the avatar's own animations) keep working.
+        ///
+        /// What it does NOT touch:
+        ///   * <paramref name="keep"/> -- the restore shapes: the lock drives them by name and they are random already;
+        ///   * the meshes of a subtree driven by something this cannot rewrite (an override controller, a legacy
+        ///     Animation), the same rule as the object rename;
+        ///   * the ORDER of the shapes, so whatever addresses one by index (eyelids) is unchanged, and the deltas,
+        ///     copied frame by frame.
+        /// The user's own meshes, clips and controllers are never written: one from outside <paramref name="folder"/>
+        /// is copied into it first. Runs after <see cref="Obfuscate"/> (its paths are resolved on the final names).
+        /// </summary>
+        /// <returns>how many blend shapes were renamed</returns>
+        public static int RenameBlendShapes(GameObject clone, VRCAvatarDescriptor descriptor, string folder,
+                                            ICollection<string> keep, System.Random rng, List<string> warnings)
+        {
+            if (clone == null) return 0;
+            Transform root = clone.transform;
+            var keepSet = new HashSet<string>(keep ?? (ICollection<string>)Array.Empty<string>(), StringComparer.Ordinal);
+
+            // subtrees driven by something we cannot rewrite keep their shape names
+            var frozen = new HashSet<Transform>();
+            foreach (Animator a in clone.GetComponentsInChildren<Animator>(true))
+                if (a != null && a.transform != root && a.runtimeAnimatorController != null && !(a.runtimeAnimatorController is AnimatorController))
+                    foreach (Transform t in a.GetComponentsInChildren<Transform>(true)) frozen.Add(t);
+            foreach (Animation legacy in clone.GetComponentsInChildren<Animation>(true))
+                foreach (Transform t in legacy.GetComponentsInChildren<Transform>(true)) frozen.Add(t);
+
+            // one rename per MESH (renderers sharing a mesh share its names)
+            var byMesh = new Dictionary<Mesh, List<SkinnedMeshRenderer>>();
+            foreach (SkinnedMeshRenderer r in clone.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (r == null || r.sharedMesh == null || r.sharedMesh.blendShapeCount == 0) continue;
+                if (!byMesh.TryGetValue(r.sharedMesh, out List<SkinnedMeshRenderer> list))
+                    byMesh[r.sharedMesh] = list = new List<SkinnedMeshRenderer>();
+                list.Add(r);
+            }
+
+            var maps = new Dictionary<SkinnedMeshRenderer, Dictionary<string, string>>();
+            int renamed = 0;
+            foreach (KeyValuePair<Mesh, List<SkinnedMeshRenderer>> pair in byMesh)
+            {
+                if (pair.Value.Any(r => frozen.Contains(r.transform))) continue;
+                Mesh source = pair.Key;
+                var map = new Dictionary<string, string>(StringComparer.Ordinal);
+                var taken = new HashSet<string>(StringComparer.Ordinal);
+                for (int s = 0; s < source.blendShapeCount; s++) taken.Add(source.GetBlendShapeName(s));
+                for (int s = 0; s < source.blendShapeCount; s++)
+                {
+                    string old = source.GetBlendShapeName(s);
+                    if (keepSet.Contains(old) || map.ContainsKey(old)) continue;
+                    string fresh;
+                    do fresh = Letters(rng, 10); while (taken.Contains(fresh));
+                    taken.Add(fresh);
+                    map[old] = fresh;
+                }
+                if (map.Count == 0) continue;
+
+                // the weights each renderer was saved with, by index (the order does not change)
+                var weights = pair.Value.Select(r => Enumerable.Range(0, source.blendShapeCount).Select(r.GetBlendShapeWeight).ToArray()).ToList();
+                Mesh target = IsOurs(source, folder) ? source : CopyMesh(source, folder);
+                RebuildShapes(target, map);
+                for (int i = 0; i < pair.Value.Count; i++)
+                {
+                    SkinnedMeshRenderer r = pair.Value[i];
+                    r.sharedMesh = target;
+                    for (int s = 0; s < weights[i].Length; s++) r.SetBlendShapeWeight(s, weights[i][s]);
+                    maps[r] = map;
+                }
+                if (target == source) EditorUtility.SetDirty(target);
+                renamed += map.Count;
+            }
+            if (maps.Count == 0) return 0;
+
+            // the descriptor: visemes and the jaw-flap shape are names; the eyelids are indices and stay valid
+            if (descriptor != null && descriptor.VisemeSkinnedMesh != null &&
+                maps.TryGetValue(descriptor.VisemeSkinnedMesh, out Dictionary<string, string> face))
+            {
+                if (descriptor.VisemeBlendShapes != null)
+                    for (int i = 0; i < descriptor.VisemeBlendShapes.Length; i++)
+                        if (!string.IsNullOrEmpty(descriptor.VisemeBlendShapes[i]) &&
+                            face.TryGetValue(descriptor.VisemeBlendShapes[i], out string v))
+                            descriptor.VisemeBlendShapes[i] = v;
+                if (!string.IsNullOrEmpty(descriptor.MouthOpenBlendShapeName) &&
+                    face.TryGetValue(descriptor.MouthOpenBlendShapeName, out string jaw))
+                    descriptor.MouthOpenBlendShapeName = jaw;
+            }
+
+            // every clip that names a renamed shape: copied and rewritten, per animator root
+            var clipDone = new Dictionary<(AnimationClip, Transform), AnimationClip>();
+            string NewBinding(EditorCurveBinding b, Transform animRoot)
+            {
+                if (b.type != typeof(SkinnedMeshRenderer) || !b.propertyName.StartsWith("blendShape.", StringComparison.Ordinal)) return null;
+                Transform t = string.IsNullOrEmpty(b.path) ? animRoot : animRoot.Find(b.path);
+                SkinnedMeshRenderer smr = t != null ? t.GetComponent<SkinnedMeshRenderer>() : null;
+                if (smr == null || !maps.TryGetValue(smr, out Dictionary<string, string> m)) return null;
+                return m.TryGetValue(b.propertyName.Substring("blendShape.".Length), out string n) ? "blendShape." + n : null;
+            }
+            bool ClipNeeds(AnimationClip c, Transform animRoot) =>
+                c != null && AnimationUtility.GetCurveBindings(c).Any(b => NewBinding(b, animRoot) != null);
+            bool MotionNeeds(Motion m, Transform animRoot) =>
+                m is AnimationClip c ? ClipNeeds(c, animRoot)
+                : m is BlendTree bt && bt.children.Any(ch => MotionNeeds(ch.motion, animRoot));
+            bool MachineNeeds(AnimatorStateMachine sm, Transform animRoot) =>
+                sm != null && (sm.states.Any(s => s.state != null && MotionNeeds(s.state.motion, animRoot)) ||
+                               sm.stateMachines.Any(ch => MachineNeeds(ch.stateMachine, animRoot)));
+            AnimationClip FixClip(AnimationClip c, Transform animRoot)
+            {
+                if (!ClipNeeds(c, animRoot)) return c;
+                if (clipDone.TryGetValue((c, animRoot), out AnimationClip done)) return done;
+                var copy = UnityEngine.Object.Instantiate(c);
+                AnimationClipSettings settings = AnimationUtility.GetAnimationClipSettings(c);
+                AnimationEvent[] events = c.events;
+                var floats = AnimationUtility.GetCurveBindings(c).Select(b => (b, curve: AnimationUtility.GetEditorCurve(c, b))).ToArray();
+                var objects = AnimationUtility.GetObjectReferenceCurveBindings(c).Select(b => (b, curve: AnimationUtility.GetObjectReferenceCurve(c, b))).ToArray();
+                copy.ClearCurves();
+                foreach (var (b, curve) in floats)
+                {
+                    EditorCurveBinding nb = b;
+                    string renamedProp = NewBinding(b, animRoot);
+                    if (renamedProp != null) nb.propertyName = renamedProp;
+                    AnimationUtility.SetEditorCurve(copy, nb, curve);
+                }
+                foreach (var (b, curve) in objects) AnimationUtility.SetObjectReferenceCurve(copy, b, curve);
+                AnimationUtility.SetAnimationClipSettings(copy, settings);
+                if (events != null && events.Length > 0) AnimationUtility.SetAnimationEvents(copy, events);
+                string clipPath = AssetDatabase.GenerateUniqueAssetPath(folder + "/BS_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".anim");
+                copy.name = System.IO.Path.GetFileNameWithoutExtension(clipPath);
+                AssetDatabase.CreateAsset(copy, clipPath);
+                clipDone[(c, animRoot)] = copy;
+                return copy;
+            }
+            Motion FixMotion(Motion m, Transform animRoot)
+            {
+                if (m is AnimationClip c) return FixClip(c, animRoot);
+                if (m is BlendTree bt)
+                {
+                    ChildMotion[] children = bt.children;
+                    for (int i = 0; i < children.Length; i++) children[i].motion = FixMotion(children[i].motion, animRoot);
+                    bt.children = children;
+                }
+                return m;
+            }
+            void FixMachine(AnimatorStateMachine sm, Transform animRoot)
+            {
+                if (sm == null) return;
+                foreach (ChildAnimatorState s in sm.states)
+                    if (s.state != null) s.state.motion = FixMotion(s.state.motion, animRoot);
+                foreach (ChildAnimatorStateMachine ch in sm.stateMachines) FixMachine(ch.stateMachine, animRoot);
+            }
+            var controllerDone = new Dictionary<(AnimatorController, Transform), AnimatorController>();
+            AnimatorController FixController(AnimatorController ctl, string what, Transform animRoot)
+            {
+                if (ctl == null || !ctl.layers.Any(l => MachineNeeds(l.stateMachine, animRoot))) return ctl;
+                if (controllerDone.TryGetValue((ctl, animRoot), out AnimatorController done)) return done;
+                AnimatorController target = ctl;
+                if (!IsOurs(ctl, folder))
+                {
+                    // the user's own controller: a deep copy whose clips are the rewritten copies
+                    string copyPath = AssetDatabase.GenerateUniqueAssetPath(folder + "/BS_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".controller");
+                    try { target = KSAntiRipAnimatorCopy.Copy(ctl, copyPath, clip => FixClip(clip, animRoot)); }
+                    catch (Exception e) { Debug.LogError("[KS ANTI-RIP] " + e); target = null; }
+                    if (target == null)
+                    {
+                        warnings.Add("Could not copy the " + what + " controller, so its animations still use the old blend shape names and will not move those shapes.");
+                        controllerDone[(ctl, animRoot)] = ctl;
+                        return ctl;
+                    }
+                }
+                foreach (AnimatorControllerLayer l in target.layers) FixMachine(l.stateMachine, animRoot);
+                controllerDone[(ctl, animRoot)] = target;
+                return target;
+            }
+
+            if (descriptor != null)
+            {
+                VRCAvatarDescriptor.CustomAnimLayer[] baseLayers = descriptor.baseAnimationLayers;
+                for (int i = 0; i < baseLayers.Length; i++)
+                {
+                    var ctl = baseLayers[i].animatorController as AnimatorController;
+                    AnimatorController fixedCtl = FixController(ctl, baseLayers[i].type.ToString(), root);
+                    if (fixedCtl != ctl) { baseLayers[i].animatorController = fixedCtl; baseLayers[i].isDefault = false; }
+                }
+                descriptor.baseAnimationLayers = baseLayers;
+                VRCAvatarDescriptor.CustomAnimLayer[] special = descriptor.specialAnimationLayers;
+                for (int i = 0; i < special.Length; i++)
+                {
+                    var ctl = special[i].animatorController as AnimatorController;
+                    AnimatorController fixedCtl = FixController(ctl, special[i].type.ToString(), root);
+                    if (fixedCtl != ctl) { special[i].animatorController = fixedCtl; special[i].isDefault = false; }
+                }
+                descriptor.specialAnimationLayers = special;
+            }
+            foreach (Animator a in clone.GetComponentsInChildren<Animator>(true))
+            {
+                if (a == null || !(a.runtimeAnimatorController is AnimatorController ctl)) continue;
+                AnimatorController fixedCtl = FixController(ctl, a.transform == root ? "root Animator" : "'" + a.name + "' Animator", a.transform);
+                if (fixedCtl != ctl) a.runtimeAnimatorController = fixedCtl;
+            }
+            return renamed;
+        }
+
+        static bool IsOurs(UnityEngine.Object o, string folder)
+        {
+            string p = AssetDatabase.GetAssetPath(o);
+            return !string.IsNullOrEmpty(p) && p.StartsWith(folder + "/", StringComparison.Ordinal);
+        }
+
+        static Mesh CopyMesh(Mesh source, string folder)
+        {
+            Mesh copy = UnityEngine.Object.Instantiate(source);
+            copy.name = source.name;
+            AssetDatabase.CreateAsset(copy, AssetDatabase.GenerateUniqueAssetPath(folder + "/BS_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".asset"));
+            return copy;
+        }
+
+        /// <summary>The same shapes, same order, same frames and deltas, under the names <paramref name="map"/> gives.</summary>
+        static void RebuildShapes(Mesh mesh, Dictionary<string, string> map)
+        {
+            int n = mesh.vertexCount, count = mesh.blendShapeCount;
+            var shapes = new List<(string name, List<(float weight, Vector3[] dv, Vector3[] dn, Vector3[] dt)> frames)>(count);
+            for (int s = 0; s < count; s++)
+            {
+                var frames = new List<(float, Vector3[], Vector3[], Vector3[])>();
+                for (int f = 0; f < mesh.GetBlendShapeFrameCount(s); f++)
+                {
+                    var dv = new Vector3[n]; var dn = new Vector3[n]; var dt = new Vector3[n];
+                    mesh.GetBlendShapeFrameVertices(s, f, dv, dn, dt);
+                    // a shape that never had normal/tangent deltas keeps none (all-zero arrays would be stored)
+                    frames.Add((mesh.GetBlendShapeFrameWeight(s, f), dv, AnyNonZero(dn) ? dn : null, AnyNonZero(dt) ? dt : null));
+                }
+                string old = mesh.GetBlendShapeName(s);
+                shapes.Add((map.TryGetValue(old, out string fresh) ? fresh : old, frames));
+            }
+            mesh.ClearBlendShapes();
+            foreach (var (name, frames) in shapes)
+                foreach (var (weight, dv, dn, dt) in frames)
+                    mesh.AddBlendShapeFrame(name, weight, dv, dn, dt);
+        }
+
+        static bool AnyNonZero(Vector3[] a)
+        {
+            for (int i = 0; i < a.Length; i++) if (a[i].x != 0f || a[i].y != 0f || a[i].z != 0f) return true;
+            return false;
+        }
+
+        static string Letters(System.Random rng, int length)
+        {
+            const string letters = "abcdefghijklmnopqrstuvwxyz";
+            var chars = new char[length];
+            for (int i = 0; i < length; i++) chars[i] = letters[rng.Next(letters.Length)];
+            return new string(chars);
+        }
+
         /// <summary>
         /// The skeleton, and only the skeleton: bones a mesh is skinned to, humanoid bones, PhysBone chains, and
         /// the ancestors that make up their paths. Everything else -- clothing, props, particle objects, the empty
