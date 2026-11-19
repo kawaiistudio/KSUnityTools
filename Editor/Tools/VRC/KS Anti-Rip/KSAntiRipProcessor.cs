@@ -234,7 +234,7 @@ namespace KawaiiStudio.VRC.AntiRip
                 if (!uniqueMeshes.Contains(smr.sharedMesh)) uniqueMeshes.Add(smr.sharedMesh);
 
             // 3.14: a mesh can be closed by the avatar's OWN shader when every material that draws it, on every
-            // renderer that wears it, is a locked-Poiyomi shader this can patch (decided by name here; a shader that
+            // renderer that wears it, is a locked-Poiyomi or lilToon shader this can patch (decided by name here; a shader that
             // then fails to patch falls the whole mesh back to restore shapes). Those vertices take no restore shape,
             // so the app leaves them out of the size budget.
             // A renderer whose materials the avatar's animations swap stays on restore shapes: the material swapped in is
@@ -247,7 +247,7 @@ namespace KawaiiStudio.VRC.AntiRip
             if (settings.shaderRestore && mobile)
                 result.warnings.Add("Closing meshes with the avatar's shader is PC only: this " + target + " upload keeps the usual method.");
             // PART BY PART (3.14): a sub-mesh is closed by the shader when every material that draws it, on every renderer
-            // that wears the mesh, is a locked Poiyomi; the vertices only those sub-meshes use move by the shader, the rest
+            // that wears the mesh, is a locked Poiyomi or a lilToon; the vertices only those sub-meshes use move by the shader, the rest
             // of the mesh keeps the restore shapes. Unity draws the LAST sub-mesh again with every material past the
             // sub-mesh count, so those materials count for it (bench, 2026-11-18: a chain's effect material on its one
             // sub-mesh showed the mesh displaced).
@@ -579,7 +579,7 @@ namespace KawaiiStudio.VRC.AntiRip
 
         /// <summary>
         /// The sub-meshes of <paramref name="mesh"/> the shader may close: every material that draws one, on every renderer
-        /// that wears the mesh, is a locked Poiyomi; and the vertices only those sub-meshes use. Null when there are none,
+        /// that wears the mesh, is a locked Poiyomi or a lilToon (KSAntiRipLilToon.CanPatch); and the vertices only those sub-meshes use. Null when there are none,
         /// when an animation swaps the materials of one of its renderers, or when the mesh has no normals and tangents.
         /// </summary>
         static ShaderChoice ChooseSubMeshes(Mesh mesh, List<SkinnedMeshRenderer> users, GameObject root, HashSet<string> swappedPaths)
@@ -603,7 +603,8 @@ namespace KawaiiStudio.VRC.AntiRip
                         if (Math.Min(i, subCount - 1) != sub) continue;
                         drawn = true;
                         Material m = mats[i];
-                        if (m == null || m.shader == null || !KSAntiRipShaderPatch.IsLockedPoiyomi(m.shader)) ok = false;
+                        if (m == null || m.shader == null ||
+                            !(KSAntiRipShaderPatch.IsLockedPoiyomi(m.shader) || KSAntiRipLilToon.CanPatch(m))) ok = false;
                     }
                     if (!ok) break;
                 }
@@ -664,12 +665,36 @@ namespace KawaiiStudio.VRC.AntiRip
                     if (string.IsNullOrEmpty(path)) return null;
                     if (!patchedShaders.TryGetValue(path, out KSAntiRipShaderPatch.PatchResult pr))
                     {
-                        pr = textures != null
-                            ? KSAntiRipShaderPatch.PatchShader(path, plan.shaderCode, plan.shaderCall, plan.shaderIdField,
-                                                               plan.shaderProperties, shaderIndex++, folder,
-                                                               plan.textureCode, plan.textureFn, plan.textureTidProperty)
-                            : KSAntiRipShaderPatch.PatchShader(path, plan.shaderCode, plan.shaderCall, plan.shaderIdField,
-                                                               plan.shaderProperties, shaderIndex++, folder);
+                        if (KSAntiRipLilToon.IsLilToon(mm.shader))
+                        {
+                            // 3.16, lilToon: its code lives in shared package includes, so KSAntiRipLilToon flattens
+                            // the shader onto an edited copy of them; the result is used exactly like a Poiyomi copy.
+                            KSAntiRipLilToon.FlattenResult fr = KSAntiRipLilToon.PatchFlatten(
+                                path, shaderIndex++, folder,
+                                plan.shaderCode, plan.shaderCall, plan.shaderIdField, plan.shaderProperties,
+                                textures != null ? plan.textureCode : null,
+                                textures != null ? plan.textureFn : null,
+                                textures != null ? plan.textureTidProperty : null);
+                            pr = new KSAntiRipShaderPatch.PatchResult
+                            {
+                                Shader = fr.ShaderPath != null ? AssetDatabase.LoadAssetAtPath<Shader>(fr.ShaderPath) : null,
+                                Why = fr.Why,
+                                Entries = fr.Entries,
+                                Files = 1,
+                                TextureOk = fr.TextureOk,
+                                TextureSites = fr.TextureSites,
+                                TextureWhy = fr.TextureWhy,
+                            };
+                        }
+                        else
+                        {
+                            pr = textures != null
+                                ? KSAntiRipShaderPatch.PatchShader(path, plan.shaderCode, plan.shaderCall, plan.shaderIdField,
+                                                                   plan.shaderProperties, shaderIndex++, folder,
+                                                                   plan.textureCode, plan.textureFn, plan.textureTidProperty)
+                                : KSAntiRipShaderPatch.PatchShader(path, plan.shaderCode, plan.shaderCall, plan.shaderIdField,
+                                                                   plan.shaderProperties, shaderIndex++, folder);
+                        }
                         patchedShaders[path] = pr;
                         if (pr.Shader == null && warnings != null)
                             warnings.Add("A mesh kept the blend-shape method: its shader could not be patched (" + pr.Why + ").");
@@ -756,19 +781,29 @@ namespace KawaiiStudio.VRC.AntiRip
             {
                 float tid = 0f;
                 var t = original.HasProperty("_MainTex") ? original.GetTexture("_MainTex") as Texture2D : null;
+                bool lil = KSAntiRipLilToon.IsLilToon(original.shader);
+                string otid = lil ? KSAntiRipLilToon.OutlineTidProperty(Plan.textureTidProperty) : null;
+                float outlineTid = 0f;
                 if (t != null && Build(t, out Texture2D laid, out uint id))
                 {
                     patched.SetTexture("_MainTex", laid);
+                    // lilToon: an outline that wears the main texture reads the laid-out copy through the texture function
+                    if (lil && patched.HasProperty(KSAntiRipLilToon.OutlineSlot) && original.GetTexture(KSAntiRipLilToon.OutlineSlot) == t)
+                    {
+                        patched.SetTexture(KSAntiRipLilToon.OutlineSlot, laid);
+                        outlineTid = id;
+                    }
                     // The copy inherits every saved slot of the original, stale ones included. A stale slot
                     // (e.g. _BaseColorMap / _BaseMap from an earlier shader) still holds the ORIGINAL main texture
                     // and would ship it readable, defeating the layout. The current shader does not read these
                     // slots, so clearing them changes nothing on screen.
-                    StripSavedRefs(patched, t, "_MainTex");
+                    StripSavedRefs(patched, t, lil ? KSAntiRipLilToon.UnreadSlots : null, "_MainTex");
                     tid = id;
                     if (!_users.TryGetValue(t, out List<Material> list)) _users[t] = list = new List<Material>();
                     list.Add(patched);
                 }
                 if (patched.HasProperty(Plan.textureTidProperty)) patched.SetFloat(Plan.textureTidProperty, tid);
+                if (otid != null && patched.HasProperty(otid)) patched.SetFloat(otid, outlineTid);
                 EditorUtility.SetDirty(patched);
             }
 
@@ -819,11 +854,19 @@ namespace KawaiiStudio.VRC.AntiRip
                 foreach (Texture2D t in _built.Keys.ToList())
                 {
                     if (!exposed.Contains(t)) continue;
+                    Texture2D laidCopy = _built[t].Key;
+                    string otid = KSAntiRipLilToon.OutlineTidProperty(Plan.textureTidProperty);
                     if (_users.TryGetValue(t, out List<Material> list))
                         foreach (Material m in list)
                         {
                             m.SetTexture("_MainTex", t);
                             if (m.HasProperty(Plan.textureTidProperty)) m.SetFloat(Plan.textureTidProperty, 0f);
+                            // lilToon's outline followed the laid-out copy: it goes back with it
+                            if (m.HasProperty(KSAntiRipLilToon.OutlineSlot) && m.GetTexture(KSAntiRipLilToon.OutlineSlot) == laidCopy)
+                            {
+                                m.SetTexture(KSAntiRipLilToon.OutlineSlot, t);
+                                if (m.HasProperty(otid)) m.SetFloat(otid, 0f);
+                            }
                             EditorUtility.SetDirty(m);
                         }
                     _built.Remove(t);
@@ -881,11 +924,16 @@ namespace KawaiiStudio.VRC.AntiRip
         {
             Shader s = m.shader;
             if (s == null || mainTex == null) return false;
+            // lilToon: _BaseMap/_BaseColorMap are declared but never read here (cleared on the copy), and the outline's
+            // read goes through the texture function too (KSAntiRipLilToon), so neither is a second plain read.
+            bool lil = KSAntiRipLilToon.IsLilToon(s);
             for (int i = 0; i < s.GetPropertyCount(); i++)
             {
                 if (s.GetPropertyType(i) != UnityEngine.Rendering.ShaderPropertyType.Texture) continue;
                 string p = s.GetPropertyName(i);
-                if (p != "_MainTex" && m.GetTexture(p) == mainTex) return true;
+                if (p == "_MainTex") continue;
+                if (lil && (p == KSAntiRipLilToon.OutlineSlot || Array.IndexOf(KSAntiRipLilToon.UnreadSlots, p) >= 0)) continue;
+                if (m.GetTexture(p) == mainTex) return true;
             }
             return false;
         }
@@ -896,11 +944,13 @@ namespace KawaiiStudio.VRC.AntiRip
         /// original's saved slots, and a stale one (Layla's face/body: _BaseColorMap, _BaseMap) would otherwise ship
         /// the original readable. A declared slot is left alone (LiveDuplicateSlot keeps such a texture readable,
         /// and Finish checks what remains). Returns how many slots were cleared.</summary>
-        static int StripSavedRefs(Material m, Texture tex, params string[] keep)
+        static int StripSavedRefs(Material m, Texture tex, string[] alsoClear, params string[] keep)
         {
             var keepSet = new HashSet<string>(keep);
             if (m.shader != null)
                 for (int i = 0; i < m.shader.GetPropertyCount(); i++) keepSet.Add(m.shader.GetPropertyName(i));
+            // declared but never read by this shader (lilToon's _BaseMap/_BaseColorMap): cleared like a stale slot
+            if (alsoClear != null) foreach (string a in alsoClear) keepSet.Remove(a);
             var so = new SerializedObject(m);
             SerializedProperty envs = so.FindProperty("m_SavedProperties.m_TexEnvs");
             int cleared = 0;

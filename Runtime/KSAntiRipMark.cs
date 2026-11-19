@@ -43,7 +43,7 @@ namespace KawaiiStudio.VRC.AntiRip
                  "this budget buys; the rest of the mesh is left in place so a near-200-MB avatar still fits.")]
         public int maxAddedMegabytes = 12;
 
-        [Tooltip("The meshes whose shader allows it (locked Poiyomi) are closed by that shader instead of by restore " +
+        [Tooltip("The meshes whose shader allows it (locked Poiyomi, lilToon) are closed by that shader instead of by restore " +
                  "shapes. Someone who blocks the wearer's shaders sees the Kawaii Studio poster instead of the avatar. " +
                  "PC only. Off unless the app turns it on.")]
         public bool shaderRestore = false;

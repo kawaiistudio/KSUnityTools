@@ -2,6 +2,23 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.16.0]
+
+**KS ANTI-RIP: lilToon meshes are closed by their own shader too, like locked Poiyomi.**
+Nothing changes unless "Close Poiyomi meshes with their own shader" is on in the app; that same setting now covers
+lilToon as well. PC only, as before.
+
+- **lilToon materials** (standard, cutout, transparent, outline, gem, fur, fur-only, refraction, overlay, fake shadow,
+  Lite and Multi) now take the shader method: the mesh only comes back with the key, and the main texture is laid out
+  like a Poiyomi one. The outline follows the laid-out texture when it wears the main texture.
+- Your lilToon package and your materials are never changed: the protection works on copies made for the upload, and
+  lilToon's own optimisation at build time leaves those copies alone.
+- Someone who blocks your shaders sees the Kawaii Studio poster instead of those meshes, exactly like Poiyomi.
+- **Not covered yet** (those meshes keep the usual restore method, safely): lilToon tessellation shaders, a material
+  whose ID mask reads UV7, and lilToon's own avatar encryption.
+- lilToon's `_BaseMap` / `_BaseColorMap` slots (kept for other render pipelines, never drawn here) are cleared on the
+  protected copy, so they no longer ship the original texture.
+
 ## [3.15.0]
 
 **KS ANTI-RIP: a protected upload marks the avatar's VRChat description so recovery tools skip it.**
