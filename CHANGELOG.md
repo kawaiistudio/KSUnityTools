@@ -2,6 +2,25 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.16.1]
+
+**KS ANTI-RIP: people whose Safety blocks your animations see the Kawaii Studio poster, not a field of shards.**
+
+- A viewer who blocks the wearer's animations (VRChat Safety) never runs the avatar's FX layer, so they saw the
+  scrambled meshes exactly as saved. The protected upload is now saved in its locked look: every mesh, light and
+  sound the lock hides is saved off, and the lock turns them back on once the key is here. The poster is saved on.
+- Nothing changes for anyone whose animations run, you included: the lock already switched all of these both ways.
+- Parts your own avatar toggles itself are still left alone, so your menu toggles keep working with the key.
+- Only when "Hide while locked" is on (the default).
+
+**KS ANTI-RIP: closing meshes with their own shader is now on by default.** Meshes it cannot close (not a locked
+Poiyomi or a lilToon) keep the usual method, as before.
+
+**KS ANTI-RIP: a local key is a 128-bit key.** With "Others see it unlocked" off, the key never leaves your PC and
+costs none of VRChat's synced parameters, so the Kawaii Studio app (engine 5.5) now makes it long enough that the
+meshes the shader closes cannot be guessed from the avatar file. Needs the app update; with an older app the key
+stays as it was.
+
 ## [3.16.0]
 
 **KS ANTI-RIP: lilToon meshes are closed by their own shader too, like locked Poiyomi.**

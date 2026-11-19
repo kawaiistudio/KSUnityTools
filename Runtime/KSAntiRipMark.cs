@@ -45,7 +45,7 @@ namespace KawaiiStudio.VRC.AntiRip
 
         [Tooltip("The meshes whose shader allows it (locked Poiyomi, lilToon) are closed by that shader instead of by restore " +
                  "shapes. Someone who blocks the wearer's shaders sees the Kawaii Studio poster instead of the avatar. " +
-                 "PC only. Off unless the app turns it on.")]
-        public bool shaderRestore = false;
+                 "PC only. On by default (3.16.1); the meshes it cannot close keep the restore shapes.")]
+        public bool shaderRestore = true;
     }
 }

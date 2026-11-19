@@ -74,7 +74,7 @@ namespace KawaiiStudio.VRC.AntiRip
             /// 3.14: the meshes whose shader allows it are closed by that shader (KSAntiRipShader) instead of by
             /// restore shapes. Off by default. Whoever blocks the wearer's shaders is shown the poster instead.
             /// </summary>
-            public bool shaderRestore = false;
+            public bool shaderRestore = true;
 
             /// <summary>What the key costs out of VRChat's 256 synced bits: one float (8 bits) per restore shape.</summary>
             public int KeyBits => syncKey ? Math.Max(1, restoreGroups) * 8 : 0;
@@ -125,14 +125,16 @@ namespace KawaiiStudio.VRC.AntiRip
 
         sealed class AppPlanSource : IPlanSource, ITexturePlanSource
         {
+            /// <summary>3.16.1: the key is not synced, so the app lengthens the shader key (AntiRipEngine.LocalKey).</summary>
+            public bool LocalKey;
             public KSAntiRipClient.Plan Begin(string avatarId, string avatarName, IList<KSAntiRipClient.MeshInfo> meshes,
                                               IList<KSAntiRipClient.TextureInfo> textures, float strength, int restoreGroups,
                                               int maxAddedMegabytes)
-                => KSAntiRipClient.Begin(avatarId, avatarName, meshes, strength, restoreGroups, maxAddedMegabytes, textures);
+                => KSAntiRipClient.Begin(avatarId, avatarName, meshes, strength, restoreGroups, maxAddedMegabytes, textures, LocalKey);
             public KSAntiRipClient.TexturePlan Texture(string session, string id) => KSAntiRipClient.Texture(session, id);
             public KSAntiRipClient.Plan Begin(string avatarId, string avatarName, IList<KSAntiRipClient.MeshInfo> meshes,
                                               float strength, int restoreGroups, int maxAddedMegabytes = 0)
-                => KSAntiRipClient.Begin(avatarId, avatarName, meshes, strength, restoreGroups, maxAddedMegabytes);
+                => KSAntiRipClient.Begin(avatarId, avatarName, meshes, strength, restoreGroups, maxAddedMegabytes, null, LocalKey);
             public KSAntiRipClient.MeshPlan Mesh(string session, string id) => KSAntiRipClient.Mesh(session, id);
             public void End(string session) => KSAntiRipClient.End(session);
             public string LastError => KSAntiRipClient.LastError;
@@ -204,7 +206,7 @@ namespace KawaiiStudio.VRC.AntiRip
         public static void ProtectInPlace(GameObject root, Settings settings, IPlanSource planSource, string folder,
                                           Result result)
         {
-            planSource = planSource ?? new AppPlanSource();
+            planSource = planSource ?? new AppPlanSource { LocalKey = !settings.syncKey };
             result.ok = false;
             result.folder = folder;
 
@@ -263,7 +265,7 @@ namespace KawaiiStudio.VRC.AntiRip
             // 3.14, textures: the main texture of a material on a mesh the shader closes, when nothing else that ships
             // uses it (a texture also worn by an unprotected material ships readable anyway, so laying it out gains
             // nothing) and its size can take the layout.
-            var texturePlanSource = (planSource ?? new AppPlanSource()) as ITexturePlanSource;
+            var texturePlanSource = (planSource ?? new AppPlanSource { LocalKey = !settings.syncKey }) as ITexturePlanSource;
             var textureRequest = new List<KSAntiRipClient.TextureInfo>();
             var textureIdOf = new Dictionary<Texture2D, string>();
             if (shaderMode && shaderEligible.Count > 0 && texturePlanSource != null)

@@ -170,7 +170,7 @@ namespace KawaiiStudio.VRC.AntiRip
         /// <summary>Asks for a plan. The app checks the account; a refusal arrives as ok=false with a reason.</summary>
         public static Plan Begin(string avatarId, string avatarName, IList<MeshInfo> meshes,
                                  float strength, int restoreGroups, int maxAddedMegabytes = 0,
-                                 IList<TextureInfo> textures = null)
+                                 IList<TextureInfo> textures = null, bool localKey = false)
         {
             var plan = new Plan();
             if (!Connect()) { plan.error = LastError; return plan; }
@@ -181,6 +181,8 @@ namespace KawaiiStudio.VRC.AntiRip
               .Append(",\"strength\":").Append(strength.ToString(System.Globalization.CultureInfo.InvariantCulture))
               .Append(",\"restoreGroups\":").Append(restoreGroups)
               .Append(",\"maxAddedMegabytes\":").Append(maxAddedMegabytes);
+            // 3.16.1: the key stays on the wearer's PC, so the app lengthens the shader key (an app before 5.5 ignores it)
+            if (localKey) sb.Append(",\"localKey\":true");
             // 3.14: the textures to lay out (an app before v668 ignores the field)
             if (textures != null && textures.Count > 0)
             {

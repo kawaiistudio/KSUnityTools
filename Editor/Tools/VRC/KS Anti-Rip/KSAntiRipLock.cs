@@ -212,6 +212,14 @@ namespace KawaiiStudio.VRC.AntiRip
                     stateMachine = showMachine,
                     defaultWeight = 1f,
                 });
+
+                // 3.15.1: WITH NOTHING RUNNING, THE AVATAR LOOKS LOCKED (owner, 2026-11-19, screenshot: viewers in
+                // Safety saw a field of shards). A viewer who blocks the wearer's animations never runs this layer
+                // -- or the restore layer -- so whatever the avatar is SAVED as is what they see. Up to 3.15.0 that
+                // was "on": the scrambled meshes, drawn with restore shapes at 0. Now everything the Hidden state
+                // turns off is saved off, and the Shown state turns it on: the badge (saved on) is all they get.
+                // Nothing changes for anyone whose animator runs -- both states drive every one of these.
+                ParkLocked(avatar, hideRendererPaths, extra);
             }
 
             // 4. the freeze layer: no key after the grace period, and the wearer cannot walk and the menu does nothing
@@ -227,7 +235,35 @@ namespace KawaiiStudio.VRC.AntiRip
                           "animations switch them, and the lock leaves those alone so its toggles still work with the key.");
         }
 
-        /// <summary>One "m_Enabled" the lock turns off while locked; it is on in the avatar.</summary>
+        /// <summary>
+        /// Saves off everything the show layer switches (the scrambled meshes and <paramref name="extra"/>), so the
+        /// avatar with no animator running is the locked avatar. Only what the Shown state turns back on is touched.
+        /// </summary>
+        public static int ParkLocked(GameObject avatar, IList<string> scrambled, IList<Switch> extra)
+        {
+            if (avatar == null) return 0;
+            Transform At(string path) => string.IsNullOrEmpty(path) ? avatar.transform : avatar.transform.Find(path);
+            int parked = 0;
+            if (scrambled != null)
+                foreach (string path in scrambled)
+                {
+                    Transform t = At(path);
+                    SkinnedMeshRenderer smr = t != null ? t.GetComponent<SkinnedMeshRenderer>() : null;
+                    if (smr != null && smr.enabled) { smr.enabled = false; parked++; }
+                }
+            if (extra != null)
+                foreach (Switch s in extra)
+                {
+                    Transform t = At(s.path);
+                    Component c = t != null ? t.GetComponent(s.type) : null;
+                    if (c == null) continue;
+                    if (c is Renderer r) { if (r.enabled) { r.enabled = false; parked++; } }
+                    else if (c is Behaviour b && b.enabled) { b.enabled = false; parked++; }
+                }
+            return parked;
+        }
+
+        /// <summary>One "m_Enabled" the lock turns off while locked. On in the source avatar; saved off in the build (3.15.1).</summary>
         public struct Switch
         {
             public string path;
