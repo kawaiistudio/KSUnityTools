@@ -34,11 +34,12 @@ namespace KawaiiStudio.VRC.AntiRip
         /// </summary>
         public int callbackOrder => int.MaxValue - 1024;
 
-        /// <summary>For <see cref="KSAntiRipHookTest"/> only: a plan source and a report sink in place of the Kawaii
-        /// Studio app, so the hook runs whole -- the exact code an upload runs -- without the app. Null in every real
-        /// build.</summary>
-        internal static KSAntiRipProcessor.IPlanSource PlanSourceForTests;
-        internal static Action<string, System.Collections.Generic.IList<string>> ReportForTests;
+        /// <summary>For the hook test only: a plan source and a report sink in place of the Kawaii Studio app, so the
+        /// hook runs whole -- the exact code an upload runs -- without the app. Null in every real build. Public so the
+        /// test suite can live outside this assembly (it is kept out of the shipped package); it does nothing on its
+        /// own and is never read unless a test sets it.</summary>
+        public static KSAntiRipProcessor.IPlanSource PlanSourceForTests;
+        public static Action<string, System.Collections.Generic.IList<string>> ReportForTests;
 
         static void Report(string message, System.Collections.Generic.IList<string> details = null)
         {

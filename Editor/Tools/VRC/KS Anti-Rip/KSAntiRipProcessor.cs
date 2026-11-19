@@ -17,7 +17,7 @@ namespace KawaiiStudio.VRC.AntiRip
     /// publishing how the protection works.
     ///
     /// NON-DESTRUCTIVE, and tested as such: every change happens on an Instantiate() clone that is destroyed
-    /// in a finally block, and KSAntiRipNoHarmTest hashes every source file before and after. It also never
+    /// in a finally block, and a regression test hashes every source file before and after. It also never
     /// reads or rewrites shader source, so Poiyomi, lilToon and the Quest mobile shaders come through intact.
     /// </summary>
     public static class KSAntiRipProcessor

@@ -33,7 +33,7 @@ namespace KawaiiStudio.VRC.AntiRip
     /// NON-DESTRUCTIVE, and this is the sharp edge: AssetDatabase.CopyAsset on a controller copies the
     /// controller but its states still reference the ORIGINAL clip assets. Remapping those in place would
     /// rewrite the user's own animations. Every clip is therefore copied before it is touched, and the copy is
-    /// what the protected controller points at. KSAntiRipNoHarmTest hashes the originals and would catch it.
+    /// what the protected controller points at. A regression test hashes the originals and would catch it.
     /// </summary>
     public static class KSAntiRipNames
     {

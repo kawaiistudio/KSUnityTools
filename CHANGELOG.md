@@ -2,6 +2,14 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.14.2]
+
+**KS ANTI-RIP: the developer test suites no longer ship with the package.** No change to what protection does.
+
+- The six self-test / proof files are no longer part of the package: they do not run on anyone's avatar, and
+  keeping them out leaves less of the method's design in the shipped source. The protection itself is unchanged.
+- The README's KS Anti-Rip section is shorter and no longer walks through how the scramble is undone.
+
 ## [3.14.1]
 
 **KS ANTI-RIP: a laid-out texture no longer ships readable through another slot of the same material.**

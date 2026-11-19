@@ -143,23 +143,20 @@ computed in the app, and this package only applies it.
 - **Protected at upload.** Turn on **Protect on upload** for an avatar on the app's KS
   Anti-Rip page, then upload as you always do: the protection is applied to the build VRChat makes — the
   avatar in your scene is never changed and no copy is made. It runs *after* VRCFury and Modular Avatar
-  merge, so the clothing and prop animations they add are scrambled too
-- Vertex scrambling, reversed by blend shapes — **no shader is modified**, so Poiyomi, lilToon and the
-  Quest mobile shaders all keep working
-- **The key is not in the bundle**: each restore shape follows one key value, and the values live only
-  in a per-avatar `.key` in Kawaii Studio's own Keys folder, outside your Unity project (the app's
-  KS Anti-Rip page opens it). **KS OSC KEY** in the app sends them into VRChat while you wear the avatar
+  merge, so the clothing and props they add are covered too
+- Your materials and shaders are left as they are, so Poiyomi, lilToon and the Quest mobile shaders all
+  keep working
+- **The key is not in the bundle**: it lives only in a per-avatar `.key` in Kawaii Studio's own Keys
+  folder, outside your Unity project, and the app delivers it into VRChat while you wear the avatar
 - Other players see you normally — or keep the key on your PC only, and only you see the avatar whole
-- **Stays under VRChat's size limit**: the scramble is spread over as many vertices as a size budget
-  allows, so an avatar already near 200 MB does not gain tens of MB of restore data
-- PC avatars only (the key is sent by KS OSC Key on your PC); an Android build target is flagged with a
-  one-click switch to Windows
+- **Stays under VRChat's size limit** on an avatar already near 200 MB
+- PC avatars only (the key is sent on your PC); an Android build target is flagged with a one-click
+  switch to Windows
 - Not archived by VRChat Archive
 
-**What it is honest about:** a downloaded bundle is scrambled geometry and its animator holds no answer.
-It is not unbreakable — a solver written against this scheme can still be pointed at a bundle, and with
-the key synced, someone in your instance with a modified client can read it. No client-side protection
-avoids that. It raises the cost a great deal; it is not a wall.
+**What it is honest about:** it is not unbreakable. With the key synced, someone in your instance with a
+modified client can still read the avatar, and no client-side protection avoids that. It raises the cost
+a great deal; it is not a wall.
 
 <div align="center">
 <img src="screenshots/ks-obfuscator.png" alt="KS Anti-Rip" width="700"/>
