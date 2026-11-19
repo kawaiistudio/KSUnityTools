@@ -77,6 +77,8 @@ namespace KawaiiStudio.VRC.AntiRip
                     maxAddedMegabytes = mark.maxAddedMegabytes,
                     shaderRestore = mark.shaderRestore,
                     renameBlendShapes = mark.renameBlendShapes,
+                    longKey = mark.longKey,
+                    protectStaticMeshes = mark.protectStaticMeshes,
                 };
                 UnityEngine.Object.DestroyImmediate(mark);
 

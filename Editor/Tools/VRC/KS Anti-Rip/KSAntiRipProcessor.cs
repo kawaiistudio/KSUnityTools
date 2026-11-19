@@ -82,6 +82,20 @@ namespace KawaiiStudio.VRC.AntiRip
             /// </summary>
             public bool renameBlendShapes = false;
 
+            /// <summary>
+            /// 3.16.2 (owner, 2026-11-19): a SYNCED key is lengthened too, with as many extra values as the avatar's free
+            /// synced bits pay for (up to a 128-bit shader key). Stops someone who only has the avatar file; a modified
+            /// client in the instance still reads synced values. On by default; a local key is always long.
+            /// </summary>
+            public bool longKey = true;
+
+            /// <summary>
+            /// 3.16.2 (owner, 2026-11-19): static MeshRenderers whose materials the shader method can patch (locked
+            /// Poiyomi, lilToon) are closed by their shader too. A static mesh has no restore shapes, so the parts the
+            /// shader cannot take stay as they are (the coverage report lists them). On by default.
+            /// </summary>
+            public bool protectStaticMeshes = true;
+
             /// <summary>What the key costs out of VRChat's 256 synced bits: one float (8 bits) per restore shape.</summary>
             public int KeyBits => syncKey ? Math.Max(1, restoreGroups) * 8 : 0;
         }
@@ -103,6 +117,8 @@ namespace KawaiiStudio.VRC.AntiRip
             public string badgePath = "";        // the locked badge's path from the root; empty when there is none
             public string fallbackPosterPath = ""; // 3.14: the poster for viewers who block shaders; empty when none
             public List<string> warnings = new List<string>();
+            /// <summary>3.16.2: what each part of the avatar got, and why (KSAntiRipCoverage).</summary>
+            public KSAntiRipCoverage coverage = new KSAntiRipCoverage();
         }
 
         /// <summary>
@@ -134,14 +150,19 @@ namespace KawaiiStudio.VRC.AntiRip
         {
             /// <summary>3.16.1: the key is not synced, so the app lengthens the shader key (AntiRipEngine.LocalKey).</summary>
             public bool LocalKey;
+            /// <summary>3.16.2: lengthen a synced key too, with at most <see cref="MaxExtraKeySlots"/> extra values.</summary>
+            public bool LongKey;
+            public int MaxExtraKeySlots = -1;
             public KSAntiRipClient.Plan Begin(string avatarId, string avatarName, IList<KSAntiRipClient.MeshInfo> meshes,
                                               IList<KSAntiRipClient.TextureInfo> textures, float strength, int restoreGroups,
                                               int maxAddedMegabytes)
-                => KSAntiRipClient.Begin(avatarId, avatarName, meshes, strength, restoreGroups, maxAddedMegabytes, textures, LocalKey);
+                => KSAntiRipClient.Begin(avatarId, avatarName, meshes, strength, restoreGroups, maxAddedMegabytes, textures, LocalKey,
+                                         LongKey, MaxExtraKeySlots);
             public KSAntiRipClient.TexturePlan Texture(string session, string id) => KSAntiRipClient.Texture(session, id);
             public KSAntiRipClient.Plan Begin(string avatarId, string avatarName, IList<KSAntiRipClient.MeshInfo> meshes,
                                               float strength, int restoreGroups, int maxAddedMegabytes = 0)
-                => KSAntiRipClient.Begin(avatarId, avatarName, meshes, strength, restoreGroups, maxAddedMegabytes, null, LocalKey);
+                => KSAntiRipClient.Begin(avatarId, avatarName, meshes, strength, restoreGroups, maxAddedMegabytes, null, LocalKey,
+                                         LongKey, MaxExtraKeySlots);
             public KSAntiRipClient.MeshPlan Mesh(string session, string id) => KSAntiRipClient.Mesh(session, id);
             public void End(string session) => KSAntiRipClient.End(session);
             public string LastError => KSAntiRipClient.LastError;
@@ -213,11 +234,21 @@ namespace KawaiiStudio.VRC.AntiRip
         public static void ProtectInPlace(GameObject root, Settings settings, IPlanSource planSource, string folder,
                                           Result result)
         {
-            planSource = planSource ?? new AppPlanSource { LocalKey = !settings.syncKey };
             result.ok = false;
             result.folder = folder;
 
             var descriptor = root.GetComponent<VRCAvatarDescriptor>();
+            // 3.16.2: a synced long key may only spend the synced bits the avatar has left after its own parameters and
+            // the restore key (8 bits a value), so the upload never goes over VRChat's limit.
+            int maxExtraKeySlots = settings.syncKey && settings.longKey ? FreeKeySlots(descriptor, settings.restoreGroups) : -1;
+            planSource = planSource ?? new AppPlanSource
+            {
+                LocalKey = !settings.syncKey,
+                LongKey = settings.syncKey && settings.longKey && maxExtraKeySlots > 0,
+                MaxExtraKeySlots = maxExtraKeySlots,
+            };
+            result.coverage.synced = settings.syncKey;
+            result.coverage.longKeyAsked = settings.longKey;
             if (descriptor == null) { result.message = "That GameObject has no VRC Avatar Descriptor."; return; }
 
             var pipeline = root.GetComponent<PipelineManager>();
@@ -236,7 +267,15 @@ namespace KawaiiStudio.VRC.AntiRip
             // must share one scrambled copy AND one set of weights, or the second never opens.
             var skinned = root.GetComponentsInChildren<SkinnedMeshRenderer>(true)
                               .Where(r => r.sharedMesh != null).ToArray();
-            if (skinned.Length == 0) { result.message = "Nothing to protect: this avatar has no skinned meshes."; return; }
+            var statics = root.GetComponentsInChildren<MeshRenderer>(true)
+                              .Where(r => StaticMeshOf(r) != null).ToArray();
+            // 3.16.2, for the coverage report: the parts' own names (before names are obfuscated) and static meshes
+            var nameOf = new Dictionary<Renderer, string>();
+            foreach (Renderer r in root.GetComponentsInChildren<Renderer>(true))
+                nameOf[r] = AnimationUtility.CalculateTransformPath(r.transform, root.transform);
+            var staticOriginal = statics.ToDictionary(r => r, r => StaticMeshOf(r));
+            if (skinned.Length == 0 && !(settings.protectStaticMeshes && settings.shaderRestore && statics.Length > 0))
+            { result.message = "Nothing to protect: this avatar has no skinned meshes."; return; }
 
             var uniqueMeshes = new List<Mesh>();
             foreach (var smr in skinned)
@@ -264,25 +303,49 @@ namespace KawaiiStudio.VRC.AntiRip
             if (shaderMode)
                 foreach (Mesh um in uniqueMeshes)
                 {
-                    ShaderChoice c = ChooseSubMeshes(um, skinned.Where(r => r.sharedMesh == um).ToList(), root, swappedPaths);
+                    ShaderChoice c = ChooseSubMeshes(um, skinned.Where(r => r.sharedMesh == um).Cast<Renderer>().ToList(), root, swappedPaths, false);
                     if (c != null) shaderChoice[um] = c;
                 }
             var shaderEligible = new HashSet<Mesh>(shaderChoice.Keys);
 
+            // 3.16.2: static MeshRenderers, by the shader only (they have no restore shapes). A mesh a skinned renderer
+            // also wears is left to the skinned path.
+            var uniqueStatic = new List<Mesh>();
+            var staticChoice = new Dictionary<Mesh, ShaderChoice>();
+            if (shaderMode && settings.protectStaticMeshes)
+                foreach (MeshRenderer mr in statics)
+                {
+                    Mesh sm = StaticMeshOf(mr);
+                    if (uniqueMeshes.Contains(sm) || uniqueStatic.Contains(sm)) continue;
+                    ShaderChoice c = ChooseSubMeshes(sm, statics.Where(r => StaticMeshOf(r) == sm).Cast<Renderer>().ToList(), root, swappedPaths, true);
+                    if (c == null) continue;
+                    uniqueStatic.Add(sm);
+                    staticChoice[sm] = c;
+                }
+
+            // the choice for any renderer, skinned or static
+            ShaderChoice ChoiceOf(Renderer r)
+            {
+                if (r is SkinnedMeshRenderer sk) return sk.sharedMesh != null && shaderChoice.TryGetValue(sk.sharedMesh, out ShaderChoice a) ? a : null;
+                Mesh m = r is MeshRenderer mr2 ? StaticMeshOf(mr2) : null;
+                return m != null && staticChoice.TryGetValue(m, out ShaderChoice b) ? b : null;
+            }
+
             // 3.14, textures: the main texture of a material on a mesh the shader closes, when nothing else that ships
             // uses it (a texture also worn by an unprotected material ships readable anyway, so laying it out gains
             // nothing) and its size can take the layout.
-            var texturePlanSource = (planSource ?? new AppPlanSource { LocalKey = !settings.syncKey }) as ITexturePlanSource;
+            var texturePlanSource = planSource as ITexturePlanSource;
             var textureRequest = new List<KSAntiRipClient.TextureInfo>();
             var textureIdOf = new Dictionary<Texture2D, string>();
-            if (shaderMode && shaderEligible.Count > 0 && texturePlanSource != null)
+            var textureWhy = new Dictionary<Texture2D, string>();   // 3.16.2: why a main texture was not asked for
+            if (shaderMode && (shaderEligible.Count > 0 || staticChoice.Count > 0) && texturePlanSource != null)
             {
                 var willPatch = new HashSet<Material>();
                 var shipsAsIs = new HashSet<Material>(swapMaterials);
                 foreach (Renderer r in root.GetComponentsInChildren<Renderer>(true))
                 {
                     Material[] mats = r.sharedMaterials;
-                    ShaderChoice c = r is SkinnedMeshRenderer sk && sk.sharedMesh != null && shaderChoice.TryGetValue(sk.sharedMesh, out ShaderChoice cc) ? cc : null;
+                    ShaderChoice c = ChoiceOf(r);
                     for (int i = 0; i < mats.Length; i++)
                         if (mats[i] != null) (c != null && c.PatchesSlot(i) ? willPatch : shipsAsIs).Add(mats[i]);
                 }
@@ -304,8 +367,11 @@ namespace KawaiiStudio.VRC.AntiRip
                 {
                     if (!mm.HasProperty("_MainTex")) continue;
                     var t = mm.GetTexture("_MainTex") as Texture2D;
-                    if (t == null || textureIdOf.ContainsKey(t) || usedElsewhere.Contains(t) || liveDuplicate.Contains(t)) continue;
-                    if (!KSAntiRipShaderPatch.CanLayOut(t, 32)) continue;
+                    if (t == null || textureIdOf.ContainsKey(t)) continue;
+                    if (usedElsewhere.Contains(t)) { textureWhy[t] = "another, unprotected part of the avatar uses it"; continue; }
+                    if (liveDuplicate.Contains(t)) { textureWhy[t] = "its material also reads it through a second slot"; continue; }
+                    if (!KSAntiRipShaderPatch.CanLayOut(t, 32))
+                    { textureWhy[t] = "only a power-of-two texture of the Default type, 64 px or more, can be laid out"; continue; }
                     string tid = "t" + textureIdOf.Count;
                     textureIdOf[t] = tid;
                     textureRequest.Add(new KSAntiRipClient.TextureInfo { id = tid, width = t.width, height = t.height });
@@ -321,6 +387,12 @@ namespace KawaiiStudio.VRC.AntiRip
                     shaderVertices = shaderChoice.TryGetValue(m, out ShaderChoice sc) ? sc.Count : 0,
                 })
                 .ToList();
+            // 3.16.2: the static meshes after the skinned ones; they take no restore shape, so none of their vertices
+            // count in the size budget
+            var staticRequest = uniqueStatic
+                .Select((m, i) => new KSAntiRipClient.MeshInfo { id = "s" + i, vertexCount = m.vertexCount, shader = true, shaderVertices = m.vertexCount })
+                .ToList();
+            request.AddRange(staticRequest);
 
             EditorUtility.DisplayProgressBar("KS ANTI-RIP", "Asking Kawaii Studio…", 0.1f);
             KSAntiRipClient.Plan plan;
@@ -373,7 +445,7 @@ namespace KawaiiStudio.VRC.AntiRip
 
                 // Renderers, not paths: the hierarchy is renamed below, so paths are resolved afterwards.
                 // byShader: some of its mesh is closed by the shader; mixed: and the rest by restore shapes
-                var protectedRenderers = new List<(SkinnedMeshRenderer smr, KSAntiRipClient.MeshPlan plan, bool byShader, bool mixed)>();
+                var protectedRenderers = new List<(Renderer smr, KSAntiRipClient.MeshPlan plan, bool byShader, bool mixed)>();
                 var appliedShape = new Dictionary<Mesh, KeyValuePair<Mesh, KSAntiRipClient.MeshPlan>>();
                 var appliedShader = new Dictionary<Mesh, ShaderMesh>();
                 var plannedMesh = new Dictionary<Mesh, KSAntiRipClient.MeshPlan>();
@@ -403,9 +475,9 @@ namespace KawaiiStudio.VRC.AntiRip
                         ShaderMesh sm = null;
                         if (useShader && shaderChoice.TryGetValue(original, out ShaderChoice choice))
                         {
-                            var users = rootSkinned.Where(r => r.sharedMesh == original).ToList();
+                            var users = rootSkinned.Where(r => r.sharedMesh == original).Cast<Renderer>().ToList();
                             sm = TryShaderClose(original, users, meshPlan, plan, settings, folder,
-                                                patchedShaders, patchedMats, ref shaderIndex, result.warnings, textures, choice);
+                                                patchedShaders, patchedMats, ref shaderIndex, result.warnings, textures, choice, false);
                         }
                         if (sm != null)
                         {
@@ -438,6 +510,41 @@ namespace KawaiiStudio.VRC.AntiRip
                         protectedRenderers.Add((smr, done.Value, false, false));
                     }
                 }
+
+                // 3.16.2: the static meshes, by their shader only. One that cannot be closed is left exactly as it was.
+                var appliedStatic = new Dictionary<Mesh, ShaderMesh>();
+                var refusedStatic = new HashSet<Mesh>();
+                int staticClosed = 0;
+                if (useShader)
+                    foreach (MeshRenderer mr in statics)
+                    {
+                        if (mr == null) continue;
+                        Mesh original = StaticMeshOf(mr);
+                        int index = original != null ? uniqueStatic.IndexOf(original) : -1;
+                        if (index < 0 || refusedStatic.Contains(original)) continue;
+                        if (!appliedStatic.TryGetValue(original, out ShaderMesh sm))
+                        {
+                            KSAntiRipClient.MeshPlan meshPlan = planSource.Mesh(plan.session, staticRequest[index].id);
+                            if (meshPlan == null) { result.message = planSource.LastError; return; }
+                            var users = statics.Where(r => r != null && StaticMeshOf(r) == original).Cast<Renderer>().ToList();
+                            sm = TryShaderClose(original, users, meshPlan, plan, settings, folder,
+                                                patchedShaders, patchedMats, ref shaderIndex, result.warnings, textures,
+                                                staticChoice[original], true);
+                            if (sm == null) { refusedStatic.Add(original); continue; }
+                            AssetDatabase.CreateAsset(sm.Scrambled, folder + "/MSH_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".asset");
+                            appliedStatic[original] = sm;
+                            plannedMesh[original] = meshPlan;
+                            result.meshesProtected++;
+                            result.verticesProtected += sm.Scrambled.vertexCount;
+                            shaderMeshes++;
+                            shaderVerts += sm.ShaderVertices;
+                        }
+                        mr.GetComponent<MeshFilter>().sharedMesh = sm.Scrambled;
+                        mr.sharedMaterials = sm.Materials[mr];
+                        protectedRenderers.Add((mr, plannedMesh[original], true, false));
+                        staticClosed++;
+                    }
+
                 if (shaderMeshes > 0)
                     result.warnings.Add(shaderMeshes + " mesh(es) are closed by the avatar's shader (" + shaderVerts.ToString("N0") +
                                         " vertices); whoever blocks the shaders sees the Kawaii Studio poster instead.");
@@ -449,13 +556,75 @@ namespace KawaiiStudio.VRC.AntiRip
                     return;
                 }
 
-                // Static MeshRenderers cannot carry blend shapes, so they cannot be restored this way. Say it
-                // out loud rather than shipping an avatar with a permanently exploded prop.
-                int statics = root.GetComponentsInChildren<MeshRenderer>(true)
-                                  .Count(mr => mr.GetComponent<MeshFilter>() != null &&
-                                               mr.GetComponent<MeshFilter>().sharedMesh != null);
-                if (statics > 0)
-                    result.warnings.Add(statics + " static mesh(es) were left unprotected — blend shapes only exist on skinned meshes.");
+                // Static MeshRenderers cannot carry blend shapes; since 3.16.2 the shader closes those whose materials it
+                // can patch. Say out loud how many are left as they are.
+                int staticsLeft = statics.Length - staticClosed;
+                if (staticsLeft > 0)
+                    result.warnings.Add(staticsLeft + " static mesh(es) were left unprotected" +
+                                        (staticClosed > 0 ? " (" + staticClosed + " closed by their shader)" : "") +
+                                        ": only a locked Poiyomi or a lilToon material lets the shader close a static mesh.");
+
+                // 3.16.2: the coverage report, while the renderers still carry what they were given (names come from nameOf)
+                string WhyNotShader(Renderer r, Mesh m, bool isStatic)
+                {
+                    if (!settings.shaderRestore) return "closing meshes with their shader is off";
+                    if (mobile) return "a Quest/mobile build has no custom shaders";
+                    if (isStatic && !settings.protectStaticMeshes) return "closing static meshes with their shader is off";
+                    if (nameOf.TryGetValue(r, out string p) && swappedPaths.Contains(p)) return "an animation swaps its materials";
+                    if (m == null || !m.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Normal)) return "its mesh has no normals";
+                    var bad = r.sharedMaterials.Where(x => x != null && x.shader != null &&
+                                                           !(KSAntiRipShaderPatch.IsLockedPoiyomi(x.shader) || KSAntiRipLilToon.CanPatch(x) ||
+                                                             x.shader.name.StartsWith("Hidden/Locked/KS/", StringComparison.Ordinal)))
+                                               .Select(x => "'" + x.name + "' (" + x.shader.name + ")").Distinct().ToList();
+                    if (bad.Count > 0)
+                        return "material " + string.Join(", ", bad.Take(3)) + (bad.Count > 3 ? " and " + (bad.Count - 3) + " more" : "") +
+                               " is not a locked Poiyomi or a lilToon";
+                    foreach (Material x in r.sharedMaterials)
+                    {
+                        if (x == null || x.shader == null) continue;
+                        if (patchedShaders.TryGetValue(AssetDatabase.GetAssetPath(x.shader), out KSAntiRipShaderPatch.PatchResult pr) && pr.Shader == null)
+                            return "its shader could not be patched (" + pr.Why + ")";
+                    }
+                    if (!m.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Tangent)) return "its mesh has no tangents";
+                    return "its vertices are shared with a part on another material";
+                }
+                var entryOf = new Dictionary<Renderer, (Renderer smr, KSAntiRipClient.MeshPlan plan, bool byShader, bool mixed)>();
+                foreach (var e in protectedRenderers) if (!entryOf.ContainsKey(e.smr)) entryOf[e.smr] = e;
+                foreach (SkinnedMeshRenderer r in skinned)
+                {
+                    if (r == null) continue;
+                    string name = nameOf.TryGetValue(r, out string n) ? n : r.name;
+                    int vc = r.sharedMesh != null ? r.sharedMesh.vertexCount : 0;
+                    if (!entryOf.TryGetValue(r, out var e)) { result.coverage.Add(name, "left", false, vc, "no plan matched this mesh"); continue; }
+                    if (e.byShader && !e.mixed) result.coverage.Add(name, "shader", false, vc);
+                    else if (e.byShader) result.coverage.Add(name, "shader+shapes", false, vc, "the rest: " + WhyNotShader(r, r.sharedMesh, false));
+                    else result.coverage.Add(name, "shapes", false, vc, WhyNotShader(r, r.sharedMesh, false));
+                }
+                foreach (MeshRenderer r in statics)
+                {
+                    if (r == null) continue;
+                    string name = nameOf.TryGetValue(r, out string n) ? n : r.name;
+                    Mesh orig = staticOriginal.TryGetValue(r, out Mesh om) ? om : StaticMeshOf(r);
+                    int vc = orig != null ? orig.vertexCount : 0;
+                    if (entryOf.ContainsKey(r))
+                    {
+                        bool whole = orig != null && staticChoice.TryGetValue(orig, out ShaderChoice c) && c.Whole;
+                        if (whole) result.coverage.Add(name, "shader", true, vc);
+                        else result.coverage.Add(name, "shader+left", true, vc, "the parts on other materials stay as they are: " + WhyNotShader(r, orig, true));
+                    }
+                    else result.coverage.Add(name, "left", true, vc, WhyNotShader(r, orig, true));
+                }
+                foreach (Texture2D t in textureIdOf.Keys.Concat(textureWhy.Keys).Distinct())
+                {
+                    bool laid = textures != null && textures.IsLaidOut(t);
+                    string why = laid ? "" :
+                                 textureWhy.TryGetValue(t, out string w1) ? w1 :
+                                 textures != null && textures.WhyNot.TryGetValue(t, out string w2) ? w2 :
+                                 "the shader that draws it could not read it back, or its mesh kept the usual method";
+                    result.coverage.AddTexture(t.name, laid, why);
+                }
+                result.coverage.keyValues = plan.parameters.Count;
+                result.coverage.shaderKeyBits = plan.shaderKeyBits;
 
                 EditorUtility.DisplayProgressBar("KS ANTI-RIP", "Hiding the signposts…", 0.6f);
 
@@ -554,6 +723,10 @@ namespace KawaiiStudio.VRC.AntiRip
 
                 result.ok = true;
                 result.message = "Protected.";
+
+                // 3.16.2: the coverage report, in the console and on the app's KS Anti-Rip page (best effort)
+                Debug.Log("[KS ANTI-RIP] coverage: " + result.coverage.Summary() + "\n" + string.Join("\n", result.coverage.Lines()));
+                if (planSource is AppPlanSource) KSAntiRipClient.Coverage(result.coverage.ToJson(blueprint, avatarName));
             }
             catch (Exception e)
             {
@@ -578,7 +751,28 @@ namespace KawaiiStudio.VRC.AntiRip
             public Mesh Scrambled;
             public bool Mixed;
             public int ShaderVertices;
-            public readonly Dictionary<SkinnedMeshRenderer, Material[]> Materials = new Dictionary<SkinnedMeshRenderer, Material[]>();
+            public readonly Dictionary<Renderer, Material[]> Materials = new Dictionary<Renderer, Material[]>();
+        }
+
+        /// <summary>3.16.2: the mesh a static MeshRenderer draws (its MeshFilter's), or null.</summary>
+        static Mesh StaticMeshOf(MeshRenderer r)
+        {
+            if (r == null) return null;
+            MeshFilter f = r.GetComponent<MeshFilter>();
+            return f != null ? f.sharedMesh : null;
+        }
+
+        /// <summary>
+        /// 3.16.2: how many extra key values a SYNCED long key may add: VRChat's synced-parameter budget, minus what the
+        /// avatar's own parameters already cost, minus the restore key (one float, 8 bits, per restore shape).
+        /// </summary>
+        static int FreeKeySlots(VRCAvatarDescriptor descriptor, int restoreGroups)
+        {
+            int used = 0;
+            try { used = descriptor != null && descriptor.expressionParameters != null ? descriptor.expressionParameters.CalcTotalCost() : 0; }
+            catch { used = 0; }
+            int free = global::VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters.MAX_PARAMETER_COST - used - Math.Max(1, restoreGroups) * 8;
+            return Math.Max(0, free / 8);
         }
 
         /// <summary>3.14: which sub-meshes of a mesh the shader takes, and which of its vertices it moves.</summary>
@@ -599,11 +793,13 @@ namespace KawaiiStudio.VRC.AntiRip
         /// that wears the mesh, is a locked Poiyomi or a lilToon (KSAntiRipLilToon.CanPatch); and the vertices only those sub-meshes use. Null when there are none,
         /// when an animation swaps the materials of one of its renderers, or when the mesh has no normals and tangents.
         /// </summary>
-        static ShaderChoice ChooseSubMeshes(Mesh mesh, List<SkinnedMeshRenderer> users, GameObject root, HashSet<string> swappedPaths)
+        static ShaderChoice ChooseSubMeshes(Mesh mesh, List<Renderer> users, GameObject root, HashSet<string> swappedPaths, bool staticMesh)
         {
             if (mesh == null || users.Count == 0) return null;
-            if (!mesh.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Normal) ||
-                !mesh.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Tangent)) return null;
+            // A static mesh without tangents gets them on its copy (TryShaderClose), which needs UVs to compute them.
+            if (!mesh.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Normal)) return null;
+            if (!mesh.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Tangent) &&
+                !(staticMesh && mesh.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.TexCoord0))) return null;
             foreach (var u in users)
                 if (swappedPaths.Contains(AnimationUtility.CalculateTransformPath(u.transform, root.transform))) return null;
 
@@ -659,11 +855,11 @@ namespace KawaiiStudio.VRC.AntiRip
         /// slots. Returns null to fall back to restore shapes for the whole mesh -- if any shader will not patch, nothing
         /// is changed.
         /// </summary>
-        static ShaderMesh TryShaderClose(Mesh original, List<SkinnedMeshRenderer> users, KSAntiRipClient.MeshPlan meshPlan,
+        static ShaderMesh TryShaderClose(Mesh original, List<Renderer> users, KSAntiRipClient.MeshPlan meshPlan,
                                          KSAntiRipClient.Plan plan, Settings settings, string folder,
                                          Dictionary<string, KSAntiRipShaderPatch.PatchResult> patchedShaders,
                                          Dictionary<Material, Material> patchedMats, ref int shaderIndex, List<string> warnings,
-                                         TextureWork textures = null, ShaderChoice choice = null)
+                                         TextureWork textures = null, ShaderChoice choice = null, bool staticMesh = false)
         {
             if (choice == null) return null;
             if (meshPlan.shaderIds.Length != original.vertexCount || meshPlan.shaderAmounts.Length != original.vertexCount)
@@ -724,8 +920,15 @@ namespace KawaiiStudio.VRC.AntiRip
 
             // The rest of the mesh, when there is one, keeps restore shapes: what the shader takes is zeroed in the
             // offsets and in every shape, so no vertex is moved by both, and the shapes close the others exactly as before.
+            // 3.16.2: a static mesh has no restore shapes -- its rest stays where it is; and a static mesh without
+            // tangents gets them computed on the copy (the restore moves vertices along normal and tangent).
             Mesh source = original;
-            if (!choice.Whole)
+            if (staticMesh && !original.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Tangent))
+            {
+                source = UnityEngine.Object.Instantiate(original);
+                source.RecalculateTangents();
+            }
+            if (!choice.Whole && !staticMesh)
             {
                 var offsets = (Vector3[])meshPlan.offsets.Clone();
                 var groups = meshPlan.groups.Select(g => (Vector3[])g.Clone()).ToList();
@@ -741,7 +944,7 @@ namespace KawaiiStudio.VRC.AntiRip
                                                                      settings.strength, out int moved);
             if (source != original) UnityEngine.Object.DestroyImmediate(source);
 
-            var result = new ShaderMesh { Scrambled = scrambled, Mixed = !choice.Whole, ShaderVertices = moved };
+            var result = new ShaderMesh { Scrambled = scrambled, Mixed = !choice.Whole && !staticMesh, ShaderVertices = moved };
             foreach (var smr in users)
             {
                 Material[] mats = smr.sharedMaterials;
@@ -791,6 +994,9 @@ namespace KawaiiStudio.VRC.AntiRip
             readonly Dictionary<Texture2D, KeyValuePair<Texture2D, uint>> _built = new Dictionary<Texture2D, KeyValuePair<Texture2D, uint>>();
             readonly HashSet<Texture2D> _failed = new HashSet<Texture2D>();
             readonly Dictionary<Texture2D, List<Material>> _users = new Dictionary<Texture2D, List<Material>>();
+            /// <summary>3.16.2, for the coverage report: why a texture asked for was finally left readable.</summary>
+            public readonly Dictionary<Texture2D, string> WhyNot = new Dictionary<Texture2D, string>();
+            public bool IsLaidOut(Texture2D t) => t != null && _built.ContainsKey(t);
 
             /// <summary>Gives <paramref name="patched"/> the laid-out copy of <paramref name="original"/>'s main texture
             /// and its id, or id 0 (read plainly) when that texture is not laid out.</summary>
@@ -835,6 +1041,7 @@ namespace KawaiiStudio.VRC.AntiRip
                 if (layout == null || layout.tid != expected)
                 {
                     _failed.Add(original);
+                    WhyNot[original] = "Kawaii Studio did not send its layout";
                     Warnings?.Add("A texture was left readable: Kawaii Studio did not send its layout.");
                     return false;
                 }
@@ -842,6 +1049,7 @@ namespace KawaiiStudio.VRC.AntiRip
                 if (laid == null)
                 {
                     _failed.Add(original);
+                    WhyNot[original] = why;
                     Warnings?.Add("A texture was left readable: " + why + ".");
                     return false;
                 }
@@ -887,6 +1095,7 @@ namespace KawaiiStudio.VRC.AntiRip
                             EditorUtility.SetDirty(m);
                         }
                     _built.Remove(t);
+                    WhyNot[t] = "another part of the avatar, or another slot of the same material, ships it as it is";
                     reverted++;
                 }
                 if (reverted > 0)

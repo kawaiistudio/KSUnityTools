@@ -69,6 +69,9 @@ namespace KawaiiStudio.VRC.AntiRip
             public readonly Dictionary<string, uint> textureTids = new Dictionary<string, uint>(StringComparer.Ordinal);
             public bool HasTextures => HasShader && !string.IsNullOrEmpty(textureCode) && !string.IsNullOrEmpty(textureFn) &&
                                        !string.IsNullOrEmpty(textureTidProperty) && textureBlock > 0 && textureTids.Count > 0;
+
+            /// <summary>3.16.2 (app engine 5.6+): what guessing the shader key takes, in bits; 0 from an older app.</summary>
+            public int shaderKeyBits;
         }
 
         /// <summary>3.14: a texture this package can lay out, by id, at its imported size.</summary>
@@ -170,7 +173,8 @@ namespace KawaiiStudio.VRC.AntiRip
         /// <summary>Asks for a plan. The app checks the account; a refusal arrives as ok=false with a reason.</summary>
         public static Plan Begin(string avatarId, string avatarName, IList<MeshInfo> meshes,
                                  float strength, int restoreGroups, int maxAddedMegabytes = 0,
-                                 IList<TextureInfo> textures = null, bool localKey = false)
+                                 IList<TextureInfo> textures = null, bool localKey = false,
+                                 bool longKey = false, int maxExtraKeySlots = -1)
         {
             var plan = new Plan();
             if (!Connect()) { plan.error = LastError; return plan; }
@@ -183,6 +187,9 @@ namespace KawaiiStudio.VRC.AntiRip
               .Append(",\"maxAddedMegabytes\":").Append(maxAddedMegabytes);
             // 3.16.1: the key stays on the wearer's PC, so the app lengthens the shader key (an app before 5.5 ignores it)
             if (localKey) sb.Append(",\"localKey\":true");
+            // 3.16.2: a SYNCED key lengthened too, with at most this many extra values (what the free synced bits pay
+            // for). An app before engine 5.6 ignores both.
+            if (longKey) sb.Append(",\"longKey\":true,\"maxExtraKeySlots\":").Append(maxExtraKeySlots);
             // 3.14: the textures to lay out (an app before v668 ignores the field)
             if (textures != null && textures.Count > 0)
             {
@@ -255,6 +262,7 @@ namespace KawaiiStudio.VRC.AntiRip
             plan.textureFn = Str(reply, "textureFn");
             plan.textureTidProperty = Str(reply, "textureTidProperty");
             plan.textureBlock = Int(reply, "textureBlock");
+            plan.shaderKeyBits = Int(reply, "shaderKeyBits");
             List<string> tids = StrList(reply, "textureTids"), tidIds = StrList(reply, "textureIds");
             for (int i = 0; i < tidIds.Count && i < tids.Count; i++)
                 if (uint.TryParse(tids[i], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out uint t) && t > 0)
@@ -387,6 +395,23 @@ namespace KawaiiStudio.VRC.AntiRip
                 string saved = LastError;
                 Send("POST", "/unity/antirip/report", sb.ToString(), null, 3000);
                 LastError = saved;   // a report's own trouble is not the protection's error
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// 3.16.2: the coverage report of a protected upload (KSAntiRipCoverage.ToJson), for the app's KS Anti-Rip page.
+        /// Best effort, like <see cref="Report"/>: an app before v674 does not know the route and nothing changes.
+        /// </summary>
+        public static void Coverage(string json)
+        {
+            if (string.IsNullOrEmpty(json)) return;
+            try
+            {
+                if (!Connect()) return;
+                string saved = LastError;
+                Send("POST", "/unity/antirip/coverage", json, null, 3000);
+                LastError = saved;
             }
             catch { }
         }

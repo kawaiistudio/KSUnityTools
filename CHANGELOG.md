@@ -11,6 +11,21 @@ blend shape follow the new names, so visemes, blinking, expressions and face tra
 dance in MMD worlds: they move the face by the standard names, so it would stay still. Your project's meshes and
 animations are never changed: the renamed copies are made for the upload only. Needs the app update to show the switch.
 
+**KS ANTI-RIP: static meshes are closed by their shader too.** Props and accessories that are not skinned (a weapon,
+a hat, a chain) have no restore shapes, so up to now they shipped as they are. With "Close static meshes too" (on by
+default, under the shader switch), those wearing a locked Poiyomi or a lilToon material are closed by their shader like
+the skinned meshes. A static mesh the shader cannot take is left exactly as it was, and the report says why.
+
+**KS ANTI-RIP: a long key, synced or not.** With "Long key" (on by default), a key sent to the other players is
+lengthened with the synced parameter bits your avatar has left, up to a 128-bit lock on the meshes their shader closes,
+so the avatar file alone is not enough to open them. It only takes bits nobody uses: your own parameters keep their room
+and the upload never goes over VRChat's limit. Someone in your instance with a modified client can still read a synced
+key. The laid-out textures now follow the whole key too, instead of a part of it. Needs the app update (engine 5.6).
+
+**KS ANTI-RIP: a protection report.** Every protected upload now says, part by part, what each mesh got (closed by its
+shader, restore shapes, or nothing) and why, which textures were laid out or left readable and why, and how long the key
+is. It is printed in the Unity console and shown on the app's KS Anti-Rip page.
+
 ## [3.16.1]
 
 **KS ANTI-RIP: people whose Safety blocks your animations see the Kawaii Studio poster, not a field of shards.**

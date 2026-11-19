@@ -52,5 +52,14 @@ namespace KawaiiStudio.VRC.AntiRip
                  "descriptor and the animations follow). Off by default: MMD worlds drive blend shapes by their standard " +
                  "names, so with this on the face stays still in MMD dances.")]
         public bool renameBlendShapes = false;
+
+        [Tooltip("With the key synced, lengthen it with the synced parameters your avatar has left (up to a 128-bit " +
+                 "shader key), so the avatar file alone is not enough to open it. A modified client in your instance " +
+                 "can still read synced values. On by default; a key kept on your PC is always long.")]
+        public bool longKey = true;
+
+        [Tooltip("Close static meshes (MeshRenderer) through their own shader too, when their materials are a locked " +
+                 "Poiyomi or a lilToon. A static mesh has no restore shapes, so the others stay as they are. On by default.")]
+        public bool protectStaticMeshes = true;
     }
 }

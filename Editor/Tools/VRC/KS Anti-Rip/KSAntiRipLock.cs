@@ -114,9 +114,10 @@ namespace KawaiiStudio.VRC.AntiRip
                 foreach (ShapeTarget t in targets.Where(t => t.slot == k))
                     clip.SetCurve(t.path, typeof(SkinnedMeshRenderer), "blendShape." + t.shapeName, Const(100f));
                 // 3.14: the shader key property, driven the same way -- 1 here, times the key parameter's k/127.
+                // 3.16.2: a static MeshRenderer closed by its shader is driven the same way, under its own type
                 if (materialTargets != null)
                     foreach (MaterialTarget t in materialTargets.Where(t => t.slot == k))
-                        clip.SetCurve(t.path, typeof(SkinnedMeshRenderer), "material." + t.property, Const(1f));
+                        clip.SetCurve(t.path, RendererTypeAt(avatar, t.path), "material." + t.property, Const(1f));
                 AssetDatabase.CreateAsset(clip, folder + "/" + clip.name + ".anim");
                 children[k] = new ChildMotion
                 {
@@ -169,8 +170,9 @@ namespace KawaiiStudio.VRC.AntiRip
                 if (hideRendererPaths != null)
                     foreach (string path in hideRendererPaths)
                     {
-                        hidden.SetCurve(path, typeof(SkinnedMeshRenderer), "m_Enabled", Const(0f));
-                        shown.SetCurve(path, typeof(SkinnedMeshRenderer), "m_Enabled", Const(1f));
+                        System.Type type = RendererTypeAt(avatar, path);
+                        hidden.SetCurve(path, type, "m_Enabled", Const(0f));
+                        shown.SetCurve(path, type, "m_Enabled", Const(1f));
                     }
                 // the rest: off while locked, and back to exactly what it was in the avatar once the key is here
                 foreach (Switch s in extra)
@@ -235,6 +237,16 @@ namespace KawaiiStudio.VRC.AntiRip
                           "animations switch them, and the lock leaves those alone so its toggles still work with the key.");
         }
 
+        /// <summary>The renderer type at <paramref name="path"/>: a skinned one, or (3.16.2, static meshes closed by their
+        /// shader) a MeshRenderer. An animation curve binds to one exact type.</summary>
+        static System.Type RendererTypeAt(GameObject avatar, string path)
+        {
+            Transform t = avatar == null ? null : string.IsNullOrEmpty(path) ? avatar.transform : avatar.transform.Find(path);
+            if (t != null && t.GetComponent<SkinnedMeshRenderer>() == null && t.GetComponent<MeshRenderer>() != null)
+                return typeof(MeshRenderer);
+            return typeof(SkinnedMeshRenderer);
+        }
+
         /// <summary>
         /// Saves off everything the show layer switches (the scrambled meshes and <paramref name="extra"/>), so the
         /// avatar with no animator running is the locked avatar. Only what the Shown state turns back on is touched.
@@ -248,8 +260,8 @@ namespace KawaiiStudio.VRC.AntiRip
                 foreach (string path in scrambled)
                 {
                     Transform t = At(path);
-                    SkinnedMeshRenderer smr = t != null ? t.GetComponent<SkinnedMeshRenderer>() : null;
-                    if (smr != null && smr.enabled) { smr.enabled = false; parked++; }
+                    Renderer r = t == null ? null : (Renderer)t.GetComponent<SkinnedMeshRenderer>() ?? t.GetComponent<MeshRenderer>();
+                    if (r != null && r.enabled) { r.enabled = false; parked++; }
                 }
             if (extra != null)
                 foreach (Switch s in extra)
