@@ -278,11 +278,24 @@ namespace KawaiiStudio.VRC.AntiRip
                         if (mats[i] != null) (c != null && c.PatchesSlot(i) ? willPatch : shipsAsIs).Add(mats[i]);
                 }
                 HashSet<Texture> usedElsewhere = TexturesOf(shipsAsIs);
+                // 3.14.1: a main texture that ANY patched material also samples through a second slot its shader
+                // declares (Layla's claws: _MatcapMask = the base colour) cannot be laid out: the restore code only
+                // un-scrambles the main-texture read, so that second read would show the mosaic to honest viewers,
+                // and the original would still ship in that slot. Gathered over every material first: two patched
+                // materials can share one texture and only one of them read it twice.
+                var liveDuplicate = new HashSet<Texture>();
+                foreach (Material mm in willPatch)
+                {
+                    var t = mm.HasProperty("_MainTex") ? mm.GetTexture("_MainTex") : null;
+                    if (t != null && LiveDuplicateSlot(mm, t)) liveDuplicate.Add(t);
+                }
+                if (liveDuplicate.Count > 0)
+                    result.warnings.Add(liveDuplicate.Count + " texture(s) left readable: a material also samples them through a second slot.");
                 foreach (Material mm in willPatch)
                 {
                     if (!mm.HasProperty("_MainTex")) continue;
                     var t = mm.GetTexture("_MainTex") as Texture2D;
-                    if (t == null || textureIdOf.ContainsKey(t) || usedElsewhere.Contains(t)) continue;
+                    if (t == null || textureIdOf.ContainsKey(t) || usedElsewhere.Contains(t) || liveDuplicate.Contains(t)) continue;
                     if (!KSAntiRipShaderPatch.CanLayOut(t, 32)) continue;
                     string tid = "t" + textureIdOf.Count;
                     textureIdOf[t] = tid;
@@ -746,6 +759,11 @@ namespace KawaiiStudio.VRC.AntiRip
                 if (t != null && Build(t, out Texture2D laid, out uint id))
                 {
                     patched.SetTexture("_MainTex", laid);
+                    // The copy inherits every saved slot of the original, stale ones included. A stale slot
+                    // (e.g. _BaseColorMap / _BaseMap from an earlier shader) still holds the ORIGINAL main texture
+                    // and would ship it readable, defeating the layout. The current shader does not read these
+                    // slots, so clearing them changes nothing on screen.
+                    StripSavedRefs(patched, t, "_MainTex");
                     tid = id;
                     if (!_users.TryGetValue(t, out List<Material> list)) _users[t] = list = new List<Material>();
                     list.Add(patched);
@@ -791,6 +809,12 @@ namespace KawaiiStudio.VRC.AntiRip
                     foreach (Material m in r.sharedMaterials)
                         if (m != null && !patched.Contains(m)) shipped.Add(m);
                 HashSet<Texture> exposed = TexturesOf(shipped);
+                // Safety net (3.14.1): a patched copy that still holds the original in another saved slot ships it
+                // too, so the texture is not "laid out" in any useful sense -- put it back and say so.
+                foreach (var kv in _users)
+                    foreach (Material m in kv.Value)
+                        foreach (var slot in SavedTextures(m))
+                            if (slot.Key != "_MainTex" && slot.Value == kv.Key) exposed.Add(kv.Key);
                 int reverted = 0;
                 foreach (Texture2D t in _built.Keys.ToList())
                 {
@@ -806,26 +830,96 @@ namespace KawaiiStudio.VRC.AntiRip
                     reverted++;
                 }
                 if (reverted > 0)
-                    Warnings?.Add(reverted + " texture(s) left readable: a part of the avatar that is not protected also uses them.");
+                    Warnings?.Add(reverted + " texture(s) left readable: another part of the avatar, or another slot of the same material, ships them as they are.");
                 if (_built.Count > 0)
                     Warnings?.Add(_built.Count + " texture(s) laid out from the key: a ripped copy shows them as a mosaic.");
             }
         }
 
-        /// <summary>Every texture any of <paramref name="materials"/> uses, through any texture property.</summary>
+        /// <summary>Every texture any of <paramref name="materials"/> carries, through ANY saved texture slot --
+        /// including ones the current shader no longer declares (stale slots left behind by an earlier shader, e.g.
+        /// _BaseColorMap / _BaseMap from a URP or lilToon past). Unity serialises every saved slot into the bundle
+        /// whether the shader reads it or not, so a stale slot ships its texture readable all the same. Read straight
+        /// from m_SavedProperties, so the answer does not depend on what the Material API chooses to list.</summary>
         static HashSet<Texture> TexturesOf(IEnumerable<Material> materials)
         {
             var set = new HashSet<Texture>();
             foreach (Material m in materials)
             {
                 if (m == null) continue;
-                foreach (string p in m.GetTexturePropertyNames())
-                {
-                    Texture t = m.GetTexture(p);
-                    if (t != null) set.Add(t);
-                }
+                foreach (var kv in SavedTextures(m))
+                    if (kv.Value != null) set.Add(kv.Value);
             }
             return set;
+        }
+
+        /// <summary>Reads m_SavedProperties.m_TexEnvs: (slot name, texture) for every saved texture slot of a
+        /// material, whether or not its current shader still declares the slot.</summary>
+        static List<KeyValuePair<string, Texture>> SavedTextures(Material m)
+        {
+            var list = new List<KeyValuePair<string, Texture>>();
+            var so = new SerializedObject(m);
+            SerializedProperty envs = so.FindProperty("m_SavedProperties.m_TexEnvs");
+            if (envs != null && envs.isArray)
+                for (int i = 0; i < envs.arraySize; i++)
+                {
+                    SerializedProperty e = envs.GetArrayElementAtIndex(i);
+                    string name = e.FindPropertyRelative("first")?.stringValue ?? "";
+                    var tex = e.FindPropertyRelative("second.m_Texture")?.objectReferenceValue as Texture;
+                    list.Add(new KeyValuePair<string, Texture>(name, tex));
+                }
+            so.Dispose();
+            return list;
+        }
+
+        /// <summary>True if a texture property DECLARED BY THE SHADER of <paramref name="m"/>, other than _MainTex,
+        /// carries the same texture as _MainTex -- a second read the restore code would not un-scramble. Walks the
+        /// shader's own property list: Material.GetTexturePropertyNames() also returns stale saved slots (bench,
+        /// 2026-11-18: an undeclared _BaseColorMap made it fire), and a stale slot is never read, so it is cleared
+        /// instead (StripSavedRefs).</summary>
+        static bool LiveDuplicateSlot(Material m, Texture mainTex)
+        {
+            Shader s = m.shader;
+            if (s == null || mainTex == null) return false;
+            for (int i = 0; i < s.GetPropertyCount(); i++)
+            {
+                if (s.GetPropertyType(i) != UnityEngine.Rendering.ShaderPropertyType.Texture) continue;
+                string p = s.GetPropertyName(i);
+                if (p != "_MainTex" && m.GetTexture(p) == mainTex) return true;
+            }
+            return false;
+        }
+
+        /// <summary>Nulls every STALE saved texture slot of <paramref name="m"/> (one its shader does not declare,
+        /// so never read on screen) that still points at <paramref name="tex"/>, except the names in
+        /// <paramref name="keep"/>. Called after the main texture has been laid out: the copy inherits the
+        /// original's saved slots, and a stale one (Layla's face/body: _BaseColorMap, _BaseMap) would otherwise ship
+        /// the original readable. A declared slot is left alone (LiveDuplicateSlot keeps such a texture readable,
+        /// and Finish checks what remains). Returns how many slots were cleared.</summary>
+        static int StripSavedRefs(Material m, Texture tex, params string[] keep)
+        {
+            var keepSet = new HashSet<string>(keep);
+            if (m.shader != null)
+                for (int i = 0; i < m.shader.GetPropertyCount(); i++) keepSet.Add(m.shader.GetPropertyName(i));
+            var so = new SerializedObject(m);
+            SerializedProperty envs = so.FindProperty("m_SavedProperties.m_TexEnvs");
+            int cleared = 0;
+            if (envs != null && envs.isArray)
+                for (int i = 0; i < envs.arraySize; i++)
+                {
+                    SerializedProperty e = envs.GetArrayElementAtIndex(i);
+                    string name = e.FindPropertyRelative("first")?.stringValue ?? "";
+                    if (keepSet.Contains(name)) continue;
+                    SerializedProperty texProp = e.FindPropertyRelative("second.m_Texture");
+                    if (texProp != null && texProp.objectReferenceValue == (UnityEngine.Object)tex)
+                    {
+                        texProp.objectReferenceValue = null;
+                        cleared++;
+                    }
+                }
+            if (cleared > 0) so.ApplyModifiedPropertiesWithoutUndo();
+            so.Dispose();
+            return cleared;
         }
 
         /// <summary>

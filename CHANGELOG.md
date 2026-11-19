@@ -2,6 +2,23 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.14.1]
+
+**KS ANTI-RIP: a laid-out texture no longer ships readable through another slot of the same material.**
+Fixes 3.14.0. Nothing changes unless "Close Poiyomi meshes with their own shader" is on.
+
+- **A second slot holding the same texture.** 3.14.0 laid out the main texture of a protected material but left its
+  other slots as they were. When one of them held that same texture, the original still shipped in the avatar, while
+  the upload said the texture was laid out. Seen on a real avatar: a claws material whose matcap mask is its own base
+  colour.
+- **Old slots from a previous shader** (for example `_BaseColorMap` or `_BaseMap` left behind by URP or lilToon). The
+  shader never reads them, but they still ship. They are now cleared on the protected copy, so the texture can be laid
+  out. Your own materials are never changed.
+- **A slot the shader really reads** (like that matcap mask) keeps the texture readable, and the upload now says so:
+  laying it out would have shown the mosaic to the people you allow.
+- Last check before the upload: a texture still held anywhere it would ship readable is put back and reported, so
+  "laid out" now always means the original does not ship.
+
 ## [3.14.0]
 
 **KS ANTI-RIP: meshes and textures closed by the avatar's own shader (optional, PC).**
