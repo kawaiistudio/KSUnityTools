@@ -2,6 +2,16 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.15.0]
+
+**KS ANTI-RIP: a protected upload marks the avatar's VRChat description so recovery tools skip it.**
+
+- After VRChat accepts a protected upload, three lines are added to the avatar's description, after your own
+  text: `Protected by Kawaii Studio`, `ARC BLACKLIST` (what avatar-recovery services read to leave an avatar
+  alone) and `vrcdp_blacklist` (the same for VRCDataPack). A line already there is not added again, and your
+  own text is never changed or cut.
+- If VRChat refuses the description change, it is only reported in the app log; the upload itself is untouched.
+
 ## [3.14.2]
 
 **KS ANTI-RIP: the developer test suites no longer ship with the package.** No change to what protection does.

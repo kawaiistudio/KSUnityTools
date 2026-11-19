@@ -125,6 +125,10 @@ namespace KawaiiStudio.VRC.AntiRip
         {
             if (!_watching) return;
             KSAntiRipClient.Report("VRChat accepted the protected upload" + (string.IsNullOrEmpty(id) ? "" : " (" + id + ")"));
+            // 3.15: once VRChat has the upload, add the recovery-blacklist lines to the avatar's description (idempotent,
+            // never throws, reports to the app log). The panel wrote its description before the bundle, so this is the
+            // last write and it sticks.
+            KSAntiRipDescription.Apply(id);
             Done();
         }
 
