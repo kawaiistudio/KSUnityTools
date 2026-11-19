@@ -2,6 +2,21 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.16.4]
+
+**KS ANTI-RIP: "Max size added" now caps everything the protection adds.** Before, it only sized the restore shapes,
+while the meshes closed by their shader -- which ship at full precision, because the shader needs their normals exactly
+-- were never counted. A large avatar could come out several MB over its budget, and over VRChat's 200 MB limit, whatever
+the setting said. Now the shader meshes are paid for first; when they would leave the restore shapes too little of the
+budget, the one that costs the most is protected by restore shapes instead (a static mesh, which has none, is left as it
+is), and the protection report says which and why. Measured on a 1-million-vertex avatar: +6.1 MB at 12 MB and +4.6 MB at
+8 MB, where it added 14.8 MB before. Raise the setting if your avatar has room under 200 MB to keep every mesh closed by
+its shader.
+
+**KS ANTI-RIP: smaller restore-shape meshes.** A scrambled mesh whose source used Mesh Compression now ships at Low
+compression instead of none. Measured through real bundles, its vertices come back within 0.007 mm and its restore
+shapes exactly, for 30 to 40 % less size. A mesh whose source was not compressed stays that way.
+
 ## [3.16.3]
 
 **KS ANTI-RIP: the app shows the settings your avatar really has.** When the Kawaii Studio app lists your avatars, each

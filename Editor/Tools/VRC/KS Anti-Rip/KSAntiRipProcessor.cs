@@ -323,6 +323,47 @@ namespace KawaiiStudio.VRC.AntiRip
                     staticChoice[sm] = c;
                 }
 
+            // 3.16.4, THE SIZE BUDGET PAYS FOR EVERYTHING (owner 2026-11-19: the protected avatar came out 203.4 MB, over
+            // VRChat's 200, and "Max size added" at 12 or 10 MB changed nothing). The app's engine spent the whole budget
+            // on restore shapes, while a mesh closed by its shader -- which takes no restore shape -- was never counted,
+            // yet ships with Mesh Compression Off: it has to, its normals and tangents must come back exact (the shader
+            // undoes a move of metres along them; Low compression alone left it up to 17 cm off). Measured through real
+            // bundles on the bench (KSSizeTest, KSMeshCompressionTest): that costs ~14 bytes per vertex over a compressed
+            // source (Wendigo Skull, 620 595 vertices: +8.5 MB) and ~3 over one that was already Off; a restore-shape
+            // mesh's base costs ~4 / ~1 more (it now ships Low, see KSAntiRipMesh). Those costs come out of the budget
+            // first; while they leave the restore shapes less than a quarter of it, the shader mesh that costs the most
+            // goes back to restore shapes (a static one, which has none, stays as it is); the engine gets what is left.
+            int engineMegabytes = settings.maxAddedMegabytes;
+            var overBudget = new HashSet<Mesh>();
+            if (settings.maxAddedMegabytes > 0)
+            {
+                bool Compressed(Mesh m) => MeshUtility.GetMeshCompression(m) != ModelImporterMeshCompression.Off;
+                long ShaderCost(Mesh m) => (long)m.vertexCount * (Compressed(m) ? 14 : 3);
+                long RestoreCost(Mesh m) => (long)m.vertexCount * (Compressed(m) ? 4 : 1);
+                long cap = settings.maxAddedMegabytes * 1048576L;
+                long Fixed() =>
+                    uniqueMeshes.Sum(m => shaderChoice.ContainsKey(m) ? ShaderCost(m) : RestoreCost(m)) +
+                    staticChoice.Keys.Sum(ShaderCost);
+                var costliest = shaderChoice.Keys.Select(m => (mesh: m, isStatic: false))
+                                .Concat(staticChoice.Keys.Select(m => (mesh: m, isStatic: true)))
+                                .OrderByDescending(x => ShaderCost(x.mesh)).ToList();
+                foreach (var x in costliest)
+                {
+                    if (cap - Fixed() >= cap / 4) break;
+                    if (x.isStatic) { staticChoice.Remove(x.mesh); uniqueStatic.Remove(x.mesh); }
+                    else { shaderChoice.Remove(x.mesh); shaderEligible.Remove(x.mesh); }
+                    overBudget.Add(x.mesh);
+                }
+                long left = cap - Fixed();
+                engineMegabytes = (int)Math.Max(1, left / 1048576L);
+                Debug.Log("[KS ANTI-RIP] size budget " + settings.maxAddedMegabytes + " MB: the shader and the mesh copies take ~" +
+                          ((cap - left) / 1048576.0).ToString("0.0") + " MB, the restore shapes get " + engineMegabytes + " MB" +
+                          (overBudget.Count > 0 ? "; " + overBudget.Count + " mesh(es) left to restore shapes or as they are, to stay within it" : ""));
+                if (overBudget.Count > 0)
+                    result.warnings.Add(overBudget.Count + " mesh(es) not closed by their shader, to stay within \"Max size added\" (" +
+                                        settings.maxAddedMegabytes + " MB). Raise it if the avatar has room under VRChat's 200 MB.");
+            }
+
             // the choice for any renderer, skinned or static
             ShaderChoice ChoiceOf(Renderer r)
             {
@@ -402,9 +443,10 @@ namespace KawaiiStudio.VRC.AntiRip
                 : root.name;
             try
             {
+                // 3.16.4: what the budget leaves for the restore shapes once the shader and the mesh copies are paid for
                 plan = textureRequest.Count > 0 && texturePlanSource != null
-                    ? texturePlanSource.Begin(blueprint, avatarName, request, textureRequest, settings.strength, settings.restoreGroups, settings.maxAddedMegabytes)
-                    : planSource.Begin(blueprint, avatarName, request, settings.strength, settings.restoreGroups, settings.maxAddedMegabytes);
+                    ? texturePlanSource.Begin(blueprint, avatarName, request, textureRequest, settings.strength, settings.restoreGroups, engineMegabytes)
+                    : planSource.Begin(blueprint, avatarName, request, settings.strength, settings.restoreGroups, engineMegabytes);
             }
             finally { EditorUtility.ClearProgressBar(); }
 
@@ -568,6 +610,7 @@ namespace KawaiiStudio.VRC.AntiRip
                 string WhyNotShader(Renderer r, Mesh m, bool isStatic)
                 {
                     if (!settings.shaderRestore) return "closing meshes with their shader is off";
+                    if (m != null && overBudget.Contains(m)) return "left out to stay within \"Max size added\" (" + settings.maxAddedMegabytes + " MB)";
                     if (mobile) return "a Quest/mobile build has no custom shaders";
                     if (isStatic && !settings.protectStaticMeshes) return "closing static meshes with their shader is off";
                     if (nameOf.TryGetValue(r, out string p) && swappedPaths.Contains(p)) return "an animation swaps its materials";

@@ -55,7 +55,16 @@ namespace KawaiiStudio.VRC.AntiRip
             // on 2026-11-17 on a real avatar: 3 of 30 meshes came back up to 1.55 cm off from the bundle, while the same
             // meshes built in memory restored to 0.008 mm. A scrambled copy must ship at full precision; a copy whose
             // vertices did not move (the size budget skipped it) keeps the source's compression and costs nothing more.
-            if (moved) MeshUtility.SetMeshCompression(copy, ModelImporterMeshCompression.Off);
+            // 3.16.4 (owner 2026-11-19: the protected avatar came out 203.4 MB, over VRChat's 200): measured through real
+            // bundles on the bench (KSMeshCompressionTest), it is HIGH that comes back cm off (5.9 mm .. 6.8 mm on a 12 m
+            // scramble); LOW brings every position back within 0.007 mm, and the restore shapes exactly, for 30-40 % less.
+            // So a scrambled copy of a compressed source ships Low; one whose source was Off stays Off, as its creator chose.
+            // (A mesh the SHADER also closes is set Off after this by KSAntiRipShaderPatch: its normals must come back
+            // exact, and Low puts that undo up to 17 cm off.)
+            if (moved)
+                MeshUtility.SetMeshCompression(copy, MeshUtility.GetMeshCompression(source) == ModelImporterMeshCompression.Off
+                                                         ? ModelImporterMeshCompression.Off
+                                                         : ModelImporterMeshCompression.Low);
 
             // The avatar's own shapes (visemes, expressions) are deltas relative to the base, so a uniform
             // per-vertex displacement leaves them valid. AddBlendShapeFrame appends, it does not replace.
