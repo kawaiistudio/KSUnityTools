@@ -30,7 +30,7 @@ namespace KawaiiStudio.VRC.AntiRip
             KawaiiStudioGUI.DrawBanner(
                 "KS ANTI-RIP",
                 "Controlled from the Kawaii Studio app",
-                KSAntiRipProcessor.Version,
+                KSAntiRipModuleLoader.Version,
                 KawaiiStudioBranding.Logo,
                 KawaiiStudioBranding.Banner);
 

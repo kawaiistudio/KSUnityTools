@@ -188,7 +188,7 @@ namespace KawaiiStudio.VRC.AntiRip
             string body = "{\"project\":" + Quote(Application.dataPath) +
                           ",\"name\":" + Quote(Application.productName) +
                           ",\"unity\":" + Quote(Application.unityVersion) +
-                          ",\"ks\":" + Quote("anti-rip " + KSAntiRipProcessor.Version) +
+                          ",\"ks\":" + Quote("anti-rip " + KSAntiRipModuleLoader.Version) +
                           ",\"pid\":" + System.Diagnostics.Process.GetCurrentProcess().Id +
                           ",\"active\":true}";
             string reply = Send("POST", "/unity/pair", body, d.secret, 8000);
@@ -408,6 +408,73 @@ namespace KawaiiStudio.VRC.AntiRip
             Send("POST", "/unity/antirip/end", "{\"session\":" + Quote(session) + "}", null, 8000);
         }
 
+        /// <summary>The protection module as the app hands it over, or why it did not.</summary>
+        public class ModuleReply
+        {
+            public bool ok;
+            public string error = "";
+            public bool needsPremium;
+            /// <summary>The module's own version, and the VRChat SDK range it was built for (empty = no bound).</summary>
+            public string version = "", minSdk = "", maxSdk = "", unity = "";
+            public byte[] bytes;
+        }
+
+        /// <summary>
+        /// Asks the app for the protection itself (see <see cref="KSAntiRipModuleLoader"/>). The app checks the
+        /// account and refuses below Premium exactly as it refuses a plan, so a refusal arrives as ok=false with a
+        /// reason worth showing the user rather than as a status code.
+        ///
+        /// The module travels as base64 inside the JSON: this bridge speaks text, and the reply goes through the same
+        /// parser as every other one -- the 2026-11-16 base64 bug lived in that parser, and anything with a parser of
+        /// its own could not have seen it.
+        /// </summary>
+        public static ModuleReply Module()
+        {
+            var reply = new ModuleReply();
+            if (!Connect()) { reply.error = LastError; return reply; }
+
+            const string Route = "/unity/antirip/module";
+            _lostApp = false;
+            string body = Send("GET", Route, null, null, 60000);
+            // The app restarted since this editor paired (the case Begin handles too): pair with the app that is
+            // running now and ask once more, instead of making the user retry by hand.
+            if (body == null && _lostApp)
+            {
+                _lostApp = false;
+                _token = "";
+                _port = 0;
+                if (!Connect()) { reply.error = LastError; return reply; }
+                body = Send("GET", Route, null, null, 60000);
+            }
+            if (body == null) { reply.error = LastError; return reply; }
+
+            if (!Flag(body, "ok"))
+            {
+                reply.error = Error(body);
+                reply.needsPremium = Flag(body, "needsPremium");
+                return reply;
+            }
+
+            string base64 = Str(body, "module");
+            if (string.IsNullOrEmpty(base64))
+            {
+                reply.error = "Kawaii Studio sent no protection module. Update the app, then try again.";
+                return reply;
+            }
+            try { reply.bytes = Convert.FromBase64String(base64); }
+            catch (FormatException e)
+            {
+                reply.error = "The protection module Kawaii Studio sent could not be read: " + e.Message;
+                return reply;
+            }
+            reply.version = Str(body, "version");
+            reply.minSdk = Str(body, "minSdk");
+            reply.maxSdk = Str(body, "maxSdk");
+            reply.unity = Str(body, "unity");
+            reply.ok = true;
+            return reply;
+        }
+
         /// <summary>
         /// Tells the app what happened in Unity, for KS ANTI-RIP's log there (3.12.2): the protection applied or
         /// refused, then the VRChat SDK's verdict with its own reasons. Best effort and quick: an app that does not know
@@ -527,11 +594,12 @@ namespace KawaiiStudio.VRC.AntiRip
                     LastError = "Kawaii Studio is not running. KS Anti-Rip needs the app: the protection itself lives there.";
                     return null;
                 }
-                // /begin only 404s when the app predates KS ANTI-RIP: the route does not exist yet. That is the
-                // exact case between a KS Unity Tools release and the app update reaching someone, so say what
-                // to do rather than pass "not found" through.
+                // /begin only 404s when the app predates KS ANTI-RIP, and /module when it predates the app-delivered
+                // protection: the route does not exist yet. That is the exact case between a KS Unity Tools release
+                // and the app update reaching someone, so say what to do rather than pass "not found" through.
                 if (e.Response is HttpWebResponse old && old.StatusCode == HttpStatusCode.NotFound &&
-                    path.StartsWith("/unity/antirip/begin", StringComparison.Ordinal))
+                    (path.StartsWith("/unity/antirip/begin", StringComparison.Ordinal) ||
+                     path.StartsWith("/unity/antirip/module", StringComparison.Ordinal)))
                 {
                     LastError = "Your Kawaii Studio is too old for KS Anti-Rip. Update the app, then try again.";
                     return null;

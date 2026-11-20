@@ -30,6 +30,11 @@ namespace KawaiiStudio.VRC.AntiRip
     /// happens at UPLOAD, in KSAntiRipBuildHook, on the avatar VRChat builds — non-destructive
     /// (owner, 2026-11-17: "pas recréer un prefab, au moment de l'upload"). antirip.protect stays for
     /// the old make-a-copy path, but the app no longer calls it.
+    ///
+    /// Three of these questions need the protection itself -- check and fix read an avatar the way a protection would
+    /// (KSAntiRipPreflight), and protect runs one -- so they are answered by the module the app delivers
+    /// (<see cref="KSAntiRipModuleLoader"/>). list, mark, unmark and select need nothing of it and are answered here:
+    /// the app must be able to show its page and set the switch whatever the account says.
     /// </summary>
     public static class KSLinkTools
     {
@@ -43,9 +48,9 @@ namespace KawaiiStudio.VRC.AntiRip
             switch (tool)
             {
                 case "antirip.list": return List();
-                case "antirip.check": return Check(argsJson);
-                case "antirip.fix": return Fix(argsJson);
-                case "antirip.protect": return Protect(argsJson);
+                case "antirip.check":
+                case "antirip.fix":
+                case "antirip.protect": return ToModule(tool, argsJson);
                 case "antirip.select": return Select(argsJson);
                 case "antirip.mark": return Mark(argsJson);
                 case "antirip.unmark": return Unmark(argsJson);
@@ -80,25 +85,6 @@ namespace KawaiiStudio.VRC.AntiRip
         }
 
         [Serializable]
-        class ProtectArgs
-        {
-            public string path = "";       // hierarchy path of the avatar root in its scene
-            public string scene = "";      // which open scene it is in
-            public float strength = 5f;
-            public int restoreGroups = 3;
-            public bool syncKey = true;    // others see the avatar whole; false keeps the key on this PC only
-            public bool hideWhileLocked = true;
-            public bool freezeWhileLocked = true;   // an app that does not send these two (before v660) gets the defaults
-            public bool lockedBadge = true;
-            public bool obfuscateNames = true;
-            public bool shaderRestore = false;      // an app before v667 does not send it: off
-            public bool renameBlendShapes = false;  // 3.16.2: an app before v674 does not send it: off
-            public bool longKey = true;             // 3.16.2: on unless the app says otherwise
-            public bool protectStaticMeshes = true; // 3.16.2: on unless the app says otherwise
-            public bool force = false;     // protect even though the check found blocking problems
-        }
-
-        [Serializable]
         class MarkArgs
         {
             public string path = "";
@@ -117,16 +103,6 @@ namespace KawaiiStudio.VRC.AntiRip
             public bool renameBlendShapes = false;  // 3.16.2: an app before v674 does not send it: off
             public bool longKey = true;             // 3.16.2: on unless the app says otherwise
             public bool protectStaticMeshes = true; // 3.16.2: on unless the app says otherwise
-        }
-
-        [Serializable]
-        class CheckArgs
-        {
-            public string path = "";
-            public string scene = "";
-            public int bits = 24;          // what the key will cost in synced bits: 8 per shape, 0 when local
-            public string fix = "";        // antirip.fix only: one repair id, or "all"
-            public bool again = false;     // forget cached online answers and ask VRChat afresh
         }
 
         // ── antirip.list ────────────────────────────────────────────────────────────────────────
@@ -282,92 +258,23 @@ namespace KawaiiStudio.VRC.AntiRip
             return "{\"ok\":true,\"marked\":false,\"message\":" + Q("Protection off for this avatar.") + "}";
         }
 
-        // ── antirip.check / antirip.fix ─────────────────────────────────────────────────────────
+        // ── antirip.check / antirip.fix / antirip.protect ───────────────────────────────────────
+        //
+        // These three read or run the protection itself, which is not in this package: the app delivers it to an
+        // entitled session (KSAntiRipModuleLoader). A refusal is a plain ok=false with the reason, the same shape the
+        // app already knows from every other answer here -- the page shows the sentence rather than a status code.
 
-        static string Check(string argsJson)
+        static string ToModule(string tool, string argsJson)
         {
-            CheckArgs args = ReadCheckArgs(argsJson);
-            if (args.again) KSAntiRipPreflight.Forget();
-            return KSAntiRipPreflight.Report(args.path, args.scene, args.bits);
-        }
-
-        static string Fix(string argsJson)
-        {
-            CheckArgs args = ReadCheckArgs(argsJson);
-            return KSAntiRipPreflight.Repair(args.fix, args.path, args.scene, args.bits);
-        }
-
-        static CheckArgs ReadCheckArgs(string argsJson)
-        {
-            CheckArgs args;
-            try { args = JsonUtility.FromJson<CheckArgs>(argsJson) ?? new CheckArgs(); }
-            catch { args = new CheckArgs(); }
-            if (args.bits < 0) args.bits = 0;   // 0 is real: a local key costs no synced bits
-            return args;
-        }
-
-        // ── antirip.protect ─────────────────────────────────────────────────────────────────────
-
-        static string Protect(string argsJson)
-        {
-            ProtectArgs args;
-            try { args = JsonUtility.FromJson<ProtectArgs>(argsJson) ?? new ProtectArgs(); }
-            catch (Exception e) { return Fail("could not read the request: " + e.Message); }
-
-            if (string.IsNullOrEmpty(args.path)) return Fail("no avatar was named");
-
-            GameObject avatar = FindAvatar(args.path, args.scene);
-            if (avatar == null)
-                return Fail("\"" + args.path + "\" is not in the open scenes any more — reopen it and try again");
-            if (avatar.GetComponent<VRCAvatarDescriptor>() == null)
-                return Fail("\"" + args.path + "\" has no VRC Avatar Descriptor");
-
-            var settings = new KSAntiRipProcessor.Settings
+            if (!KSAntiRipModuleLoader.Ensure(out string why)) return Fail(why);
+            try
             {
-                strength = args.strength <= 0f ? 5f : args.strength,
-                restoreGroups = args.restoreGroups <= 0 ? 3 : args.restoreGroups,
-                syncKey = args.syncKey,
-                hideWhileLocked = args.hideWhileLocked,
-                freezeWhileLocked = args.freezeWhileLocked,
-                lockedBadge = args.lockedBadge,
-                obfuscateNames = args.obfuscateNames,
-                shaderRestore = args.shaderRestore,
-                renameBlendShapes = args.renameBlendShapes,
-                longKey = args.longKey,
-                protectStaticMeshes = args.protectStaticMeshes,
-            };
-
-            // The gate, not a courtesy: a protection that ends in an upload VRChat refuses has still rewritten
-            // meshes and burned a key. The app greys its button on the same report, but the app is not the only
-            // thing that can call this, so the refusal lives here as well.
-            if (!args.force)
-            {
-                string report = KSAntiRipPreflight.Report(args.path, args.scene, settings.KeyBits);
-                if (report.IndexOf("\"ok\":false", StringComparison.Ordinal) >= 0)
-                    return "{\"ok\":false,\"message\":" + Q("Not ready yet — see the checks.") +
-                           ",\"blocked\":true,\"report\":" + report + "}";
+                return KSAntiRipModuleLoader.Link(tool, argsJson);
             }
-
-            KSAntiRipProcessor.Result result = KSAntiRipProcessor.Protect(avatar, settings);
-
-            var sb = new StringBuilder();
-            sb.Append("{\"ok\":").Append(result.ok ? "true" : "false")
-              .Append(",\"message\":").Append(Q(result.message))
-              .Append(",\"needsPremium\":").Append(result.needsPremium ? "true" : "false")
-              .Append(",\"prefab\":").Append(Q(result.prefabPath))
-              .Append(",\"folder\":").Append(Q(result.folder))
-              .Append(",\"keyPath\":").Append(Q(result.keyPath))
-              .Append(",\"meshes\":").Append(result.meshesProtected)
-              .Append(",\"vertices\":").Append(result.verticesProtected)
-              .Append(",\"renamed\":").Append(result.objectsRenamed)
-              .Append(",\"warnings\":[");
-            for (int i = 0; i < result.warnings.Count; i++)
+            catch (Exception e)
             {
-                if (i > 0) sb.Append(',');
-                sb.Append(Q(result.warnings[i]));
+                return Fail("the protection could not answer " + tool + ": " + e.Message);
             }
-            sb.Append("]}");
-            return sb.ToString();
         }
 
         // ── plumbing ────────────────────────────────────────────────────────────────────────────

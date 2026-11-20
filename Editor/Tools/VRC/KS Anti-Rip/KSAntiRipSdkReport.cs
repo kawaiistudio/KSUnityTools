@@ -83,7 +83,18 @@ namespace KawaiiStudio.VRC.AntiRip
         static void OnBuildSuccess(object sender, string bundlePath)
         {
             if (!_watching) return;
-            KSAntiRipSizes.AfterBuild(bundlePath);
+            // The measuring lives in the module (KSAntiRipSizes), which a protected build has already loaded; with no
+            // module there was no protected build to measure.
+            if (!KSAntiRipModuleLoader.Loaded) return;
+            try
+            {
+                KSAntiRipModuleLoader.AfterBuild(bundlePath);
+            }
+            catch (Exception e)
+            {
+                // A report must never hold up or fail a build.
+                Debug.LogWarning("[KS ANTI-RIP] could not measure the protected build: " + e.Message);
+            }
         }
 
         static bool _errorSeen;
@@ -136,8 +147,18 @@ namespace KawaiiStudio.VRC.AntiRip
             KSAntiRipClient.Report("VRChat accepted the protected upload" + (string.IsNullOrEmpty(id) ? "" : " (" + id + ")"));
             // 3.15: once VRChat has the upload, add the recovery-blacklist lines to the avatar's description (idempotent,
             // never throws, reports to the app log). The panel wrote its description before the bundle, so this is the
-            // last write and it sticks.
-            KSAntiRipDescription.Apply(id);
+            // last write and it sticks. It is the module's (KSAntiRipDescription), loaded by the build that just went up.
+            if (KSAntiRipModuleLoader.Loaded)
+            {
+                try
+                {
+                    KSAntiRipModuleLoader.ApplyDescription(id);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning("[KS ANTI-RIP] could not add the blacklist lines to the avatar description: " + e.Message);
+                }
+            }
             Done();
         }
 
