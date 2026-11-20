@@ -338,15 +338,19 @@ namespace KawaiiStudio.VRC.AntiRip
             if (settings.maxAddedMegabytes > 0)
             {
                 bool Compressed(Mesh m) => MeshUtility.GetMeshCompression(m) != ModelImporterMeshCompression.Off;
-                long ShaderCost(Mesh m) => (long)m.vertexCount * (Compressed(m) ? 14 : 3);
+                // 3.16.5: with app v678+, a static mesh moves along public directions and keeps a compression (Low):
+                // measured on the 620 595-vertex Wendigo Skull, ~5.4 bytes a vertex over its Medium source, not ~14
+                bool axes = KSAntiRipClient.RunningAppVersion() >= KSAntiRipClient.AxesFromAppVersion;
+                long ShaderCost(Mesh m, bool isStatic) =>
+                    (long)m.vertexCount * (!Compressed(m) ? 3 : isStatic && axes ? 6 : 14);
                 long RestoreCost(Mesh m) => (long)m.vertexCount * (Compressed(m) ? 4 : 1);
                 long cap = settings.maxAddedMegabytes * 1048576L;
                 long Fixed() =>
-                    uniqueMeshes.Sum(m => shaderChoice.ContainsKey(m) ? ShaderCost(m) : RestoreCost(m)) +
-                    staticChoice.Keys.Sum(ShaderCost);
+                    uniqueMeshes.Sum(m => shaderChoice.ContainsKey(m) ? ShaderCost(m, false) : RestoreCost(m)) +
+                    staticChoice.Keys.Sum(m => ShaderCost(m, true));
                 var costliest = shaderChoice.Keys.Select(m => (mesh: m, isStatic: false))
                                 .Concat(staticChoice.Keys.Select(m => (mesh: m, isStatic: true)))
-                                .OrderByDescending(x => ShaderCost(x.mesh)).ToList();
+                                .OrderByDescending(x => ShaderCost(x.mesh, x.isStatic)).ToList();
                 foreach (var x in costliest)
                 {
                     if (cap - Fixed() >= cap / 4) break;
@@ -983,8 +987,10 @@ namespace KawaiiStudio.VRC.AntiRip
                 }
                 source = KSAntiRipMesh.Apply(original, offsets, groups, meshPlan.shapeNames);
             }
+            // 3.16.5: a static mesh moves along its id's public directions when the app's shader code can undo that
+            // (plan.shaderAxes, app v678+), and can then ship compressed
             Mesh scrambled = KSAntiRipShaderPatch.BuildScrambledMesh(source, choice.Move, meshPlan.shaderIds, meshPlan.shaderAmounts,
-                                                                     settings.strength, out int moved);
+                                                                     settings.strength, staticMesh && plan.shaderAxes, out int moved);
             if (source != original) UnityEngine.Object.DestroyImmediate(source);
 
             var result = new ShaderMesh { Scrambled = scrambled, Mixed = !choice.Whole && !staticMesh, ShaderVertices = moved };

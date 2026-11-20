@@ -2,6 +2,16 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.16.5]
+
+**KS ANTI-RIP: large static meshes stay protected within "Max size added".** A static mesh closed by its shader used to
+ship without any compression, because the shader undid its scramble along its normals, which compression rounds: a
+620 000-vertex prop cost about 9 MB, so 3.16.4 had to leave it unprotected to keep the avatar under 200 MB. With
+Kawaii Studio v678 or newer, a static mesh now moves along two directions drawn from each vertex's own id, which nothing
+rounds, so it keeps its compression: the same prop costs about 3 MB, and the size budget keeps it closed. With the key it
+comes back exactly (every vertex within 0.0001 mm on the bench); without it, it stays scrambled. Skinned meshes are
+unchanged. An older app keeps the 3.16.4 behaviour.
+
 ## [3.16.4]
 
 **KS ANTI-RIP: "Max size added" now caps everything the protection adds.** Before, it only sized the restore shapes,

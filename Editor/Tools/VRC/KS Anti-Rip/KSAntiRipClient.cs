@@ -72,7 +72,18 @@ namespace KawaiiStudio.VRC.AntiRip
 
             /// <summary>3.16.2 (app engine 5.6+): what guessing the shader key takes, in bits; 0 from an older app.</summary>
             public int shaderKeyBits;
+
+            /// <summary>3.16.5 (app engine 5.7+, v678): the shader code also undoes a static mesh moved along its id's
+            /// public directions (UV7.w = 1), which may then ship compressed. False from an older app.</summary>
+            public bool shaderAxes;
         }
+
+        /// <summary>3.16.5: the paired Kawaii Studio's version (0 until paired, or from an app that does not say).
+        /// The size budget is decided before the plan arrives, so it reads what the app can do from here.</summary>
+        public static int AppVersion;
+
+        /// <summary>The first app whose shader code undoes a static mesh moved along public directions.</summary>
+        public const int AxesFromAppVersion = 678;
 
         /// <summary>3.14: a texture this package can lay out, by id, at its imported size.</summary>
         public class TextureInfo
@@ -127,6 +138,22 @@ namespace KawaiiStudio.VRC.AntiRip
         {
             public int port;
             public string secret = "";
+            public string version = "";   // Updater.Version of the running app
+        }
+
+        /// <summary>3.16.5: the running Kawaii Studio's version, from its pairing file (no pairing needed); 0 when it
+        /// cannot be read. A test may set <see cref="AppVersion"/> instead: a non-zero value there wins.</summary>
+        public static int RunningAppVersion()
+        {
+            if (AppVersion > 0) return AppVersion;
+            try
+            {
+                string file = Path.Combine(DiscoveryFolder, "bridge.json");
+                if (!File.Exists(file)) return 0;
+                Discovery d = JsonUtility.FromJson<Discovery>(File.ReadAllText(file));
+                return d != null && int.TryParse(d.version, out int v) ? v : 0;
+            }
+            catch { return 0; }
         }
 
         /// <summary>Pairs if needed. False with LastError set when the app is not reachable.</summary>
@@ -263,6 +290,7 @@ namespace KawaiiStudio.VRC.AntiRip
             plan.textureTidProperty = Str(reply, "textureTidProperty");
             plan.textureBlock = Int(reply, "textureBlock");
             plan.shaderKeyBits = Int(reply, "shaderKeyBits");
+            plan.shaderAxes = Flag(reply, "shaderAxes");
             List<string> tids = StrList(reply, "textureTids"), tidIds = StrList(reply, "textureIds");
             for (int i = 0; i < tidIds.Count && i < tids.Count; i++)
                 if (uint.TryParse(tids[i], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out uint t) && t > 0)

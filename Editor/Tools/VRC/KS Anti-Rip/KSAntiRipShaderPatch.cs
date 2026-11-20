@@ -72,6 +72,35 @@ namespace KawaiiStudio.VRC.AntiRip
         /// </summary>
         public static Mesh BuildScrambledMesh(Mesh source, bool[] move, Vector2[] ids, Vector2[] amounts,
                                               float strength, out int moved)
+            => BuildScrambledMesh(source, move, ids, amounts, strength, false, out moved);
+
+        /// <summary>
+        /// The two directions a STATIC mesh's vertex moves along when <c>axes</c> is set (3.16.5, app engine 5.7+),
+        /// drawn from its id by a PUBLIC hash: the very floats the shader computes (24-bit integers scaled by 2^-24,
+        /// exact in both), so the undo is exact. As public as a normal and tangent are: the secret stays a and b.
+        /// </summary>
+        public static void AxisOf(uint id, out Vector3 d1, out Vector3 d2)
+        {
+            uint x0 = PubHash(id ^ 0x68e31da4u), x1 = PubHash(x0 + 0x1b56c4e9u), x2 = PubHash(x1 + 0x1b56c4e9u);
+            uint x3 = PubHash(x2 + 0x1b56c4e9u), x4 = PubHash(x3 + 0x1b56c4e9u), x5 = PubHash(x4 + 0x1b56c4e9u);
+            const float s = 1f / 16777216f;
+            d1 = new Vector3((x0 >> 8) * s - 0.5f, (x1 >> 8) * s - 0.5f, (x2 >> 8) * s - 0.5f);
+            d2 = new Vector3((x3 >> 8) * s - 0.5f, (x4 >> 8) * s - 0.5f, (x5 >> 8) * s - 0.5f);
+        }
+
+        static uint PubHash(uint x)
+        {
+            unchecked { x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16; return x; }
+        }
+
+        /// <summary>
+        /// <paramref name="axes"/> (3.16.5, static meshes, app v678+): the vertices move along <see cref="AxisOf"/>
+        /// instead of their normal and tangent, and carry w = 1 in UV7. Nothing then depends on the normals' precision,
+        /// so the copy keeps a compression (Low for a compressed source: positions within 0.007 mm through a real
+        /// bundle, ids exact) -- the normal-frame undo needs Off, ~9 MB more on a 620 595-vertex static mesh.
+        /// </summary>
+        public static Mesh BuildScrambledMesh(Mesh source, bool[] move, Vector2[] ids, Vector2[] amounts,
+                                              float strength, bool axes, out int moved)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             int n = source.vertexCount;
@@ -95,6 +124,29 @@ namespace KawaiiStudio.VRC.AntiRip
             var norOut = haveFrames ? new Vector3[n] : null;
             var tanOut = haveFrames ? new Vector4[n] : null;
             moved = 0;
+            if (axes)
+            {
+                // the mesh keeps its own normals and tangents (nothing depends on them): only positions and UV7 change
+                for (int i = 0; i < n; i++)
+                {
+                    if (!move[i]) { uv7.Add(Vector4.zero); continue; }
+                    float a = amounts[i].x * strength, b = amounts[i].y * strength;
+                    float ix = Mathf.Round(ids[i].x), iy = Mathf.Round(ids[i].y);
+                    AxisOf((uint)ix | ((uint)iy << 11), out Vector3 d1, out Vector3 d2);
+                    pos[i] += a * d1 + b * d2;
+                    uv7.Add(new Vector4(ix, iy, strength, 1f));
+                    moved++;
+                }
+                copy.vertices = pos;
+                copy.SetUVs(7, uv7);
+                // the creator's compression, at most Low (High puts a scrambled position cm off)
+                if (moved > 0 && MeshUtility.GetMeshCompression(source) != ModelImporterMeshCompression.Off)
+                    MeshUtility.SetMeshCompression(copy, ModelImporterMeshCompression.Low);
+                else if (moved > 0)
+                    MeshUtility.SetMeshCompression(copy, ModelImporterMeshCompression.Off);
+                copy.bounds = originalBounds;
+                return copy;   // blend shapes (a static mesh has none as a rule) are kept as they are: the move ignores them
+            }
             for (int i = 0; i < n; i++)
             {
                 if (!haveFrames) { uv7.Add(Vector4.zero); continue; }
