@@ -104,9 +104,14 @@ namespace KawaiiStudio.VRC.AntiRip
                 // 3.17.1, AUTO: measure the avatar as it stands now -- after VRCFury, Modular Avatar and NDMF, as VRChat will
                 // build it -- and give the protection exactly the room left under VRChat's limits (KSAntiRipSizes.AutoCaps).
                 // A measure that fails keeps the caps the app sent (the room its last upload left), and says so.
-                // A Build & Test is not uploaded and the SDK checks no size for it: the caps the app sent stand.
+                // A Build & Test is not uploaded and the SDK checks no size for it: the caps the app sent stand. Nor is a
+                // play-mode build (VRCFury / NDMF run these callbacks when you press Play), and Unity cannot build a bundle
+                // in play mode anyway (owner's editor, 2026-11-20: "Building AssetBundles while in play mode is not allowed").
                 string autoNote = "";
-                if (autoSize && !testBuild)
+                if (autoSize && !testBuild && EditorApplication.isPlayingOrWillChangePlaymode)
+                    Debug.Log("[KS ANTI-RIP] Auto size: play mode, nothing is uploaded -- the size the app sent stands (" +
+                              settings.maxAddedMegabytes + " MB)");
+                else if (autoSize && !testBuild)
                 {
                     var t0 = DateTime.Now;
                     if (KSAntiRipSizes.AutoCaps(avatarGameObject, folder, out int capC, out int capU, out autoNote))
