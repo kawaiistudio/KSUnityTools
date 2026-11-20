@@ -2,6 +2,35 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.17.1]
+
+**KS ANTI-RIP: Auto measures the avatar at the upload itself, after VRCFury and Modular Avatar.** With "Size added:
+automatic" (Kawaii Studio v679 or newer), the build hook no longer relies on the previous upload: it runs after VRCFury,
+Modular Avatar and NDMF have merged everything, builds the avatar once the way the VRChat SDK does, asks the SDK's own
+checks what that weighs (200 MB, 500 MB uncompressed), and gives the protection exactly what is left under both limits,
+minus a small margin. A dress added since the last upload, or a VRCFury toggle that brings a mesh, is in the measure. What
+the protection costs beyond its own count (its animator, its lock, the restored fallback shaders) is learned from the
+avatar's last protected upload, measured by the SDK; the first upload uses an allowance measured on the bench. It costs
+one extra build per upload. With no room left at all, the upload log says so before the SDK refuses it.
+
+**KS ANTI-RIP: "Bundle too big" offers FULL LOCAL.** When Auto measures an avatar that alone already reaches VRChat's
+limit, there is no room for the protection and VRChat would refuse the upload anyway: the upload now stops right there,
+before minutes of protection for nothing, with "Bundle too big: this avatar cannot be protected", and asks whether to use
+the FULL LOCAL option instead. FULL LOCAL is VRChat's own Build & Test, started for the same avatar as soon as the SDK is
+ready: the avatar stays on this PC and is never uploaded, so nobody can download it from VRChat, and you wear it from
+your SDK test avatars. That one build is not protected (it never leaves the PC). The SDK checks no size for a Build &
+Test, and a Build & Test of a protected avatar skips the size measure.
+
+**KS ANTI-RIP: the synced key fits in the bits left after the build tools, or the upload stops with the reason.** The key
+is counted inside the build hook, after VRCFury and Modular Avatar added their own parameters (the bench proves it through
+the SDK's real preprocess chain: VRCFury adds its own bits there, and the long key takes exactly what is left). New: when
+the restore key itself no longer fits -- 8 synced bits per restore group -- it takes the groups that fit and the upload
+log says so; when not even one fits, the upload stops with the reason instead of going over VRChat's 256 (before, the
+build went over and another tool squeezed it back behind the creator's back).
+
+**KS ANTI-RIP: Auto keeps room for its own count's error.** The cap is the room left divided by 1.03 (1.05 uncompressed):
+on the bench, a tight limit that leaves other meshes out than the last upload did moved the protection's cost by ~1.7 MB.
+
 ## [3.17.0]
 
 **KS ANTI-RIP: the size the protection may add is measured, not guessed.** Right after the VRChat SDK builds a protected

@@ -47,6 +47,11 @@ namespace KawaiiStudio.VRC.AntiRip
                  "Studio app sets it from the room your last upload left under 500 MB when its size is on Auto.")]
         public int maxAddedUncompressedMegabytes = 0;
 
+        [Tooltip("3.17.1: at upload, measure the avatar as it really stands (after VRCFury, Modular Avatar and the others) " +
+                 "before protecting it, and give the protection exactly the room left under VRChat's limits (200 MB, 500 MB " +
+                 "uncompressed). Costs one extra build. The Kawaii Studio app sets it with \"Size added: automatic\".")]
+        public bool autoSize = false;
+
         [Tooltip("The meshes whose shader allows it (locked Poiyomi, lilToon) are closed by that shader instead of by restore " +
                  "shapes. Someone who blocks the wearer's shaders sees the Kawaii Studio poster instead of the avatar. " +
                  "PC only. On by default (3.16.1); the meshes it cannot close keep the restore shapes.")]

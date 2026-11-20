@@ -60,11 +60,23 @@ namespace KawaiiStudio.VRC.AntiRip
                 return true;   // not a KS-protected upload: leave it exactly alone
             }
 
+            var pipeline = avatarGameObject.GetComponent<global::VRC.Core.PipelineManager>();
+            string blueprintId = pipeline != null ? pipeline.blueprintId : "";
+            // 3.17.1, FULL LOCAL: the Build & Test this hook asked for when the avatar was too big to be protected. It never
+            // leaves this PC (a test build is not uploaded), so it is built as it is, without the protection.
+            bool testBuild = KSAntiRipFullLocal.ActiveBuildType() == "Test";
+            if (testBuild && KSAntiRipFullLocal.TakePending(blueprintId))
+            {
+                UnityEngine.Object.DestroyImmediate(mark);
+                KSAntiRipSdkReport.Forget();
+                Report("FULL LOCAL: Build & Test of the avatar as it is, without the protection: it stays on this PC and is never uploaded");
+                return true;
+            }
+
             // From here the app's KS ANTI-RIP log hears how this upload ends (3.12.2), and (3.17) the build's real sizes,
             // under the avatar's blueprint id (the same on the SDK's build copy as on the avatar the app lists)
             KSAntiRipSdkReport.Watch();
-            var pipeline = avatarGameObject.GetComponent<global::VRC.Core.PipelineManager>();
-            KSAntiRipSizes.Begin(pipeline != null ? pipeline.blueprintId : "");
+            KSAntiRipSizes.Begin(blueprintId);
             try
             {
                 // Strip the mark first: it must never ship, and if protection throws we still want it gone.
@@ -84,9 +96,57 @@ namespace KawaiiStudio.VRC.AntiRip
                     longKey = mark.longKey,
                     protectStaticMeshes = mark.protectStaticMeshes,
                 };
+                bool autoSize = mark.autoSize;
                 UnityEngine.Object.DestroyImmediate(mark);
 
                 string folder = EnsureBuildFolder();
+
+                // 3.17.1, AUTO: measure the avatar as it stands now -- after VRCFury, Modular Avatar and NDMF, as VRChat will
+                // build it -- and give the protection exactly the room left under VRChat's limits (KSAntiRipSizes.AutoCaps).
+                // A measure that fails keeps the caps the app sent (the room its last upload left), and says so.
+                // A Build & Test is not uploaded and the SDK checks no size for it: the caps the app sent stand.
+                string autoNote = "";
+                if (autoSize && !testBuild)
+                {
+                    var t0 = DateTime.Now;
+                    if (KSAntiRipSizes.AutoCaps(avatarGameObject, folder, out int capC, out int capU, out autoNote))
+                    {
+                        settings.maxAddedMegabytes = capC;
+                        settings.maxAddedUncompressedMegabytes = capU;
+                    }
+                    autoNote = "Auto size: " + autoNote + " (" + (int)(DateTime.Now - t0).TotalSeconds + " s)";
+                    Debug.Log("[KS ANTI-RIP] " + autoNote);
+                    Report(autoNote);
+
+                    // 3.17.1: BUNDLE TOO BIG. The avatar alone is at VRChat's limit: there is no room for the protection and
+                    // the SDK would refuse the upload anyway. Stop here (before minutes of protection for nothing) and offer
+                    // FULL LOCAL: VRChat's Build & Test, which is never uploaded (KSAntiRipFullLocal).
+                    if (KSAntiRipSizes.NoRoom)
+                    {
+                        KSAntiRipSdkReport.Forget();
+                        CleanBuildFolders();
+                        string why = "Bundle too big: this avatar cannot be protected. Before protection it already weighs " +
+                                     Mb(KSAntiRipSizes.PreCompressed) + " MB of VRChat's " + Mb(KSAntiRipSizes.LimitCompressedSeen) + " MB" +
+                                     (KSAntiRipSizes.PreUncompressed > 0 ? " (" + Mb(KSAntiRipSizes.PreUncompressed) + " of " + Mb(KSAntiRipSizes.LimitUncompressedSeen) + " MB uncompressed)" : "") +
+                                     ", which leaves no room for the protection.";
+                        Report("the upload was stopped: " + why);
+                        bool local = !Application.isBatchMode && EditorUtility.DisplayDialog("KS Anti-Rip: bundle too big",
+                            why + "\n\nUse the FULL LOCAL option instead?\n\nThe VRChat SDK builds the avatar with Build & Test: it stays " +
+                            "on this PC and is never uploaded, so nobody can download or rip it from VRChat. You wear it in game " +
+                            "from your SDK test avatars (Avatars > Other).",
+                            "Use Full Local (Build & Test)", "Cancel the upload");
+                        if (local)
+                        {
+                            if (KSAntiRipFullLocal.Request(blueprintId))
+                                Report("FULL LOCAL chosen: the Build & Test starts as soon as the SDK is ready");
+                            else
+                                EditorUtility.DisplayDialog("KS Anti-Rip", "The VRChat SDK panel is not open, so the Build & Test could not " +
+                                                            "start. Open it and choose \"Build & Test\".", "OK");
+                        }
+                        return false;
+                    }
+                }
+
                 var result = new KSAntiRipProcessor.Result();
                 KSAntiRipProcessor.ProtectInPlace(avatarGameObject, settings, PlanSourceForTests, folder, result);
 
@@ -126,6 +186,8 @@ namespace KawaiiStudio.VRC.AntiRip
                 return false;
             }
         }
+
+        static string Mb(long bytes) => (bytes / 1048576.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
 
         const string BuildPrefix = "_build_";
 

@@ -112,6 +112,7 @@ namespace KawaiiStudio.VRC.AntiRip
             public bool obfuscateNames = true;
             public int maxAddedMegabytes = 12;
             public int maxAddedUncompressedMegabytes = 0;   // 3.17: an app before v679 does not send it: no limit
+            public bool autoSize = false;           // 3.17.1: measure at upload; an app that does not send it: off
             public bool shaderRestore = false;      // an app before v667 does not send it: off
             public bool renameBlendShapes = false;  // 3.16.2: an app before v674 does not send it: off
             public bool longKey = true;             // 3.16.2: on unless the app says otherwise
@@ -138,7 +139,7 @@ namespace KawaiiStudio.VRC.AntiRip
             // of calling a question the project cannot answer -- this matters while v653 is out but 3.10.0 is not.
             // canShader (3.14): this package can close meshes through the avatar's own shader. The app shows that
             // switch only when the project says so -- with 3.13.1 and earlier it would be a switch that does nothing.
-            sb.Append("{\"ok\":true,\"canMark\":true,\"canShader\":true,\"canRenameShapes\":true,\"canLongKey\":true,\"canStaticMeshes\":true,\"project\":").Append(Q(Application.productName))
+            sb.Append("{\"ok\":true,\"canMark\":true,\"canShader\":true,\"canRenameShapes\":true,\"canLongKey\":true,\"canStaticMeshes\":true,\"canAutoSize\":true,\"project\":").Append(Q(Application.productName))
               .Append(",\"avatars\":[");
 
             bool first = true;
@@ -195,6 +196,7 @@ namespace KawaiiStudio.VRC.AntiRip
                               .Append(",\"obfuscateNames\":").Append(mark.obfuscateNames ? "true" : "false")
                               .Append(",\"maxAddedMegabytes\":").Append(mark.maxAddedMegabytes)
                               .Append(",\"maxAddedUncompressedMegabytes\":").Append(mark.maxAddedUncompressedMegabytes)
+                              .Append(",\"autoSize\":").Append(mark.autoSize ? "true" : "false")
                               .Append(",\"shaderRestore\":").Append(mark.shaderRestore ? "true" : "false")
                               .Append(",\"renameBlendShapes\":").Append(mark.renameBlendShapes ? "true" : "false")
                               .Append(",\"longKey\":").Append(mark.longKey ? "true" : "false")
@@ -249,6 +251,7 @@ namespace KawaiiStudio.VRC.AntiRip
             mark.obfuscateNames = a.obfuscateNames;
             mark.maxAddedMegabytes = a.maxAddedMegabytes < 0 ? 0 : a.maxAddedMegabytes;
             mark.maxAddedUncompressedMegabytes = a.maxAddedUncompressedMegabytes < 0 ? 0 : a.maxAddedUncompressedMegabytes;
+            mark.autoSize = a.autoSize;
             mark.shaderRestore = a.shaderRestore;
             mark.renameBlendShapes = a.renameBlendShapes;
             mark.longKey = a.longKey;

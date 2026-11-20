@@ -150,6 +150,16 @@ namespace KawaiiStudio.VRC.AntiRip
             KSAntiRipClient.TexturePlan Texture(string session, string id);
         }
 
+        /// <summary>
+        /// 3.17.1, optional: a plan source that wants to hear how many extra key values the avatar's free synced bits pay
+        /// for, as the upload measured them AFTER VRCFury / Modular Avatar added their own parameters (-1: no cap, the key
+        /// is local; 0: none). The app gets it with the plan request; a bench plan source implements this to get it too.
+        /// </summary>
+        public interface IKeySlotCap
+        {
+            int MaxExtraKeySlots { get; set; }
+        }
+
         sealed class AppPlanSource : IPlanSource, ITexturePlanSource
         {
             /// <summary>3.16.1: the key is not synced, so the app lengthens the shader key (AntiRipEngine.LocalKey).</summary>
@@ -242,6 +252,34 @@ namespace KawaiiStudio.VRC.AntiRip
             result.folder = folder;
 
             var descriptor = root.GetComponent<VRCAvatarDescriptor>();
+            // 3.17.1: a SYNCED key costs 8 of VRChat's 256 synced bits per restore group, counted here, after VRCFury /
+            // Modular Avatar added their own parameters. When fewer groups fit, the key takes the groups that fit (and says
+            // so); when not even one fits, the upload stops here with the reason -- never a build over VRChat's limit, and
+            // never a key a later tool squeezes behind the creator's back (bench 2026-11-20: 46 bits left for a 48-bit key,
+            // the upload came out at 258, then 256 after another tool's pass).
+            if (settings.syncKey && descriptor != null)
+            {
+                int used = 0;
+                try { used = descriptor.expressionParameters != null ? descriptor.expressionParameters.CalcTotalCost() : 0; }
+                catch { used = 0; }
+                int left = global::VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters.MAX_PARAMETER_COST - used;
+                int fit = Math.Max(0, left / 8);
+                if (fit < Math.Max(1, settings.restoreGroups))
+                {
+                    if (fit < 1)
+                    {
+                        result.message = "No synced parameter room is left for the key: after VRCFury, Modular Avatar and the " +
+                                         "others, the avatar's parameters use " + used + " of VRChat's " +
+                                         global::VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters.MAX_PARAMETER_COST +
+                                         " synced bits, and a synced key needs 8 per restore group.\n\nFree some synced parameters, " +
+                                         "or turn off \"Others see it unlocked\" (the key then stays on your PC and costs no synced bits).";
+                        return;
+                    }
+                    result.warnings.Add("Only " + left + " synced bits were left after VRCFury / Modular Avatar: the key uses " + fit +
+                                        " restore group(s) instead of " + settings.restoreGroups + " (8 bits each).");
+                    settings.restoreGroups = fit;
+                }
+            }
             // 3.16.2: a synced long key may only spend the synced bits the avatar has left after its own parameters and
             // the restore key (8 bits a value), so the upload never goes over VRChat's limit.
             int maxExtraKeySlots = settings.syncKey && settings.longKey ? FreeKeySlots(descriptor, settings.restoreGroups) : -1;
@@ -251,6 +289,8 @@ namespace KawaiiStudio.VRC.AntiRip
                 LongKey = settings.syncKey && settings.longKey && maxExtraKeySlots > 0,
                 MaxExtraKeySlots = maxExtraKeySlots,
             };
+            if (planSource is IKeySlotCap keyCap)
+                keyCap.MaxExtraKeySlots = !settings.syncKey ? -1 : settings.longKey ? maxExtraKeySlots : 0;
             result.coverage.synced = settings.syncKey;
             result.coverage.longKeyAsked = settings.longKey;
             if (descriptor == null) { result.message = "That GameObject has no VRC Avatar Descriptor."; return; }
@@ -435,8 +475,12 @@ namespace KawaiiStudio.VRC.AntiRip
             }
             // 3.17: what this build adds, for the size report the app learns the avatar's own size from (KSAntiRipSizes):
             // the fixed costs, plus the restore shapes' share when some mesh keeps them
-            bool anyRestore = uniqueMeshes.Any(m => !shaderChoice.ContainsKey(m));
-            KSAntiRipSizes.Estimate(Fixed() + (anyRestore && settings.maxAddedMegabytes > 0 ? (long)engineMegabytes * 1048576L : 0), FixedU());
+            // 3.17.1: the restore shapes cost what the engine spends, and never more than every vertex left to them, dense
+            // (the engine's own 40 bytes a vertex a group, over the vertices the shader does not move): a budget bigger
+            // than that is not spent
+            long restoreNeed = uniqueMeshes.Sum(m => (long)Math.Max(0, m.vertexCount - (shaderChoice.TryGetValue(m, out ShaderChoice sc) ? sc.Count : 0))
+                                                     * Math.Max(1, settings.restoreGroups) * 40L);
+            KSAntiRipSizes.Estimate(Fixed() + (settings.maxAddedMegabytes > 0 ? Math.Min((long)engineMegabytes * 1048576L, restoreNeed) : 0), FixedU());
 
             // the choice for any renderer, skinned or static
             ShaderChoice ChoiceOf(Renderer r)
@@ -938,7 +982,7 @@ namespace KawaiiStudio.VRC.AntiRip
         /// 3.16.2: how many extra key values a SYNCED long key may add: VRChat's synced-parameter budget, minus what the
         /// avatar's own parameters already cost, minus the restore key (one float, 8 bits, per restore shape).
         /// </summary>
-        static int FreeKeySlots(VRCAvatarDescriptor descriptor, int restoreGroups)
+        public static int FreeKeySlots(VRCAvatarDescriptor descriptor, int restoreGroups)
         {
             int used = 0;
             try { used = descriptor != null && descriptor.expressionParameters != null ? descriptor.expressionParameters.CalcTotalCost() : 0; }
