@@ -49,6 +49,9 @@ namespace KawaiiStudio.VRC.AntiRip
                 if (!VRCSdkControlPanel.TryGetBuilder<IVRCSdkAvatarBuilderApi>(out IVRCSdkAvatarBuilderApi builder) || builder == null) return;
                 builder.OnSdkBuildError -= OnBuildError;
                 builder.OnSdkBuildError += OnBuildError;
+                // 3.17: the protected build's real sizes, measured before the SDK checks them (KSAntiRipSizes)
+                builder.OnSdkBuildSuccess -= OnBuildSuccess;
+                builder.OnSdkBuildSuccess += OnBuildSuccess;
                 builder.OnSdkUploadSuccess -= OnUploadSuccess;
                 builder.OnSdkUploadSuccess += OnUploadSuccess;
                 builder.OnSdkUploadError -= OnUploadError;
@@ -75,6 +78,12 @@ namespace KawaiiStudio.VRC.AntiRip
                 line.StartsWith("Encountered the following validation issues", StringComparison.Ordinal)) return;
             if (Errors.Count < 8 && !Errors.Contains(line)) Errors.Add(line);
             Flush();   // sent as soon as Unity is free again
+        }
+
+        static void OnBuildSuccess(object sender, string bundlePath)
+        {
+            if (!_watching) return;
+            KSAntiRipSizes.AfterBuild(bundlePath);
         }
 
         static bool _errorSeen;

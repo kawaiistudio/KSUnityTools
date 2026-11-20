@@ -70,6 +70,10 @@ namespace KawaiiStudio.VRC.AntiRip
             /// </summary>
             public int maxAddedMegabytes = 12;
 
+            /// <summary>3.17: how much the protection may add UNCOMPRESSED, in MB (VRChat's 500 MB limit); 0 = no cap.
+            /// The app sets it from the room the last upload left when its size is on Auto.</summary>
+            public int maxAddedUncompressedMegabytes = 0;
+
             /// <summary>
             /// 3.14: the meshes whose shader allows it are closed by that shader (KSAntiRipShader) instead of by
             /// restore shapes. Off by default. Whoever blocks the wearer's shaders is shown the poster instead.
@@ -339,40 +343,100 @@ namespace KawaiiStudio.VRC.AntiRip
             // goes back to restore shapes (a static one, which has none, stays as it is); the engine gets what is left.
             int engineMegabytes = settings.maxAddedMegabytes;
             var overBudget = new HashSet<Mesh>();
-            if (settings.maxAddedMegabytes > 0)
+            bool Compressed(Mesh m) => MeshUtility.GetMeshCompression(m) != ModelImporterMeshCompression.Off;
+            // 3.16.5: with app v678+, a static mesh moves along public directions and keeps a compression (Low):
+            // measured on the 620 595-vertex Wendigo Skull, ~5.4 bytes a vertex over its Medium source, not ~14
+            bool axes = KSAntiRipClient.RunningAppVersion() >= KSAntiRipClient.AxesFromAppVersion;
+            bool NoTangents(Mesh m) => !m.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Tangent);
+            // 3.16.7: a skinned mesh without tangents ships some on its copy (~6 bytes a vertex after LZMA)
+            long ShaderCost(Mesh m, bool isStatic) =>
+                (long)m.vertexCount * ((!Compressed(m) ? 3 : isStatic && axes ? 6 : 14) + (!isStatic && NoTangents(m) ? 6 : 0));
+            long RestoreCost(Mesh m) => (long)m.vertexCount * (Compressed(m) ? 4 : 1);
+            // 3.17, the same UNCOMPRESSED (VRChat's 500 MB limit; the SDK reads it from Unity's build report). A copy that
+            // ships Off holds every vertex in full -- its own attributes, plus the id (16 bytes in UV7) and any tangents it
+            // got -- where a compressed source held them packed; a static mesh on public directions keeps its compression
+            // (the id comes packed with it); restore shapes add a frame per group (40 bytes a vertex, counted dense).
+            long Raw(Mesh m)
             {
-                bool Compressed(Mesh m) => MeshUtility.GetMeshCompression(m) != ModelImporterMeshCompression.Off;
-                // 3.16.5: with app v678+, a static mesh moves along public directions and keeps a compression (Low):
-                // measured on the 620 595-vertex Wendigo Skull, ~5.4 bytes a vertex over its Medium source, not ~14
-                bool axes = KSAntiRipClient.RunningAppVersion() >= KSAntiRipClient.AxesFromAppVersion;
-                // 3.16.7: a skinned mesh without tangents ships some on its copy (~6 bytes a vertex after LZMA)
-                long ShaderCost(Mesh m, bool isStatic) =>
-                    (long)m.vertexCount * ((!Compressed(m) ? 3 : isStatic && axes ? 6 : 14) +
-                                           (!isStatic && !m.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Tangent) ? 6 : 0));
-                long RestoreCost(Mesh m) => (long)m.vertexCount * (Compressed(m) ? 4 : 1);
-                long cap = settings.maxAddedMegabytes * 1048576L;
-                long Fixed() =>
-                    uniqueMeshes.Sum(m => shaderChoice.ContainsKey(m) ? ShaderCost(m, false) : RestoreCost(m)) +
-                    staticChoice.Keys.Sum(m => ShaderCost(m, true));
-                var costliest = shaderChoice.Keys.Select(m => (mesh: m, isStatic: false))
-                                .Concat(staticChoice.Keys.Select(m => (mesh: m, isStatic: true)))
-                                .OrderByDescending(x => ShaderCost(x.mesh, x.isStatic)).ToList();
-                foreach (var x in costliest)
+                long stride = 0;
+                for (int st = 0; st < m.vertexBufferCount; st++) stride += m.GetVertexBufferStride(st);
+                return stride;
+            }
+            double Packed(Mesh m)
+            {
+                switch (MeshUtility.GetMeshCompression(m))
                 {
-                    if (cap - Fixed() >= cap / 4) break;
-                    if (x.isStatic) { staticChoice.Remove(x.mesh); uniqueStatic.Remove(x.mesh); }
-                    else { shaderChoice.Remove(x.mesh); shaderEligible.Remove(x.mesh); }
-                    overBudget.Add(x.mesh);
+                    case ModelImporterMeshCompression.Low: return 0.5;
+                    case ModelImporterMeshCompression.Medium: return 0.4;
+                    case ModelImporterMeshCompression.High: return 0.33;
+                    default: return 1.0;
                 }
-                long left = cap - Fixed();
-                engineMegabytes = (int)Math.Max(1, left / 1048576L);
-                Debug.Log("[KS ANTI-RIP] size budget " + settings.maxAddedMegabytes + " MB: the shader and the mesh copies take ~" +
-                          ((cap - left) / 1048576.0).ToString("0.0") + " MB, the restore shapes get " + engineMegabytes + " MB" +
+            }
+            long ShaderCostU(Mesh m, bool isStatic)
+            {
+                long n = m.vertexCount;
+                // measured through real builds (bench 2026-11-20, Karin KS, 657 167 vertices, Medium source): +13.45 MB
+                // uncompressed for the copy (Low, with the id's 4 floats kept unpacked), i.e. ~21 bytes a vertex
+                if (isStatic && axes) return n * (Compressed(m) ? 21 : 16);
+                long copy = Raw(m) + 16 + (!isStatic && NoTangents(m) ? 16 : 0);
+                return Math.Max(0, n * copy - (long)(n * Raw(m) * Packed(m)));
+            }
+            long RestoreCostU(Mesh m) =>
+                Math.Max(0, (long)m.vertexCount * Raw(m) - (long)(m.vertexCount * Raw(m) * Packed(m))) +
+                (long)m.vertexCount * Math.Max(1, settings.restoreGroups) * 40;
+            long Fixed() =>
+                uniqueMeshes.Sum(m => shaderChoice.ContainsKey(m) ? ShaderCost(m, false) : RestoreCost(m)) +
+                staticChoice.Keys.Sum(m => ShaderCost(m, true));
+            long FixedU() =>
+                uniqueMeshes.Sum(m => shaderChoice.ContainsKey(m) ? ShaderCostU(m, false) : RestoreCostU(m)) +
+                staticChoice.Keys.Sum(m => ShaderCostU(m, true));
+            if (settings.maxAddedMegabytes > 0 || settings.maxAddedUncompressedMegabytes > 0)
+            {
+                long cap = settings.maxAddedMegabytes > 0 ? settings.maxAddedMegabytes * 1048576L : long.MaxValue;
+                long capU = settings.maxAddedUncompressedMegabytes > 0 ? settings.maxAddedUncompressedMegabytes * 1048576L : long.MaxValue;
+                // a quarter of the cap is kept for the restore shapes -- only while some skinned mesh still takes them
+                // (3.17: with every mesh closed by its shader, the whole budget closes meshes; owner 2026-11-20)
+                bool OverC() => cap != long.MaxValue && cap - Fixed() < (uniqueMeshes.Any(m => !shaderChoice.ContainsKey(m)) ? cap / 4 : 0);
+                bool OverU() => capU != long.MaxValue && FixedU() > capU;
+                // what leaving a mesh out of the shader frees: a static mesh stays as it is (all of its cost), a skinned
+                // one goes to restore shapes (its cost minus theirs, which can be MORE uncompressed: then not that one)
+                long SavedC((Mesh mesh, bool isStatic) x) => ShaderCost(x.mesh, x.isStatic) - (x.isStatic ? 0 : RestoreCost(x.mesh));
+                long SavedU((Mesh mesh, bool isStatic) x) => ShaderCostU(x.mesh, x.isStatic) - (x.isStatic ? 0 : RestoreCostU(x.mesh));
+                while (OverC() || OverU())
+                {
+                    bool c = OverC(), u = OverU();
+                    var pick = shaderChoice.Keys.Select(m => (mesh: m, isStatic: false))
+                                   .Concat(staticChoice.Keys.Select(m => (mesh: m, isStatic: true)))
+                                   .Where(x => (!c || SavedC(x) > 0) && (!u || SavedU(x) > 0))
+                                   .OrderByDescending(x => (c ? SavedC(x) : 0) + (u ? SavedU(x) : 0))
+                                   .FirstOrDefault();
+                    if (pick.mesh == null) break;   // nothing left that frees what is over: it stays over, and says so
+                    if (pick.isStatic) { staticChoice.Remove(pick.mesh); uniqueStatic.Remove(pick.mesh); }
+                    else { shaderChoice.Remove(pick.mesh); shaderEligible.Remove(pick.mesh); }
+                    overBudget.Add(pick.mesh);
+                }
+                if (cap != long.MaxValue)
+                {
+                    long left = cap - Fixed();
+                    engineMegabytes = (int)Math.Max(1, left / 1048576L);
+                }
+                Debug.Log("[KS ANTI-RIP] size budget " + (cap == long.MaxValue ? "none" : settings.maxAddedMegabytes + " MB") +
+                          (capU == long.MaxValue ? "" : " / " + settings.maxAddedUncompressedMegabytes + " MB uncompressed") +
+                          ": the shader and the mesh copies take ~" + (Fixed() / 1048576.0).ToString("0.0") + " MB (~" +
+                          (FixedU() / 1048576.0).ToString("0.0") + " MB uncompressed), the restore shapes get " + engineMegabytes + " MB" +
                           (overBudget.Count > 0 ? "; " + overBudget.Count + " mesh(es) left to restore shapes or as they are, to stay within it" : ""));
                 if (overBudget.Count > 0)
                     result.warnings.Add(overBudget.Count + " mesh(es) not closed by their shader, to stay within \"Max size added\" (" +
-                                        settings.maxAddedMegabytes + " MB). Raise it if the avatar has room under VRChat's 200 MB.");
+                                        (cap == long.MaxValue ? "" : settings.maxAddedMegabytes + " MB") +
+                                        (capU == long.MaxValue ? "" : (cap == long.MaxValue ? "" : ", ") + settings.maxAddedUncompressedMegabytes + " MB uncompressed") +
+                                        "). Raise it if the avatar has room under VRChat's limits (200 MB, 500 MB uncompressed).");
+                if (OverC() || OverU())
+                    result.warnings.Add("The protection may still go over \"Max size added\": what is left cannot be made smaller.");
             }
+            // 3.17: what this build adds, for the size report the app learns the avatar's own size from (KSAntiRipSizes):
+            // the fixed costs, plus the restore shapes' share when some mesh keeps them
+            bool anyRestore = uniqueMeshes.Any(m => !shaderChoice.ContainsKey(m));
+            KSAntiRipSizes.Estimate(Fixed() + (anyRestore && settings.maxAddedMegabytes > 0 ? (long)engineMegabytes * 1048576L : 0), FixedU());
 
             // the choice for any renderer, skinned or static
             ShaderChoice ChoiceOf(Renderer r)

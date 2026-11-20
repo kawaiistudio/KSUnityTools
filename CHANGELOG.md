@@ -2,6 +2,26 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.17.0]
+
+**KS ANTI-RIP: the size the protection may add is measured, not guessed.** Right after the VRChat SDK builds a protected
+avatar -- before it checks the size and uploads -- KS Anti-Rip asks the SDK's own checks what the build weighs (the file,
+and the uncompressed size from Unity's build report) and what its limits are (200 MB, and 500 MB uncompressed), and sends
+the Kawaii Studio app those numbers with what the protection added. With "Size added: automatic" (Kawaii Studio v679 or
+newer), the next upload of that avatar gets the room that is really left under BOTH limits, minus a small margin (up to
+199 MB and 498 MB uncompressed). More room means more of the avatar closed by its shader. If an estimate runs a little
+over, the SDK refuses that build before uploading anything, its real size is already measured, and the next upload fits.
+The first upload of an avatar uses the fixed value until it has been measured.
+
+**KS ANTI-RIP: "Max size added" also caps the uncompressed size.** The protection's meshes ship uncompressed (their undo
+needs exact normals), which weighs far more against the 500 MB uncompressed limit than against the 200 MB one: an avatar
+could fit under 200 MB and still be refused at 500. The budget now counts both, and leaves out first the mesh that frees
+the most of whichever limit is the tight one.
+
+**KS ANTI-RIP: the whole budget closes meshes when nothing needs restore shapes.** A quarter of "Max size added" was
+always kept for restore shapes, even when every mesh was closed by its shader. It is now kept only while some mesh still
+takes restore shapes: on the bench Wendigo, a 657 000-vertex prop that 12 MB used to leave unprotected now fits.
+
 ## [3.16.7]
 
 **KS ANTI-RIP: no more shards in VRChat's Personal Mirror.** A protected avatar could show giant shards in the Personal

@@ -452,6 +452,23 @@ namespace KawaiiStudio.VRC.AntiRip
             catch { }
         }
 
+        /// <summary>
+        /// 3.17: a protected build's real sizes and limits (KSAntiRipSizes), for the app's automatic "Max size added".
+        /// Best effort, like <see cref="Report"/>: an app before v679 does not know the route and nothing changes.
+        /// </summary>
+        public static void Sizes(string json)
+        {
+            if (string.IsNullOrEmpty(json)) return;
+            try
+            {
+                if (!Connect()) return;
+                string saved = LastError;
+                Send("POST", "/unity/antirip/sizes", json, null, 3000);
+                LastError = saved;
+            }
+            catch { }
+        }
+
         // ── plumbing ────────────────────────────────────────────────────────────────────────────
 
         /// <summary>base64 of raw little-endian float32 triples, straight back into Vector3[].</summary>

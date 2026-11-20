@@ -60,8 +60,11 @@ namespace KawaiiStudio.VRC.AntiRip
                 return true;   // not a KS-protected upload: leave it exactly alone
             }
 
-            // From here the app's KS ANTI-RIP log hears how this upload ends (3.12.2).
+            // From here the app's KS ANTI-RIP log hears how this upload ends (3.12.2), and (3.17) the build's real sizes,
+            // under the avatar's blueprint id (the same on the SDK's build copy as on the avatar the app lists)
             KSAntiRipSdkReport.Watch();
+            var pipeline = avatarGameObject.GetComponent<global::VRC.Core.PipelineManager>();
+            KSAntiRipSizes.Begin(pipeline != null ? pipeline.blueprintId : "");
             try
             {
                 // Strip the mark first: it must never ship, and if protection throws we still want it gone.
@@ -75,6 +78,7 @@ namespace KawaiiStudio.VRC.AntiRip
                     lockedBadge = mark.lockedBadge,
                     obfuscateNames = mark.obfuscateNames,
                     maxAddedMegabytes = mark.maxAddedMegabytes,
+                    maxAddedUncompressedMegabytes = mark.maxAddedUncompressedMegabytes,
                     shaderRestore = mark.shaderRestore,
                     renameBlendShapes = mark.renameBlendShapes,
                     longKey = mark.longKey,

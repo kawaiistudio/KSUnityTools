@@ -43,6 +43,10 @@ namespace KawaiiStudio.VRC.AntiRip
                  "this budget buys; the rest of the mesh is left in place so a near-200-MB avatar still fits.")]
         public int maxAddedMegabytes = 12;
 
+        [Tooltip("3.17: how much the protection may add UNCOMPRESSED (VRChat's 500 MB limit), 0 for no limit. The Kawaii " +
+                 "Studio app sets it from the room your last upload left under 500 MB when its size is on Auto.")]
+        public int maxAddedUncompressedMegabytes = 0;
+
         [Tooltip("The meshes whose shader allows it (locked Poiyomi, lilToon) are closed by that shader instead of by restore " +
                  "shapes. Someone who blocks the wearer's shaders sees the Kawaii Studio poster instead of the avatar. " +
                  "PC only. On by default (3.16.1); the meshes it cannot close keep the restore shapes.")]

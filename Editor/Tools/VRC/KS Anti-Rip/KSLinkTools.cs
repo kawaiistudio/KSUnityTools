@@ -111,6 +111,7 @@ namespace KawaiiStudio.VRC.AntiRip
             public bool lockedBadge = true;
             public bool obfuscateNames = true;
             public int maxAddedMegabytes = 12;
+            public int maxAddedUncompressedMegabytes = 0;   // 3.17: an app before v679 does not send it: no limit
             public bool shaderRestore = false;      // an app before v667 does not send it: off
             public bool renameBlendShapes = false;  // 3.16.2: an app before v674 does not send it: off
             public bool longKey = true;             // 3.16.2: on unless the app says otherwise
@@ -193,6 +194,7 @@ namespace KawaiiStudio.VRC.AntiRip
                               .Append(",\"lockedBadge\":").Append(mark.lockedBadge ? "true" : "false")
                               .Append(",\"obfuscateNames\":").Append(mark.obfuscateNames ? "true" : "false")
                               .Append(",\"maxAddedMegabytes\":").Append(mark.maxAddedMegabytes)
+                              .Append(",\"maxAddedUncompressedMegabytes\":").Append(mark.maxAddedUncompressedMegabytes)
                               .Append(",\"shaderRestore\":").Append(mark.shaderRestore ? "true" : "false")
                               .Append(",\"renameBlendShapes\":").Append(mark.renameBlendShapes ? "true" : "false")
                               .Append(",\"longKey\":").Append(mark.longKey ? "true" : "false")
@@ -246,6 +248,7 @@ namespace KawaiiStudio.VRC.AntiRip
             mark.lockedBadge = a.lockedBadge;
             mark.obfuscateNames = a.obfuscateNames;
             mark.maxAddedMegabytes = a.maxAddedMegabytes < 0 ? 0 : a.maxAddedMegabytes;
+            mark.maxAddedUncompressedMegabytes = a.maxAddedUncompressedMegabytes < 0 ? 0 : a.maxAddedUncompressedMegabytes;
             mark.shaderRestore = a.shaderRestore;
             mark.renameBlendShapes = a.renameBlendShapes;
             mark.longKey = a.longKey;
