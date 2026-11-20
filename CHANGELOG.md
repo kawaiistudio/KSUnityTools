@@ -2,6 +2,27 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.18.0]
+
+**KS ANTI-RIP: the protection now comes from the Kawaii Studio app.** Up to 3.17.2 the whole apply pass — the
+scramble, the shader patch, the lock, the renaming — shipped as readable C# in this package, and this package is
+public on GitHub: the mechanism was one clone away. It lives in the app now. The app hands it to your editor over
+the same loopback bridge KS Anti-Rip already used, it is loaded in memory for that Unity session only, and nothing
+of it is written to disk. What stays here is what the VRChat SDK has to see when the editor loads — the build
+callbacks — plus the Link transport and the mark component.
+
+Said plainly, because it is the kind of thing that gets oversold: this does **not** make the protection
+unbreakable. The restore code still ships compiled inside every protected bundle, so its shape can always be read
+back out of a `.vrca`, and the delivered code runs inside your own Unity. What it buys is real but bounded — the
+mechanism is no longer free to read, it is tied to your account, and it can be fixed or improved without waiting
+for a package release.
+
+**A protected upload now needs the app.** It must be running, signed in, and on a plan that includes KS Anti-Rip.
+An avatar with no KS Anti-Rip mark is untouched and needs none of that, exactly as before — an ordinary upload
+still works with no app, no account and no network. If the protection cannot be had — the app is not running, it
+is too old, or the account does not carry it — the upload **stops** with the reason, rather than going out
+unprotected under your name.
+
 ## [3.17.2]
 
 **KS ANTI-RIP: Auto does not measure in play mode.** VRCFury and NDMF run the build callbacks when you press Play, so
