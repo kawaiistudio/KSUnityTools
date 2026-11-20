@@ -2,6 +2,13 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.17.2]
+
+**KS ANTI-RIP: Auto does not measure in play mode.** VRCFury and NDMF run the build callbacks when you press Play, so
+the protection runs on the play-mode avatar too; Auto then tried to measure the avatar, which Unity cannot do in play
+mode, and the log said "could not measure the avatar before protecting it". Nothing is uploaded in play mode: Auto now
+skips the measure there, says so, and the size the Kawaii Studio app sent stands.
+
 ## [3.17.1]
 
 **KS ANTI-RIP: Auto measures the avatar at the upload itself, after VRCFury and Modular Avatar.** With "Size added:
