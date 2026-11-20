@@ -511,6 +511,8 @@ namespace KawaiiStudio.VRC.AntiRip
             if (t == null || block <= 0) return false;
             var imp = AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(t)) as TextureImporter;
             if (imp == null || imp.textureType != TextureImporterType.Default) return false;
+            // 3.16.6: the restore filters by hand near block edges (bilinear); a pixel-art texture is read unfiltered
+            if (imp.filterMode == FilterMode.Point) return false;
             int w = t.width, h = t.height;
             return w >= block * 2 && h >= block * 2 && (w & (w - 1)) == 0 && (h & (h - 1)) == 0;
         }

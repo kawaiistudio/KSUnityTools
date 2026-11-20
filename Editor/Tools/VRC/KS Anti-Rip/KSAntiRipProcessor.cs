@@ -285,9 +285,11 @@ namespace KawaiiStudio.VRC.AntiRip
             // renderer that wears it, is a locked-Poiyomi or lilToon shader this can patch (decided by name here; a shader that
             // then fails to patch falls the whole mesh back to restore shapes). Those vertices take no restore shape,
             // so the app leaves them out of the size budget.
-            // A renderer whose materials the avatar's animations swap stays on restore shapes: the material swapped in is
-            // the avatar's own, not a patched copy, and would show the scrambled mesh.
-            HashSet<string> swappedPaths = MaterialSwaps(root, descriptor, out HashSet<Material> swapMaterials);
+            // A renderer whose materials the avatar's animations swap used to stay on restore shapes (the material swapped in
+            // is the avatar's own, not a patched copy, and would show the scrambled mesh). 3.16.6: it is closed too when every
+            // material that can land on a closed slot can be patched; RewireSwaps points those swaps at the patched copies.
+            HashSet<string> swappedPaths = MaterialSwaps(root, descriptor, out HashSet<Material> swapMaterials,
+                                                         out var swapSlots, out HashSet<string> swapsNotRewirable);
             // PC only: Quest has no custom shaders, so an Android/iOS upload keeps the usual method whatever the setting.
             BuildTarget target = EditorUserBuildSettings.activeBuildTarget;
             bool mobile = target == BuildTarget.Android || target == BuildTarget.iOS;
@@ -303,7 +305,8 @@ namespace KawaiiStudio.VRC.AntiRip
             if (shaderMode)
                 foreach (Mesh um in uniqueMeshes)
                 {
-                    ShaderChoice c = ChooseSubMeshes(um, skinned.Where(r => r.sharedMesh == um).Cast<Renderer>().ToList(), root, swappedPaths, false);
+                    ShaderChoice c = ChooseSubMeshes(um, skinned.Where(r => r.sharedMesh == um).Cast<Renderer>().ToList(), root, swappedPaths, false,
+                                                     swapSlots, swapsNotRewirable);
                     if (c != null) shaderChoice[um] = c;
                 }
             var shaderEligible = new HashSet<Mesh>(shaderChoice.Keys);
@@ -317,7 +320,8 @@ namespace KawaiiStudio.VRC.AntiRip
                 {
                     Mesh sm = StaticMeshOf(mr);
                     if (uniqueMeshes.Contains(sm) || uniqueStatic.Contains(sm)) continue;
-                    ShaderChoice c = ChooseSubMeshes(sm, statics.Where(r => StaticMeshOf(r) == sm).Cast<Renderer>().ToList(), root, swappedPaths, true);
+                    ShaderChoice c = ChooseSubMeshes(sm, statics.Where(r => StaticMeshOf(r) == sm).Cast<Renderer>().ToList(), root, swappedPaths, true,
+                                                     swapSlots, swapsNotRewirable);
                     if (c == null) continue;
                     uniqueStatic.Add(sm);
                     staticChoice[sm] = c;
@@ -416,7 +420,7 @@ namespace KawaiiStudio.VRC.AntiRip
                     if (usedElsewhere.Contains(t)) { textureWhy[t] = "another, unprotected part of the avatar uses it"; continue; }
                     if (liveDuplicate.Contains(t)) { textureWhy[t] = "its material also reads it through a second slot"; continue; }
                     if (!KSAntiRipShaderPatch.CanLayOut(t, 32))
-                    { textureWhy[t] = "only a power-of-two texture of the Default type, 64 px or more, can be laid out"; continue; }
+                    { textureWhy[t] = "only a smoothly filtered, power-of-two texture of the Default type, 64 px or more, can be laid out"; continue; }
                     string tid = "t" + textureIdOf.Count;
                     textureIdOf[t] = tid;
                     textureRequest.Add(new KSAntiRipClient.TextureInfo { id = tid, width = t.width, height = t.height });
@@ -495,6 +499,11 @@ namespace KawaiiStudio.VRC.AntiRip
                 var appliedShape = new Dictionary<Mesh, KeyValuePair<Mesh, KSAntiRipClient.MeshPlan>>();
                 var appliedShader = new Dictionary<Mesh, ShaderMesh>();
                 var plannedMesh = new Dictionary<Mesh, KSAntiRipClient.MeshPlan>();
+                // 3.16.6: what each shader-closed renderer wore before, so one whose swaps cannot be rewired goes back
+                Func<Renderer, int, IEnumerable<Material>> swapsOf =
+                    (r, si) => SwappedInto(swapSlots, AnimationUtility.CalculateTransformPath(r.transform, root.transform), si);
+                var closedChoice = new Dictionary<Renderer, ShaderChoice>();
+                var closedOriginal = new Dictionary<Renderer, (Mesh mesh, Material[] mats, bool isStatic)>();
 
                 for (int i = 0; i < rootSkinned.Length; i++)
                 {
@@ -523,7 +532,7 @@ namespace KawaiiStudio.VRC.AntiRip
                         {
                             var users = rootSkinned.Where(r => r.sharedMesh == original).Cast<Renderer>().ToList();
                             sm = TryShaderClose(original, users, meshPlan, plan, settings, folder,
-                                                patchedShaders, patchedMats, ref shaderIndex, result.warnings, textures, choice, false);
+                                                patchedShaders, patchedMats, ref shaderIndex, result.warnings, textures, choice, false, swapsOf);
                         }
                         if (sm != null)
                         {
@@ -546,6 +555,8 @@ namespace KawaiiStudio.VRC.AntiRip
 
                     if (appliedShader.TryGetValue(original, out ShaderMesh smk))
                     {
+                        closedOriginal[smr] = (original, smr.sharedMaterials, false);
+                        closedChoice[smr] = shaderChoice[original];
                         smr.sharedMesh = smk.Scrambled;
                         smr.sharedMaterials = smk.Materials[smr];
                         protectedRenderers.Add((smr, meshPlan, true, smk.Mixed));
@@ -575,7 +586,7 @@ namespace KawaiiStudio.VRC.AntiRip
                             var users = statics.Where(r => r != null && StaticMeshOf(r) == original).Cast<Renderer>().ToList();
                             sm = TryShaderClose(original, users, meshPlan, plan, settings, folder,
                                                 patchedShaders, patchedMats, ref shaderIndex, result.warnings, textures,
-                                                staticChoice[original], true);
+                                                staticChoice[original], true, swapsOf);
                             if (sm == null) { refusedStatic.Add(original); continue; }
                             AssetDatabase.CreateAsset(sm.Scrambled, folder + "/MSH_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".asset");
                             appliedStatic[original] = sm;
@@ -585,10 +596,42 @@ namespace KawaiiStudio.VRC.AntiRip
                             shaderMeshes++;
                             shaderVerts += sm.ShaderVertices;
                         }
+                        closedOriginal[mr] = (original, mr.sharedMaterials, true);
+                        closedChoice[mr] = staticChoice[original];
                         mr.GetComponent<MeshFilter>().sharedMesh = sm.Scrambled;
                         mr.sharedMaterials = sm.Materials[mr];
                         protectedRenderers.Add((mr, plannedMesh[original], true, false));
                         staticClosed++;
+                    }
+
+                // 3.16.6: the material swaps on closed renderers now put in the patched copies (copied controllers and
+                // clips, never the user's). Where that cannot be done, the renderer goes back -- a skinned one to restore
+                // shapes, a static one to what it was -- BEFORE the report and the lock read the list.
+                var reverted = new HashSet<Renderer>();
+                if (closedChoice.Count > 0)
+                    foreach (Renderer back in RewireSwaps(root, descriptor, folder, closedChoice, patchedMats, result.warnings))
+                    {
+                        if (!closedOriginal.TryGetValue(back, out var o)) continue;
+                        reverted.Add(back);
+                        int at = protectedRenderers.FindIndex(e => e.smr == back);
+                        if (o.isStatic)
+                        {
+                            back.GetComponent<MeshFilter>().sharedMesh = o.mesh;
+                            back.sharedMaterials = o.mats;
+                            if (at >= 0) protectedRenderers.RemoveAt(at);
+                            staticClosed--;
+                            continue;
+                        }
+                        KSAntiRipClient.MeshPlan mp = plannedMesh[o.mesh];
+                        if (!appliedShape.TryGetValue(o.mesh, out var shaped))
+                        {
+                            Mesh scrambledBack = KSAntiRipMesh.Apply(o.mesh, mp.offsets, mp.groups, mp.shapeNames);
+                            AssetDatabase.CreateAsset(scrambledBack, folder + "/MSH_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".asset");
+                            appliedShape[o.mesh] = shaped = new KeyValuePair<Mesh, KSAntiRipClient.MeshPlan>(scrambledBack, mp);
+                        }
+                        ((SkinnedMeshRenderer)back).sharedMesh = shaped.Key;
+                        back.sharedMaterials = o.mats;
+                        if (at >= 0) protectedRenderers[at] = (back, mp, false, false);
                     }
 
                 if (shaderMeshes > 0)
@@ -608,7 +651,7 @@ namespace KawaiiStudio.VRC.AntiRip
                 if (staticsLeft > 0)
                     result.warnings.Add(staticsLeft + " static mesh(es) were left unprotected" +
                                         (staticClosed > 0 ? " (" + staticClosed + " closed by their shader)" : "") +
-                                        ": only a locked Poiyomi or a lilToon material lets the shader close a static mesh.");
+                                        ": their shader has no source in the project, or could not be patched (the report says which).");
 
                 // 3.16.2: the coverage report, while the renderers still carry what they were given (names come from nameOf)
                 string WhyNotShader(Renderer r, Mesh m, bool isStatic)
@@ -617,15 +660,30 @@ namespace KawaiiStudio.VRC.AntiRip
                     if (m != null && overBudget.Contains(m)) return "left out to stay within \"Max size added\" (" + settings.maxAddedMegabytes + " MB)";
                     if (mobile) return "a Quest/mobile build has no custom shaders";
                     if (isStatic && !settings.protectStaticMeshes) return "closing static meshes with their shader is off";
-                    if (nameOf.TryGetValue(r, out string p) && swappedPaths.Contains(p)) return "an animation swaps its materials";
+                    if (nameOf.TryGetValue(r, out string p) && swappedPaths.Contains(p))
+                    {
+                        // 3.16.6: a swap no longer blocks by itself; say which one did
+                        if (reverted.Contains(r)) return "an animation swaps its materials, and the swap could not be pointed at the protected material";
+                        if (swapsNotRewirable.Contains(p)) return "an override controller swaps its materials";
+                        var badSwap = swapSlots.TryGetValue(p, out var ps)
+                            ? ps.Values.SelectMany(s => s).Where(x => x != null && x.shader != null &&
+                                                                      !(KSAntiRipShaderPatch.IsLockedPoiyomi(x.shader) || KSAntiRipLilToon.CanPatch(x) ||
+                                                                        KSAntiRipShaderUniversal.CanTry(x.shader)))
+                                .Select(x => "'" + x.name + "' (" + x.shader.name + ")").Distinct().ToList()
+                            : new List<string>();
+                        if (badSwap.Count > 0)
+                            return "an animation swaps in material " + string.Join(", ", badSwap.Take(3)) +
+                                   (badSwap.Count > 3 ? " and " + (badSwap.Count - 3) + " more" : "") + ", whose shader has no source in the project";
+                    }
                     if (m == null || !m.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Normal)) return "its mesh has no normals";
                     var bad = r.sharedMaterials.Where(x => x != null && x.shader != null &&
                                                            !(KSAntiRipShaderPatch.IsLockedPoiyomi(x.shader) || KSAntiRipLilToon.CanPatch(x) ||
+                                                             KSAntiRipShaderUniversal.CanTry(x.shader) ||
                                                              x.shader.name.StartsWith("Hidden/Locked/KS/", StringComparison.Ordinal)))
                                                .Select(x => "'" + x.name + "' (" + x.shader.name + ")").Distinct().ToList();
                     if (bad.Count > 0)
                         return "material " + string.Join(", ", bad.Take(3)) + (bad.Count > 3 ? " and " + (bad.Count - 3) + " more" : "") +
-                               " is not a locked Poiyomi or a lilToon";
+                               " has no shader source in the project (built in, or an unlocked Poiyomi: lock it first)";
                     foreach (Material x in r.sharedMaterials)
                     {
                         if (x == null || x.shader == null) continue;
@@ -840,15 +898,29 @@ namespace KawaiiStudio.VRC.AntiRip
         /// that wears the mesh, is a locked Poiyomi or a lilToon (KSAntiRipLilToon.CanPatch); and the vertices only those sub-meshes use. Null when there are none,
         /// when an animation swaps the materials of one of its renderers, or when the mesh has no normals and tangents.
         /// </summary>
-        static ShaderChoice ChooseSubMeshes(Mesh mesh, List<Renderer> users, GameObject root, HashSet<string> swappedPaths, bool staticMesh)
+        static ShaderChoice ChooseSubMeshes(Mesh mesh, List<Renderer> users, GameObject root, HashSet<string> swappedPaths, bool staticMesh,
+                                            Dictionary<string, Dictionary<int, HashSet<Material>>> swapSlots = null,
+                                            HashSet<string> notRewirable = null)
         {
             if (mesh == null || users.Count == 0) return null;
             // A static mesh without tangents gets them on its copy (TryShaderClose), which needs UVs to compute them.
             if (!mesh.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Normal)) return null;
             if (!mesh.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Tangent) &&
                 !(staticMesh && mesh.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.TexCoord0))) return null;
+            // 3.16.6: a renderer whose materials an animation swaps may be closed too, when every material that can land on
+            // a closed slot is one the shader can patch (RewireSwaps then points the swaps at the patched copies). Without
+            // the per-slot map (an older caller), or when an override controller does the swap, it stays out as before.
             foreach (var u in users)
-                if (swappedPaths.Contains(AnimationUtility.CalculateTransformPath(u.transform, root.transform))) return null;
+            {
+                string up = AnimationUtility.CalculateTransformPath(u.transform, root.transform);
+                if (!swappedPaths.Contains(up)) continue;
+                if (swapSlots == null || (notRewirable != null && notRewirable.Contains(up))) return null;
+            }
+            // 3.16.6: any shader whose source is in the project too (KSAntiRipShaderUniversal); one that then does not
+            // patch drops the mesh back to its current method in TryShaderClose, with nothing changed
+            bool Patchable(Material m) => m != null && m.shader != null &&
+                                          (KSAntiRipShaderPatch.IsLockedPoiyomi(m.shader) || KSAntiRipLilToon.CanPatch(m) ||
+                                           KSAntiRipShaderUniversal.CanTry(m.shader));
 
             int subCount = mesh.subMeshCount;
             var choice = new ChoiceBuilder();
@@ -858,13 +930,14 @@ namespace KawaiiStudio.VRC.AntiRip
                 foreach (var u in users)
                 {
                     Material[] mats = u.sharedMaterials;
+                    string up = swapSlots != null ? AnimationUtility.CalculateTransformPath(u.transform, root.transform) : null;
                     for (int i = 0; i < mats.Length && ok; i++)
                     {
                         if (Math.Min(i, subCount - 1) != sub) continue;
                         drawn = true;
-                        Material m = mats[i];
-                        if (m == null || m.shader == null ||
-                            !(KSAntiRipShaderPatch.IsLockedPoiyomi(m.shader) || KSAntiRipLilToon.CanPatch(m))) ok = false;
+                        if (!Patchable(mats[i])) ok = false;
+                        // what an animation can put in this slot must be patchable too
+                        if (ok && up != null && SwappedInto(swapSlots, up, i).Any(x => !Patchable(x))) ok = false;
                     }
                     if (!ok) break;
                 }
@@ -906,11 +979,19 @@ namespace KawaiiStudio.VRC.AntiRip
                                          KSAntiRipClient.Plan plan, Settings settings, string folder,
                                          Dictionary<string, KSAntiRipShaderPatch.PatchResult> patchedShaders,
                                          Dictionary<Material, Material> patchedMats, ref int shaderIndex, List<string> warnings,
-                                         TextureWork textures = null, ShaderChoice choice = null, bool staticMesh = false)
+                                         TextureWork textures = null, ShaderChoice choice = null, bool staticMesh = false,
+                                         Func<Renderer, int, IEnumerable<Material>> swapsOf = null)
         {
             if (choice == null) return null;
             if (meshPlan.shaderIds.Length != original.vertexCount || meshPlan.shaderAmounts.Length != original.vertexCount)
                 return null;   // the app did not send usable shader numbers for this mesh
+
+            // what can be on slot si of renderer r: its own material, and (3.16.6) whatever an animation swaps in there
+            IEnumerable<Material> OnSlot(Renderer r, Material[] slotMats, int si)
+            {
+                yield return slotMats[si];
+                if (swapsOf != null) foreach (Material m in swapsOf(r, si)) yield return m;
+            }
 
             // Patch every distinct shader first; one failure drops the whole mesh to the shape path, with no change made.
             foreach (var smr in users)
@@ -919,7 +1000,8 @@ namespace KawaiiStudio.VRC.AntiRip
                 for (int si = 0; si < slots.Length; si++)
                 {
                     if (!choice.PatchesSlot(si)) continue;
-                    Material mm = slots[si];
+                    foreach (Material mm in OnSlot(smr, slots, si).Distinct().ToList())
+                    {
                     if (mm == null || mm.shader == null) return null;
                     string path = AssetDatabase.GetAssetPath(mm.shader);
                     if (string.IsNullOrEmpty(path)) return null;
@@ -946,7 +1028,7 @@ namespace KawaiiStudio.VRC.AntiRip
                                 TextureWhy = fr.TextureWhy,
                             };
                         }
-                        else
+                        else if (KSAntiRipShaderPatch.IsLockedPoiyomi(mm.shader))
                         {
                             pr = textures != null
                                 ? KSAntiRipShaderPatch.PatchShader(path, plan.shaderCode, plan.shaderCall, plan.shaderIdField,
@@ -955,6 +1037,12 @@ namespace KawaiiStudio.VRC.AntiRip
                                 : KSAntiRipShaderPatch.PatchShader(path, plan.shaderCode, plan.shaderCall, plan.shaderIdField,
                                                                    plan.shaderProperties, shaderIndex++, folder);
                         }
+                        else
+                        {
+                            // 3.16.6: any other shader whose source is in the project; its textures stay as they are
+                            pr = KSAntiRipShaderUniversal.Patch(path, plan.shaderCode, plan.shaderCall, plan.shaderIdField,
+                                                                plan.shaderProperties, shaderIndex++, folder);
+                        }
                         patchedShaders[path] = pr;
                         if (pr.Shader == null && warnings != null)
                             warnings.Add("A mesh kept the blend-shape method: its shader could not be patched (" + pr.Why + ").");
@@ -962,6 +1050,7 @@ namespace KawaiiStudio.VRC.AntiRip
                             warnings.Add("A shader kept its texture readable: " + pr.TextureWhy + ".");
                     }
                     if (pr.Shader == null) return null;
+                    }
                 }
             }
 
@@ -994,6 +1083,26 @@ namespace KawaiiStudio.VRC.AntiRip
             if (source != original) UnityEngine.Object.DestroyImmediate(source);
 
             var result = new ShaderMesh { Scrambled = scrambled, Mixed = !choice.Whole && !staticMesh, ShaderVertices = moved };
+            Material Patched(Material om)
+            {
+                if (patchedMats.TryGetValue(om, out Material pm)) return pm;
+                pm = new Material(om)
+                {
+                    shader = patchedShaders[AssetDatabase.GetAssetPath(om.shader)].Shader,
+                    name = om.name + "_ks",
+                };
+                pm.renderQueue = om.renderQueue;   // a shader swap resets the queue; the draw order must not change
+                // Poiyomi also writes VRCFallback as a MATERIAL override tag, which the copy inherits and which
+                // wins over the shader's own tag: say Hidden here too, or a viewer who blocks shaders gets the
+                // scrambled mesh on a Standard fallback (bench, 2026-11-18: 2 of 6 materials kept "Standard").
+                pm.SetOverrideTag("VRCFallback", "Hidden");
+                // 3.14: the laid-out main texture, and the id the texture function needs; 0 = read plainly
+                KSAntiRipShaderPatch.PatchResult spr = patchedShaders[AssetDatabase.GetAssetPath(om.shader)];
+                if (textures != null && spr.TextureOk) textures.Apply(pm, om);
+                AssetDatabase.CreateAsset(pm, folder + "/MAT_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".mat");
+                patchedMats[om] = pm;
+                return pm;
+            }
             foreach (var smr in users)
             {
                 Material[] mats = smr.sharedMaterials;
@@ -1003,25 +1112,9 @@ namespace KawaiiStudio.VRC.AntiRip
                     Material om = mats[j];
                     // a slot on a sub-mesh the shader does not take keeps the avatar's own material
                     if (om == null || !choice.PatchesSlot(j)) { copy[j] = om; continue; }
-                    if (!patchedMats.TryGetValue(om, out Material pm))
-                    {
-                        pm = new Material(om)
-                        {
-                            shader = patchedShaders[AssetDatabase.GetAssetPath(om.shader)].Shader,
-                            name = om.name + "_ks",
-                        };
-                        pm.renderQueue = om.renderQueue;   // a shader swap resets the queue; the draw order must not change
-                        // Poiyomi also writes VRCFallback as a MATERIAL override tag, which the copy inherits and which
-                        // wins over the shader's own tag: say Hidden here too, or a viewer who blocks shaders gets the
-                        // scrambled mesh on a Standard fallback (bench, 2026-11-18: 2 of 6 materials kept "Standard").
-                        pm.SetOverrideTag("VRCFallback", "Hidden");
-                        // 3.14: the laid-out main texture, and the id the texture function needs; 0 = read plainly
-                        KSAntiRipShaderPatch.PatchResult spr = patchedShaders[AssetDatabase.GetAssetPath(om.shader)];
-                        if (textures != null && spr.TextureOk) textures.Apply(pm, om);
-                        AssetDatabase.CreateAsset(pm, folder + "/MAT_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".mat");
-                        patchedMats[om] = pm;
-                    }
-                    copy[j] = pm;
+                    copy[j] = Patched(om);
+                    // 3.16.6: what an animation swaps into this slot gets its patched copy too (RewireSwaps uses it)
+                    if (swapsOf != null) foreach (Material sw in swapsOf(smr, j)) if (sw != null) Patched(sw);
                 }
                 result.Materials[smr] = copy;
             }
@@ -1253,13 +1346,28 @@ namespace KawaiiStudio.VRC.AntiRip
         /// the root. At build time VRCFury and Modular Avatar have merged theirs into the playable layers already.
         /// </summary>
         static HashSet<string> MaterialSwaps(GameObject root, VRCAvatarDescriptor descriptor, out HashSet<Material> swapped)
+            => MaterialSwaps(root, descriptor, out swapped, out _, out _);
+
+        /// <summary>
+        /// 3.16.6: also, per renderer path, which slot gets which materials (bySlot), and the paths some controller that is
+        /// not a plain AnimatorController swaps (an override controller, which cannot be copied and rewired: those stay
+        /// on restore shapes). A swap whose slot cannot be read counts for every slot.
+        /// </summary>
+        static HashSet<string> MaterialSwaps(GameObject root, VRCAvatarDescriptor descriptor, out HashSet<Material> swapped,
+                                             out Dictionary<string, Dictionary<int, HashSet<Material>>> bySlot,
+                                             out HashSet<string> notRewirable)
         {
             var paths = new HashSet<string>(StringComparer.Ordinal);
             swapped = new HashSet<Material>();
             var found = swapped;
+            var slots = new Dictionary<string, Dictionary<int, HashSet<Material>>>(StringComparer.Ordinal);
+            var fixedPaths = new HashSet<string>(StringComparer.Ordinal);
+            bySlot = slots;
+            notRewirable = fixedPaths;
             void Scan(RuntimeAnimatorController c, string prefix)
             {
                 if (c == null) return;
+                bool rewirable = c is AnimatorController;
                 foreach (AnimationClip clip in c.animationClips)
                 {
                     if (clip == null) continue;
@@ -1269,8 +1377,12 @@ namespace KawaiiStudio.VRC.AntiRip
                         if (b.type == null || !typeof(Renderer).IsAssignableFrom(b.type)) continue;
                         string p = string.IsNullOrEmpty(prefix) ? b.path : string.IsNullOrEmpty(b.path) ? prefix : prefix + "/" + b.path;
                         paths.Add(p);
+                        if (!rewirable) fixedPaths.Add(p);
+                        int slot = SlotOf(b.propertyName);
+                        if (!slots.TryGetValue(p, out var perSlot)) slots[p] = perSlot = new Dictionary<int, HashSet<Material>>();
+                        if (!perSlot.TryGetValue(slot, out var set)) perSlot[slot] = set = new HashSet<Material>();
                         foreach (ObjectReferenceKeyframe k in AnimationUtility.GetObjectReferenceCurve(clip, b))
-                            if (k.value is Material m) found.Add(m);
+                            if (k.value is Material m) { found.Add(m); set.Add(m); }
                     }
                 }
             }
@@ -1287,6 +1399,131 @@ namespace KawaiiStudio.VRC.AntiRip
                 Scan(a.runtimeAnimatorController, AnimationUtility.CalculateTransformPath(a.transform, root.transform));
             }
             return paths;
+        }
+
+        /// <summary>"m_Materials.Array.data[2]" -> 2; -1 when the property names no slot.</summary>
+        static int SlotOf(string propertyName)
+        {
+            int open = propertyName.LastIndexOf('['), close = propertyName.LastIndexOf(']');
+            return open >= 0 && close > open && int.TryParse(propertyName.Substring(open + 1, close - open - 1), out int s) ? s : -1;
+        }
+
+        /// <summary>3.16.6: the materials an animation may put in slot <paramref name="slot"/> of the renderer at
+        /// <paramref name="path"/> (a swap whose slot is unknown counts for every slot).</summary>
+        static IEnumerable<Material> SwappedInto(Dictionary<string, Dictionary<int, HashSet<Material>>> bySlot, string path, int slot)
+        {
+            if (bySlot == null || !bySlot.TryGetValue(path, out var perSlot)) yield break;
+            if (perSlot.TryGetValue(slot, out var exact)) foreach (Material m in exact) yield return m;
+            if (perSlot.TryGetValue(-1, out var any)) foreach (Material m in any) yield return m;
+        }
+
+        /// <summary>
+        /// 3.16.6 (owner, 2026-11-19, after an attacker's test of his own upload: the face "Body" stayed on restore shapes,
+        /// which a least-squares solve undoes in milliseconds, only because "an animation swaps its materials"). A renderer
+        /// the shader closed may have materials swapped in by the avatar's animations; those swaps must put in the PATCHED
+        /// copy, or the scrambled mesh would show on the swapped-in (unpatched) shader -- to everyone, key or not. The user's
+        /// own clips and controllers are never written: each controller with such a swap is COPIED into the build folder
+        /// with copies of those clips whose swaps point at the patched materials, and put in its place on this build copy.
+        /// Returns the closed renderers this could not do for (an override controller, a copy that failed): the caller
+        /// puts those back on restore shapes before anything else uses them.
+        /// </summary>
+        static HashSet<Renderer> RewireSwaps(GameObject root, VRCAvatarDescriptor descriptor, string folder,
+                                             Dictionary<Renderer, ShaderChoice> closed, Dictionary<Material, Material> patchedMats,
+                                             List<string> warnings)
+        {
+            var failed = new HashSet<Renderer>();
+            if (closed.Count == 0) return failed;
+
+            Renderer TargetOf(Transform animRoot, EditorCurveBinding b)
+            {
+                Transform t = string.IsNullOrEmpty(b.path) ? animRoot : animRoot.Find(b.path);
+                return t != null && b.type != null ? t.GetComponent(b.type) as Renderer : null;
+            }
+            bool NeedsPatch(Transform animRoot, EditorCurveBinding b, out Renderer r, out int slot)
+            {
+                r = null; slot = -1;
+                if (!b.propertyName.StartsWith("m_Materials", StringComparison.Ordinal) || b.type == null ||
+                    !typeof(Renderer).IsAssignableFrom(b.type)) return false;
+                r = TargetOf(animRoot, b);
+                if (r == null || !closed.TryGetValue(r, out ShaderChoice c)) return false;
+                slot = SlotOf(b.propertyName);
+                return slot < 0 || c.PatchesSlot(slot);
+            }
+
+            // returns the controller to use instead (null = keep), and adds to failed what it could not rewire
+            RuntimeAnimatorController Rewire(RuntimeAnimatorController source, Transform animRoot)
+            {
+                if (source == null) return null;
+                var touched = new Dictionary<AnimationClip, List<(EditorCurveBinding b, Renderer r)>>();
+                foreach (AnimationClip clip in source.animationClips.Distinct())
+                {
+                    if (clip == null) continue;
+                    foreach (EditorCurveBinding b in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                        if (NeedsPatch(animRoot, b, out Renderer r, out _))
+                        {
+                            if (!touched.TryGetValue(clip, out var list)) touched[clip] = list = new List<(EditorCurveBinding, Renderer)>();
+                            list.Add((b, r));
+                        }
+                }
+                if (touched.Count == 0) return null;
+                if (!(source is AnimatorController ac))
+                {
+                    foreach (var l in touched.Values) foreach (var (_, r) in l) failed.Add(r);
+                    return null;
+                }
+                var clipMap = new Dictionary<AnimationClip, AnimationClip>();
+                foreach (var kv in touched)
+                {
+                    AnimationClip copy = UnityEngine.Object.Instantiate(kv.Key);
+                    copy.name = kv.Key.name;
+                    foreach (var (b, r) in kv.Value)
+                    {
+                        ObjectReferenceKeyframe[] keys = AnimationUtility.GetObjectReferenceCurve(kv.Key, b);
+                        for (int k = 0; k < keys.Length; k++)
+                            if (keys[k].value is Material m && patchedMats.TryGetValue(m, out Material pm)) keys[k].value = pm;
+                            else if (keys[k].value is Material m2 && m2.shader != null &&
+                                     !m2.shader.name.StartsWith("Hidden/Locked/KS/", StringComparison.Ordinal)) failed.Add(r);
+                        AnimationUtility.SetObjectReferenceCurve(copy, b, keys);
+                    }
+                    AssetDatabase.CreateAsset(copy, folder + "/KS_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".anim");
+                    clipMap[kv.Key] = copy;
+                }
+                AnimatorController rewired = null;
+                try
+                {
+                    rewired = KSAntiRipAnimatorCopy.Copy(ac, folder + "/KS_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".controller",
+                                                         clip => clip != null && clipMap.TryGetValue(clip, out AnimationClip cc) ? cc : clip);
+                }
+                catch (Exception e) { Debug.LogError("[KS ANTI-RIP] " + e); }
+                if (rewired == null)
+                {
+                    foreach (var l in touched.Values) foreach (var (_, r) in l) failed.Add(r);
+                    return null;
+                }
+                return rewired;
+            }
+
+            if (descriptor != null)
+            {
+                for (int i = 0; descriptor.baseAnimationLayers != null && i < descriptor.baseAnimationLayers.Length; i++)
+                {
+                    RuntimeAnimatorController c = Rewire(descriptor.baseAnimationLayers[i].animatorController, root.transform);
+                    if (c != null) descriptor.baseAnimationLayers[i].animatorController = c;
+                }
+                for (int i = 0; descriptor.specialAnimationLayers != null && i < descriptor.specialAnimationLayers.Length; i++)
+                {
+                    RuntimeAnimatorController c = Rewire(descriptor.specialAnimationLayers[i].animatorController, root.transform);
+                    if (c != null) descriptor.specialAnimationLayers[i].animatorController = c;
+                }
+            }
+            foreach (Animator a in root.GetComponentsInChildren<Animator>(true))
+            {
+                RuntimeAnimatorController c = Rewire(a.runtimeAnimatorController, a.transform);
+                if (c != null) a.runtimeAnimatorController = c;
+            }
+            if (failed.Count > 0 && warnings != null)
+                warnings.Add(failed.Count + " part(s) whose materials an animation swaps kept restore shapes: the swap could not be pointed at the protected material.");
+            return failed;
         }
 
         /// <summary>Copies the avatar's FX controller into the output folder, or creates one if it has none.</summary>

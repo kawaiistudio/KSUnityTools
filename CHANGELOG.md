@@ -2,6 +2,28 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.16.6]
+
+**KS ANTI-RIP: meshes close through almost any shader, not only Poiyomi and lilToon.** Any shader whose source is in
+the project can now carry the restore: vertex/fragment shaders, surface shaders, shaders split across include files,
+with their shadow pass. The copy draws exactly like the original; only its vertex input gains the restore. On the bench
+avatar, 42 of 42 third-party shaders patch and compile, and all 91 meshes (1.85 million vertices) are closed by their
+shader, with no restore shapes left. Rendered one by one, each object looks the same as the original with the key, up
+close and from afar, and stays scrambled without it. A surface shader that tessellates is drawn untessellated when
+tessellation only splits flat triangles (it looks the same); one that moves its tessellated vertices, a shader with no
+source in the project, or one that does not compile keeps restore shapes, and the protection report says why.
+
+**KS ANTI-RIP: meshes whose materials change in animations can be closed by their shader.** Every material an
+animation swaps into a slot gets its own patched copy; the avatar's controllers and swap clips are copied to point to
+those copies (your own assets are never changed). When that cannot be done, the mesh keeps restore shapes.
+
+**KS ANTI-RIP: pixel-art textures are no longer laid out.** A texture with Point filtering is read unfiltered, which the
+restore cannot reproduce, so it is left as it is.
+
+Closing more meshes with their shader costs more size: "Max size added" still caps it, protecting the costliest mesh
+with restore shapes when needed. With Kawaii Studio v679, laid-out textures seen from afar or at a slant blend like the
+original, instead of showing blocks or losing their colour.
+
 ## [3.16.5]
 
 **KS ANTI-RIP: large static meshes stay protected within "Max size added".** A static mesh closed by its shader used to
