@@ -131,7 +131,13 @@ namespace KawaiiStudio.VRC.AntiRip
 
                 var props = new List<string>(shaderProperties ?? Array.Empty<string>());
                 if (inc.TextureOk) { props.Add(tidProperty); props.Add(OutlineTidProperty(tidProperty)); }
-                if (!FlattenInto(shaderPath, index, folder, inc.Dir, props, inc.TextureOk, r)) return r;
+                // 3.16.7: lilToon's Fallback "Unlit/Texture" would draw the scrambled mesh whenever a camera cannot use
+                // lilToon's passes (VRChat's Personal Mirror, owner 2026-11-19): a restored stand-in instead, or Off
+                string fallback = restore
+                    ? KSAntiRipShaderPatch.RestoredUnlitFallback(folder, shaderCode, shaderCall, shaderIdField, shaderProperties,
+                                                                 inc.TextureOk ? textureCode : null, textureFn, tidProperty) ?? ""
+                    : null;
+                if (!FlattenInto(shaderPath, index, folder, inc.Dir, props, inc.TextureOk, r, fallback)) return r;
                 r.TextureOk = inc.TextureOk;
                 return r;
             }
@@ -365,7 +371,9 @@ namespace KawaiiStudio.VRC.AntiRip
         static readonly Regex AnyMainReadRx = new Regex("\\b[A-Za-z_][A-Za-z0-9_]*\\s*\\(\\s*_MainTex\\s*,");
 
         /// <summary>Writes the flattened copy into <paramref name="folder"/>/kss&lt;index&gt; and compiles every pass.</summary>
-        static bool FlattenInto(string shaderPath, int index, string folder, string incDir, IList<string> props, bool texture, FlattenResult r)
+        /// <param name="fallback">null: keep lilToon's Fallback (flatten only); "": Fallback Off; else the restored stand-in's name</param>
+        static bool FlattenInto(string shaderPath, int index, string folder, string incDir, IList<string> props, bool texture, FlattenResult r,
+                                string fallback = null)
         {
             string dir = Path.GetDirectoryName(shaderPath).Replace('\\', '/');
             string lts = File.ReadAllText(shaderPath);
@@ -423,6 +431,9 @@ namespace KawaiiStudio.VRC.AntiRip
                 Match tags = sub >= 0 ? new Regex("Tags\\s*\\{").Match(outText, sub) : Match.Empty;
                 if (tags.Success) outText = outText.Insert(tags.Index + tags.Length, " \"VRCFallback\" = \"Hidden\" ");
             }
+            if (fallback != null) outText = KSAntiRipShaderPatch.ReplaceUnityFallback(outText, fallback.Length > 0 ? fallback : null);
+            // 3.16.7: batched vertices reach the shader in world space (only when the copy restores: not a plain flatten)
+            if (fallback != null) outText = KSAntiRipShaderPatch.ForceNoBatching(outText);
             if (props.Count > 0)
             {
                 var block = new StringBuilder();

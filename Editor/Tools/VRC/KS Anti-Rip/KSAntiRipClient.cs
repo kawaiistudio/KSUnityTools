@@ -76,6 +76,10 @@ namespace KawaiiStudio.VRC.AntiRip
             /// <summary>3.16.5 (app engine 5.7+, v678): the shader code also undoes a static mesh moved along its id's
             /// public directions (UV7.w = 1), which may then ship compressed. False from an older app.</summary>
             public bool shaderAxes;
+
+            /// <summary>3.16.7 (app engine 5.8+, v679): the shader code also undoes a skinned mesh that had no tangents
+            /// and got some on its copy (UV7.w = 2), handing the creator's code back (1,0,0,1). False from an older app.</summary>
+            public bool shaderTangentless;
         }
 
         /// <summary>3.16.5: the paired Kawaii Studio's version (0 until paired, or from an app that does not say).
@@ -84,6 +88,9 @@ namespace KawaiiStudio.VRC.AntiRip
 
         /// <summary>The first app whose shader code undoes a static mesh moved along public directions.</summary>
         public const int AxesFromAppVersion = 678;
+
+        /// <summary>The first app whose shader code undoes a skinned mesh that had no tangents (UV7.w = 2).</summary>
+        public const int TangentlessFromAppVersion = 679;
 
         /// <summary>3.14: a texture this package can lay out, by id, at its imported size.</summary>
         public class TextureInfo
@@ -291,6 +298,7 @@ namespace KawaiiStudio.VRC.AntiRip
             plan.textureBlock = Int(reply, "textureBlock");
             plan.shaderKeyBits = Int(reply, "shaderKeyBits");
             plan.shaderAxes = Flag(reply, "shaderAxes");
+            plan.shaderTangentless = Flag(reply, "shaderTangentless");
             List<string> tids = StrList(reply, "textureTids"), tidIds = StrList(reply, "textureIds");
             for (int i = 0; i < tidIds.Count && i < tids.Count; i++)
                 if (uint.TryParse(tids[i], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out uint t) && t > 0)

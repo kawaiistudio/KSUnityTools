@@ -101,6 +101,15 @@ namespace KawaiiStudio.VRC.AntiRip
         /// </summary>
         public static Mesh BuildScrambledMesh(Mesh source, bool[] move, Vector2[] ids, Vector2[] amounts,
                                               float strength, bool axes, out int moved)
+            => BuildScrambledMesh(source, move, ids, amounts, strength, axes, false, out moved);
+
+        /// <summary>
+        /// <paramref name="tangentless"/> (3.16.7, app v679+): the source is a skinned mesh whose tangents were ADDED on
+        /// this copy (the creator's had none). Its moved vertices carry w = 2 in UV7, so the shader undoes along them
+        /// and then hands the creator's code the (1,0,0,1) Unity feeds a mesh without tangents.
+        /// </summary>
+        public static Mesh BuildScrambledMesh(Mesh source, bool[] move, Vector2[] ids, Vector2[] amounts,
+                                              float strength, bool axes, bool tangentless, out int moved)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             int n = source.vertexCount;
@@ -159,7 +168,7 @@ namespace KawaiiStudio.VRC.AntiRip
                 aArr[i] = a; bArr[i] = b;
                 pos[i] += a * norH + b * tanH;
                 // round(id) in the shader, so a half-float is read back exactly for an id below 2048 per component
-                uv7.Add(new Vector4(Mathf.Round(ids[i].x), Mathf.Round(ids[i].y), strength, 0f));
+                uv7.Add(new Vector4(Mathf.Round(ids[i].x), Mathf.Round(ids[i].y), strength, tangentless ? 2f : 0f));
                 moved++;
             }
             copy.vertices = pos;
@@ -171,7 +180,10 @@ namespace KawaiiStudio.VRC.AntiRip
             if (moved > 0) MeshUtility.SetMeshCompression(copy, ModelImporterMeshCompression.Off);
 
             // Blend shapes that turn the normal/tangent move the offset with them, so the shader's subtraction still
-            // cancels at any weight -- using the same half values.
+            // cancels at any weight. 3.16.7: with the deltas EXACTLY as Unity adds them -- full precision (the GPU's
+            // blend is linear and exact; bench readback 2026-11-19). The half-rounded deltas used before missed by
+            // a x (dn - half(dn)): up to 5 % of a wing's size with its shapes on (OKAY-VAMPIRE), i.e. faces moving
+            // in expressions came back slightly off.
             var dv = new Vector3[n]; var dn = new Vector3[n]; var dt = new Vector3[n];
             copy.ClearBlendShapes();
             for (int s = 0; s < source.blendShapeCount; s++)
@@ -188,7 +200,7 @@ namespace KawaiiStudio.VRC.AntiRip
                     {
                         if (move[i] && (dn[i] != Vector3.zero || dt[i] != Vector3.zero))
                         {
-                            dv2[i] = dv[i] + aArr[i] * HalfOf(dn[i]) + bArr[i] * HalfOf(dt[i]);
+                            dv2[i] = dv[i] + aArr[i] * dn[i] + bArr[i] * dt[i];
                             turns = true;
                         }
                         else dv2[i] = dv[i];
@@ -211,6 +223,156 @@ namespace KawaiiStudio.VRC.AntiRip
         static readonly Regex PropertiesRx = new Regex("(Properties\\s*\\{\\s*\\r?\\n)");
 
         sealed class InputStruct { public string Name, Pos, Nor, Tan; }
+
+        // ── 3.16.7: a restored fallback ──────────────────────────────────────────────────────────────
+
+        static readonly Dictionary<string, string> RestoredFallbacks = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        /// <summary>
+        /// 3.16.7 (owner, 2026-11-19: the protected Wendigo showed giant shards in VRChat's Personal Mirror only). A patched
+        /// copy that keeps the creator's <c>Fallback "Unlit/Texture"</c> (lilToon's) is drawn by THAT shader whenever a
+        /// camera cannot use its own passes (the VertexLit rendering path, on the bench) -- unpatched, so the scrambled
+        /// mesh shows, wearing its laid-out texture. This writes, once per build folder, the same thing as Unity's
+        /// Unlit/Texture (main texture, fog, opaque alpha) with the restore in its vertex function and the texture function
+        /// on the main texture, and returns its shader name to put in the copy's Fallback; null when it does not compile
+        /// (then the caller says Fallback Off: nothing drawn rather than shards).
+        /// </summary>
+        public static string RestoredUnlitFallback(string folder, string shaderCode, string call, string idField, IList<string> properties,
+                                                   string textureCode, string textureFn, string tidProperty)
+            => RestoredFallback(FallbackKind.Unlit, folder, shaderCode, call, idField, properties, textureCode, textureFn, tidProperty);
+
+        /// <summary>3.16.7: what a creator's Unity Fallback is restored as.</summary>
+        public enum FallbackKind { Off, Unlit, Lit, LitCutout, LitTransparent }
+
+        /// <summary>
+        /// Unity's Unlit/Texture is drawn exactly by <see cref="FallbackKind.Unlit"/>. The legacy lit family (Diffuse,
+        /// VertexLit, Mobile, VRChat/Mobile/Diffuse, Standard -- whose own fallback ends there) draws in a camera that cannot
+        /// use the main passes through its "Vertex" pass: texture x color x (ambient + vertex lights) x 2, which
+        /// <see cref="FallbackKind.Lit"/> does, with cutout and blended variants. Anything else: Off.
+        /// </summary>
+        public static FallbackKind KindOf(string unityFallback)
+        {
+            string f = (unityFallback ?? "").Trim();
+            if (f.Length == 0 || f.Equals("Off", StringComparison.OrdinalIgnoreCase)) return FallbackKind.Off;
+            if (f.Equals("Unlit/Texture", StringComparison.OrdinalIgnoreCase)) return FallbackKind.Unlit;
+            string l = f.ToLowerInvariant().Replace("legacy shaders/", "");
+            if (l.StartsWith("transparent/cutout/")) return FallbackKind.LitCutout;
+            if (l == "transparent/diffuse" || l == "transparent/vertexlit") return FallbackKind.LitTransparent;
+            if (l == "diffuse" || l == "vertexlit" || l == "mobile/diffuse" || l == "mobile/vertexlit" || l == "vrchat/mobile/diffuse" ||
+                l == "standard" || l == "standard (specular setup)" || l == "bumped diffuse" || l == "specular")
+                return FallbackKind.Lit;
+            return FallbackKind.Off;
+        }
+
+        public static string RestoredFallback(FallbackKind kind, string folder, string shaderCode, string call, string idField, IList<string> properties,
+                                              string textureCode, string textureFn, string tidProperty)
+        {
+            if (kind == FallbackKind.Off) return null;
+            bool tex = !string.IsNullOrEmpty(textureCode) && !string.IsNullOrEmpty(textureFn) && !string.IsNullOrEmpty(tidProperty);
+            string key = folder + "|" + tex + "|" + kind;
+            if (RestoredFallbacks.TryGetValue(key, out string known) && Shader.Find(known) != null) return known;
+            try
+            {
+                bool lit = kind != FallbackKind.Unlit;
+                string name = "Hidden/Locked/KS/fb_" + kind.ToString().ToLowerInvariant() + (tex ? "_t" : "") + "_" + Guid.NewGuid().ToString("N").Substring(0, 6);
+                var st = new InputStruct { Name = "ks_fb_in", Pos = "vertex", Nor = "normal", Tan = "tangent" };
+                var sb = new StringBuilder();
+                sb.Append("Shader \"").Append(name).Append("\"\n{\n\tProperties\n\t{\n\t\t_MainTex (\"\", 2D) = \"white\" {}\n");
+                if (lit) sb.Append("\t\t_Color (\"\", Color) = (1,1,1,1)\n");
+                if (kind == FallbackKind.LitCutout) sb.Append("\t\t_Cutoff (\"\", Range(0,1)) = 0.5\n");
+                foreach (string p in properties ?? Array.Empty<string>()) sb.Append("\t\t[HideInInspector] ").Append(p).Append(" (\"\", Float) = 0\n");
+                if (tex) sb.Append("\t\t[HideInInspector] ").Append(tidProperty).Append(" (\"\", Float) = 0\n");
+                string renderType = kind == FallbackKind.LitCutout ? "TransparentCutout" : kind == FallbackKind.LitTransparent ? "Transparent" : "Opaque";
+                sb.Append("\t}\n\tSubShader\n\t{\n\t\tTags { \"RenderType\" = \"").Append(renderType).Append("\" \"VRCFallback\" = \"Hidden\" \"DisableBatching\" = \"True\" }\n\t\tLOD 100\n");
+                sb.Append("\t\tPass\n\t\t{\n");
+                // Unlit/Texture's pass has no LightMode (drawn on any path); the legacy lit family draws through "Vertex"
+                if (lit) sb.Append("\t\t\tTags { \"LightMode\" = \"Vertex\" }\n");
+                if (kind == FallbackKind.LitTransparent) sb.Append("\t\t\tBlend SrcAlpha OneMinusSrcAlpha\n\t\t\tZWrite Off\n");
+                sb.Append("\t\t\tCGPROGRAM\n\t\t\t#pragma vertex ks_fb_vert\n\t\t\t#pragma fragment ks_fb_frag\n");
+                sb.Append("\t\t\t#pragma multi_compile_fog\n\t\t\t#include \"UnityCG.cginc\"\n");
+                sb.Append("struct ks_fb_in\n{\n\tfloat4 vertex : POSITION;\n\tfloat3 normal : NORMAL;\n\tfloat4 tangent : TANGENT;\n\tfloat2 uv : TEXCOORD0;\n\tfloat4 ")
+                  .Append(idField).Append(" : TEXCOORD7;\n};\n");
+                sb.Append(Substitute(shaderCode, st)).Append("\n");
+                if (tex) sb.Append(textureCode).Append("\n");
+                sb.Append("UNITY_DECLARE_TEX2D(_MainTex); float4 _MainTex_ST; float4 _MainTex_TexelSize;\n");
+                if (lit) sb.Append("fixed4 _Color;\n");
+                if (kind == FallbackKind.LitCutout) sb.Append("fixed _Cutoff;\n");
+                sb.Append("struct ks_fb_v2f { float2 uv : TEXCOORD0; UNITY_FOG_COORDS(1) fixed4 diff : COLOR0; float4 pos : SV_POSITION; };\n");
+                sb.Append("ks_fb_v2f ks_fb_vert(ks_fb_in v)\n{\n\t").Append(call).Append("_ks_fb_in(v);\n")
+                  .Append("\tks_fb_v2f o; o.pos = UnityObjectToClipPos(v.vertex); o.uv = TRANSFORM_TEX(v.uv, _MainTex);\n")
+                  .Append(lit ? "\to.diff = fixed4(_Color.rgb * ShadeVertexLights(v.vertex, v.normal), _Color.a);\n" : "\to.diff = 1;\n")
+                  .Append("\tUNITY_TRANSFER_FOG(o, o.pos);\n\treturn o;\n}\n");
+                sb.Append("fixed4 ks_fb_frag(ks_fb_v2f i) : SV_Target\n{\n\tfixed4 col = ")
+                  .Append(tex ? textureFn + "(_MainTex, sampler_MainTex, _MainTex_TexelSize, " + tidProperty + ", i.uv)" : "UNITY_SAMPLE_TEX2D(_MainTex, i.uv)")
+                  .Append(";\n");
+                if (lit) sb.Append("\tcol.rgb *= i.diff.rgb * 2.0; col.a *= i.diff.a;\n");
+                if (kind == FallbackKind.LitCutout) sb.Append("\tclip(col.a - _Cutoff);\n");
+                sb.Append("\tUNITY_APPLY_FOG(i.fogCoord, col);\n");
+                if (kind != FallbackKind.LitTransparent) sb.Append("\tUNITY_OPAQUE_ALPHA(col.a);\n");
+                sb.Append("\treturn col;\n}\n");
+                sb.Append("\t\t\tENDCG\n\t\t}\n\t}\n\tFallback Off\n}\n");
+
+                string path = folder + "/KSFB_" + name.Substring(name.LastIndexOf('_') + 1) + ".shader";
+                File.WriteAllText(path, sb.ToString());
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+                Shader s = AssetDatabase.LoadAssetAtPath<Shader>(path);
+                if (s == null) return null;
+                var probe = new Material(s);
+                try { for (int p = 0; p < s.passCount; p++) ShaderUtil.CompilePass(probe, p, true); }
+                finally { UnityEngine.Object.DestroyImmediate(probe); }
+                bool errors = ShaderUtil.GetShaderMessages(s).Any(x => x.severity == UnityEditor.Rendering.ShaderCompilerMessageSeverity.Error) ||
+                              ShaderUtil.ShaderHasError(s);
+                if (errors) { AssetDatabase.DeleteAsset(path); return null; }
+                RestoredFallbacks[key] = name;
+                return name;
+            }
+            catch { return null; }
+        }
+
+        static readonly Regex DisableBatchingRx = new Regex("\"DisableBatching\"\\s*=\\s*\"[^\"]*\"");
+        static readonly Regex SubShaderRx = new Regex("\\bSubShader\\s*\\{");
+        static readonly Regex TagsRx = new Regex("\\bTags\\s*\\{");
+        static readonly Regex PassRx = new Regex("\\bPass\\s*\\{");
+
+        /// <summary>
+        /// 3.16.7 (owner 2026-11-19, VRChat's Personal Mirror): every SubShader of a patched copy gets
+        /// "DisableBatching" = "True". Without pixel lights (a mirror that turns them into vertex lights) an object needs
+        /// one pass only, and Unity then BATCHES small meshes that share a material: their vertices reach the shader in
+        /// world space, where an undo made in the object's own space (a static mesh's directions, a normal's length) puts
+        /// them back wrong -- shards (bench: OKAY-VAMPIRE, 30 000 px of avatar became 220 000). Unity's own answer for
+        /// shaders that move vertices in object space.
+        /// </summary>
+        public static string ForceNoBatching(string shaderText)
+        {
+            string t = DisableBatchingRx.Replace(shaderText, "\"DisableBatching\" = \"True\"");
+            var inserts = new List<(int at, string text)>();
+            foreach (Match sub in SubShaderRx.Matches(t))
+            {
+                int start = sub.Index + sub.Length;
+                Match pass = PassRx.Match(t, start);
+                Match next = SubShaderRx.Match(t, start);
+                int limit = pass.Success ? pass.Index : t.Length;
+                if (next.Success && next.Index < limit) limit = next.Index;
+                Match tags = TagsRx.Match(t, start);
+                if (tags.Success && tags.Index < limit)
+                {
+                    int close = t.IndexOf('}', tags.Index);
+                    if (close > 0 && t.IndexOf("\"DisableBatching\"", tags.Index, close - tags.Index, StringComparison.Ordinal) < 0)
+                        inserts.Add((tags.Index + tags.Length, " \"DisableBatching\" = \"True\" "));
+                }
+                else inserts.Add((start, "\n\t\tTags { \"DisableBatching\" = \"True\" }\n"));
+            }
+            foreach (var ins in inserts.OrderByDescending(x => x.at)) t = t.Insert(ins.at, ins.text);
+            return t;
+        }
+
+        static readonly Regex UnityFallbackRx = new Regex("^(\\s*)Fallback\\s+(?:\"[^\"]*\"|Off)[ \\t]*(?://[^\\r\\n]*)?(\\r?)$",
+                                                         RegexOptions.Multiline | RegexOptions.IgnoreCase);
+
+        /// <summary>3.16.7: the copy's Unity Fallback pointed at <paramref name="restored"/> (Off when null). Only a
+        /// copy that names one is changed: a shader without a Fallback has nothing unpatched to fall back to.</summary>
+        public static string ReplaceUnityFallback(string shaderText, string restored) =>
+            UnityFallbackRx.Replace(shaderText, m => m.Groups[1].Value + "Fallback " + (restored != null ? "\"" + restored + "\"" : "Off") + m.Groups[2].Value);
 
         static string Field(string body, string semantic)
         {
@@ -365,6 +527,12 @@ namespace KawaiiStudio.VRC.AntiRip
             // Someone who blocks the wearer's shaders gets VRChat's fallback. "Hidden" draws nothing of the protected
             // mesh for them, so they see the Kawaii Studio poster instead of scrambled geometry (owner's rule, 2026-11-18).
             sh = FallbackRx.Replace(sh, "\"VRCFallback\" = \"Hidden\"");
+            // 3.16.7: a Unity Fallback the copy names would draw the scrambled mesh unrestored (VRChat's Personal Mirror)
+            sh = ForceNoBatching(sh);
+            Match ufb = Regex.Match(sh, "^\\s*Fallback\\s+(?:\"([^\"]*)\"|Off)", RegexOptions.Multiline | RegexOptions.IgnoreCase);
+            if (ufb.Success)
+                sh = ReplaceUnityFallback(sh, RestoredFallback(KindOf(ufb.Groups[1].Value), folder, shaderCode, call, idField, properties,
+                                                               tex ? textureCode : null, textureFn, tidProperty));
             var props = new StringBuilder();
             foreach (string p in properties) props.Append("\t\t[HideInInspector] ").Append(p).Append(" (\"\", Float) = 0\n");
             if (tex) props.Append("\t\t[HideInInspector] ").Append(tidProperty).Append(" (\"\", Float) = 0\n");

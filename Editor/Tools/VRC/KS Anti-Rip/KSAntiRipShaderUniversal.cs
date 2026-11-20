@@ -35,7 +35,10 @@ namespace KawaiiStudio.VRC.AntiRip
             string name = shader.name;
             if (name.StartsWith("Hidden/Locked/KS/", StringComparison.Ordinal)) return false;
             if (KSAntiRipShaderPatch.IsLockedPoiyomi(shader) || KSAntiRipLilToon.IsLilToon(shader)) return false;
-            if (name.IndexOf(".poiyomi", StringComparison.OrdinalIgnoreCase) >= 0) return false;   // unlocked: lock it in Poiyomi first
+            // a real unlocked Poiyomi (".poiyomi/..."): Poiyomi locks it at upload, before this runs. A shader that only
+            // CARRIES the word (an exported copy of a locked Poiyomi, "<exporter>/Hidden/Locked/.poiyomi/...") is an
+            // ordinary vertex/fragment shader and goes through here.
+            if (name.StartsWith(".poiyomi/", StringComparison.OrdinalIgnoreCase)) return false;
             string path = AssetDatabase.GetAssetPath(shader);
             return !string.IsNullOrEmpty(path) && path.EndsWith(".shader", StringComparison.OrdinalIgnoreCase) && File.Exists(path);
         }
@@ -54,8 +57,9 @@ namespace KawaiiStudio.VRC.AntiRip
 
         static string Field(string body, string semantic)
         {
-            // NORMAL_centroid and the like are the same semantic for a duplicate check
-            Match m = new Regex("(?:float|half|fixed|min16float|real|int|uint)[1-4]?\\s+(\\w+)\\s*:\\s*" + semantic + "(?:_\\w+)?\\b").Match(body);
+            // NORMAL_centroid and the like are the same semantic for a duplicate check; so is index 0 (POSITION0 = POSITION),
+            // which exported/decompiled shaders write
+            Match m = new Regex("(?:float|half|fixed|min16float|real|int|uint)[1-4]?\\s+(\\w+)\\s*:\\s*" + semantic + "0?(?:_\\w+)?\\b").Match(body);
             return m.Success ? m.Groups[1].Value : null;
         }
 
@@ -315,9 +319,18 @@ namespace KawaiiStudio.VRC.AntiRip
                     sh = sh.Substring(0, end) + pass + "\n" + sh.Substring(end);
                 if (!SubShaderEnds(sh).Any()) { res.Why = "its SubShader could not be found"; return res; }
             }
-            if (fb.Success) sh = FallbackRx.Replace(sh, "\tFallback Off", 1);
+            // never an unpatched Fallback: a camera that cannot use the copy's passes would draw the scrambled mesh with it
+            // (VRChat's Personal Mirror, 3.16.7). Unlit/Texture and the legacy lit family get a restored stand-in that draws
+            // like them; anything else is Off -- imitating a blended or toon fallback badly would be worse than nothing.
+            if (fb.Success)
+            {
+                string restored = KSAntiRipShaderPatch.RestoredFallback(KSAntiRipShaderPatch.KindOf(fb.Groups[1].Value), folder,
+                                                                        shaderCode, call, idField, properties, null, null, null);
+                sh = FallbackRx.Replace(sh, "\tFallback " + (restored != null ? "\"" + restored + "\"" : "Off"), 1);
+            }
             sh = ShaderNameRx.Replace(sh, m => m.Groups[1].Value + "Hidden/Locked/KS/" + index + "_" + ShortName(shaderPath) + m.Groups[3].Value, 1);
             sh = FallbackTagRx.Replace(sh, "\"VRCFallback\" = \"Hidden\"");
+            sh = KSAntiRipShaderPatch.ForceNoBatching(sh);   // 3.16.7: batched vertices reach the shader in world space
             var props = new StringBuilder();
             foreach (string p in properties) props.Append("\t\t[HideInInspector] ").Append(p).Append(" (\"\", Float) = 0\n");
             Match pr = Regex.Match(sh, "\\bProperties\\s*\\{");
@@ -478,10 +491,10 @@ namespace KawaiiStudio.VRC.AntiRip
         {
             newPars = null;
             if (pars.Contains("#")) return null;
-            Match p = Regex.Match(pars, "\\b(?:float|half|fixed)[34]\\s+(\\w+)\\s*:\\s*POSITION\\b");
+            Match p = Regex.Match(pars, "\\b(?:float|half|fixed)[34]\\s+(\\w+)\\s*:\\s*POSITION0?\\b");
             if (!p.Success) return null;
-            Match nr = Regex.Match(pars, "\\b(?:float|half|fixed)[34]\\s+(\\w+)\\s*:\\s*NORMAL\\b");
-            Match tg = Regex.Match(pars, "\\b(?:float|half|fixed)4\\s+(\\w+)\\s*:\\s*TANGENT\\b");
+            Match nr = Regex.Match(pars, "\\b(?:float|half|fixed)[34]\\s+(\\w+)\\s*:\\s*NORMAL0?\\b");
+            Match tg = Regex.Match(pars, "\\b(?:float|half|fixed)4\\s+(\\w+)\\s*:\\s*TANGENT0?\\b");
             string idIn = idField + "_in", nor = nr.Success ? nr.Groups[1].Value : "ks_nrm_in", tan = tg.Success ? tg.Groups[1].Value : "ks_tan_in";
             newPars = pars.TrimEnd() + (pars.Trim().Length > 0 ? ", " : "") + "float4 " + idIn + " : TEXCOORD7" +
                       (nr.Success ? "" : ", float3 ks_nrm_in : NORMAL") + (tg.Success ? "" : ", float4 ks_tan_in : TANGENT");
@@ -497,7 +510,7 @@ namespace KawaiiStudio.VRC.AntiRip
         /// unconditionally at the top); the body unchanged and decl null when there is none.</summary>
         static string Hoist(string body, string semantic, out string decl)
         {
-            Match m = new Regex("^[ \\t]*((?:float|half|fixed|min16float|real)[1-4]?\\s+\\w+\\s*:\\s*" + semantic + "(?:_\\w+)?\\s*;)[^\\r\\n]*\\r?\\n?",
+            Match m = new Regex("^[ \\t]*((?:float|half|fixed|min16float|real)[1-4]?\\s+\\w+\\s*:\\s*" + semantic + "0?(?:_\\w+)?\\s*;)[^\\r\\n]*\\r?\\n?",
                                 RegexOptions.Multiline).Match(body);
             decl = m.Success ? m.Groups[1].Value : null;
             return m.Success ? body.Remove(m.Index, m.Length) : body;

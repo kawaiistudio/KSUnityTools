@@ -345,8 +345,10 @@ namespace KawaiiStudio.VRC.AntiRip
                 // 3.16.5: with app v678+, a static mesh moves along public directions and keeps a compression (Low):
                 // measured on the 620 595-vertex Wendigo Skull, ~5.4 bytes a vertex over its Medium source, not ~14
                 bool axes = KSAntiRipClient.RunningAppVersion() >= KSAntiRipClient.AxesFromAppVersion;
+                // 3.16.7: a skinned mesh without tangents ships some on its copy (~6 bytes a vertex after LZMA)
                 long ShaderCost(Mesh m, bool isStatic) =>
-                    (long)m.vertexCount * (!Compressed(m) ? 3 : isStatic && axes ? 6 : 14);
+                    (long)m.vertexCount * ((!Compressed(m) ? 3 : isStatic && axes ? 6 : 14) +
+                                           (!isStatic && !m.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Tangent) ? 6 : 0));
                 long RestoreCost(Mesh m) => (long)m.vertexCount * (Compressed(m) ? 4 : 1);
                 long cap = settings.maxAddedMegabytes * 1048576L;
                 long Fixed() =>
@@ -690,7 +692,8 @@ namespace KawaiiStudio.VRC.AntiRip
                         if (patchedShaders.TryGetValue(AssetDatabase.GetAssetPath(x.shader), out KSAntiRipShaderPatch.PatchResult pr) && pr.Shader == null)
                             return "its shader could not be patched (" + pr.Why + ")";
                     }
-                    if (!m.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Tangent)) return "its mesh has no tangents";
+                    if (!m.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Tangent) && !(plan != null && plan.shaderTangentless))
+                        return "its mesh has no tangents (Kawaii Studio v" + KSAntiRipClient.TangentlessFromAppVersion + " or newer closes it anyway)";
                     return "its vertices are shared with a part on another material";
                 }
                 var entryOf = new Dictionary<Renderer, (Renderer smr, KSAntiRipClient.MeshPlan plan, bool byShader, bool mixed)>();
@@ -904,9 +907,12 @@ namespace KawaiiStudio.VRC.AntiRip
         {
             if (mesh == null || users.Count == 0) return null;
             // A static mesh without tangents gets them on its copy (TryShaderClose), which needs UVs to compute them.
+            // 3.16.7: so does a SKINNED mesh when the app's shader code hands the creator's code back the tangent Unity
+            // feeds a mesh without any (app v679+); its copy's tangents need no UVs (any direction across the normal).
             if (!mesh.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Normal)) return null;
             if (!mesh.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Tangent) &&
-                !(staticMesh && mesh.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.TexCoord0))) return null;
+                !(staticMesh && mesh.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.TexCoord0)) &&
+                !(!staticMesh && KSAntiRipClient.RunningAppVersion() >= KSAntiRipClient.TangentlessFromAppVersion)) return null;
             // 3.16.6: a renderer whose materials an animation swaps may be closed too, when every material that can land on
             // a closed slot is one the shader can patch (RewireSwaps then points the swaps at the patched copies). Without
             // the per-slot map (an older caller), or when an override controller does the swap, it stays out as before.
@@ -975,6 +981,25 @@ namespace KawaiiStudio.VRC.AntiRip
         /// slots. Returns null to fall back to restore shapes for the whole mesh -- if any shader will not patch, nothing
         /// is changed.
         /// </summary>
+        /// <summary>
+        /// 3.16.7: tangents for a skinned mesh that has none -- any unit direction across each normal. Unity skins them
+        /// like the normals, which is all the undo needs; the creator's code never sees them (the shader hands it back
+        /// (1,0,0,1)). A missing or zero normal gets (1,0,0).
+        /// </summary>
+        static Vector4[] TangentsAcross(Vector3[] normals)
+        {
+            var t = new Vector4[normals.Length];
+            for (int i = 0; i < normals.Length; i++)
+            {
+                Vector3 n = normals[i];
+                Vector3 axis = Mathf.Abs(n.x) < 0.9f ? Vector3.right : Vector3.up;
+                Vector3 d = Vector3.Cross(n, axis);
+                d = d.sqrMagnitude > 1e-12f ? d.normalized : Vector3.right;
+                t[i] = new Vector4(d.x, d.y, d.z, 1f);
+            }
+            return t;
+        }
+
         static ShaderMesh TryShaderClose(Mesh original, List<Renderer> users, KSAntiRipClient.MeshPlan meshPlan,
                                          KSAntiRipClient.Plan plan, Settings settings, string folder,
                                          Dictionary<string, KSAntiRipShaderPatch.PatchResult> patchedShaders,
@@ -985,6 +1010,9 @@ namespace KawaiiStudio.VRC.AntiRip
             if (choice == null) return null;
             if (meshPlan.shaderIds.Length != original.vertexCount || meshPlan.shaderAmounts.Length != original.vertexCount)
                 return null;   // the app did not send usable shader numbers for this mesh
+            // 3.16.7: a skinned mesh without tangents needs the app's w = 2 undo (v679+); an older app keeps restore shapes
+            bool tangentless = !staticMesh && !original.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Tangent);
+            if (tangentless && !plan.shaderTangentless) return null;
 
             // what can be on slot si of renderer r: its own material, and (3.16.6) whatever an animation swaps in there
             IEnumerable<Material> OnSlot(Renderer r, Material[] slotMats, int si)
@@ -1058,11 +1086,17 @@ namespace KawaiiStudio.VRC.AntiRip
             // offsets and in every shape, so no vertex is moved by both, and the shapes close the others exactly as before.
             // 3.16.2: a static mesh has no restore shapes -- its rest stays where it is; and a static mesh without
             // tangents gets them computed on the copy (the restore moves vertices along normal and tangent).
+            // 3.16.5: a static mesh moves along its id's public directions when the app's shader code can undo that
+            // (plan.shaderAxes, app v678+), and can then ship compressed; it then needs no tangents, and gets none (the
+            // creator's shader keeps reading what it read). 3.16.7: a skinned mesh without tangents gets some across its
+            // normals; the shader undoes along them and hands the creator's code back Unity's (1,0,0,1) (UV7.w = 2).
+            bool axes = staticMesh && plan.shaderAxes;
             Mesh source = original;
-            if (staticMesh && !original.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Tangent))
+            if (!original.HasVertexAttribute(UnityEngine.Rendering.VertexAttribute.Tangent) && !axes)
             {
                 source = UnityEngine.Object.Instantiate(original);
-                source.RecalculateTangents();
+                if (staticMesh) source.RecalculateTangents();
+                else source.tangents = TangentsAcross(source.normals);
             }
             if (!choice.Whole && !staticMesh)
             {
@@ -1074,12 +1108,12 @@ namespace KawaiiStudio.VRC.AntiRip
                     offsets[i] = Vector3.zero;
                     foreach (Vector3[] g in groups) g[i] = Vector3.zero;
                 }
-                source = KSAntiRipMesh.Apply(original, offsets, groups, meshPlan.shapeNames);
+                Mesh basis = source;
+                source = KSAntiRipMesh.Apply(basis, offsets, groups, meshPlan.shapeNames);
+                if (basis != original) UnityEngine.Object.DestroyImmediate(basis);
             }
-            // 3.16.5: a static mesh moves along its id's public directions when the app's shader code can undo that
-            // (plan.shaderAxes, app v678+), and can then ship compressed
             Mesh scrambled = KSAntiRipShaderPatch.BuildScrambledMesh(source, choice.Move, meshPlan.shaderIds, meshPlan.shaderAmounts,
-                                                                     settings.strength, staticMesh && plan.shaderAxes, out int moved);
+                                                                     settings.strength, axes, tangentless, out int moved);
             if (source != original) UnityEngine.Object.DestroyImmediate(source);
 
             var result = new ShaderMesh { Scrambled = scrambled, Mixed = !choice.Whole && !staticMesh, ShaderVertices = moved };

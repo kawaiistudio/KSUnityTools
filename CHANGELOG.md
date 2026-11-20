@@ -2,6 +2,35 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.16.7]
+
+**KS ANTI-RIP: no more shards in VRChat's Personal Mirror.** A protected avatar could show giant shards in the Personal
+Mirror while world mirrors were fine. Two causes, both reproduced and fixed on three avatars:
+- The Personal Mirror turns pixel lights into vertex lights, so each object needs a single pass, and Unity then batches
+  small meshes that share a material: their vertices reach the shader already moved into world space, where the undo
+  lands wrong. Every protected shader now tells Unity not to batch it ("DisableBatching"), as Unity intends for shaders
+  that move vertices.
+- A protected lilToon copy kept lilToon's fallback shader, which Unity draws when a camera cannot use lilToon's own
+  passes: that fallback drew the scrambled mesh. Fallbacks now point at a protected stand-in that draws the same
+  (Unlit/Texture exactly, the classic lit family closely); any other fallback is turned off.
+
+Checked by rendering each avatar whole, original against protected, with pixel lights, vertex lights only, the VertexLit
+and deferred paths and a depth texture: the same picture in every case.
+
+**KS ANTI-RIP: faces and other blend shapes come back exact.** With blend shapes on (expressions, visemes, shape toggles),
+a mesh closed by its shader came back slightly off -- up to 5 % of its size on small meshes -- because the correction
+added to each shape used half-precision normal changes while Unity applies them in full. It now uses Unity's own values:
+measured on the GPU, the error went from 0.044 to 0.00005.
+
+**KS ANTI-RIP: more meshes close by their shader.**
+- With Kawaii Studio v679 or newer, a skinned mesh WITHOUT tangents (common in exported or re-imported meshes) is closed
+  by its shader too: its copy gets tangents for the undo, and the shader hands your own code back exactly what Unity gave
+  it before, so lighting is unchanged. On one test avatar this moved the body, the hair and every outfit from restore
+  shapes to the shader.
+- Shaders that declare their inputs as POSITION0 / NORMAL0 / TANGENT0 (exported shaders) are understood.
+- A shader whose name only contains ".poiyomi" (an exported copy of a locked Poiyomi) is patched like any other; only a
+  real unlocked Poiyomi (".poiyomi/...") still has to be locked first.
+
 ## [3.16.6]
 
 **KS ANTI-RIP: meshes close through almost any shader, not only Poiyomi and lilToon.** Any shader whose source is in
