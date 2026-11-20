@@ -2,6 +2,19 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.18.1]
+
+**KS ANTI-RIP: a protected avatar in a project without Modular Avatar was uploaded WITHOUT its protection.** The
+VRChat SDK has its own build step that deletes every editor-only component from the copy it builds, and the mark that
+says "protect this avatar" is one. That step runs before KS Anti-Rip, so on a project without Modular Avatar (NDMF,
+which Modular Avatar brings, moves that step to the end) KS Anti-Rip found no mark, took the avatar for an ordinary
+one, and the upload went out unprotected without a word. The mark is now noted at the very start of the build and put
+back when the SDK has removed it, so the protection runs on every project. If you protected an avatar in a project
+without Modular Avatar, upload it again.
+
+The package also reports its real version again (it said 3.17.0 since 3.17.0), so the Kawaii Studio app and the
+workspace see 3.18.1.
+
 ## [3.18.0]
 
 **KS ANTI-RIP: the protection now comes from the Kawaii Studio app.** Up to 3.17.2 the whole apply pass — the

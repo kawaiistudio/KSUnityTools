@@ -42,6 +42,11 @@ namespace KawaiiStudio.VRC.AntiRip
             if (avatarGameObject == null) return true;
 
             var mark = avatarGameObject.GetComponent<KSAntiRipMark>();
+            // 3.18.1: without NDMF, the VRChat SDK's RemoveAvatarEditorOnly (-1024) has already destroyed the mark (it is
+            // IEditorOnly), and a protected avatar went out unprotected without a word. KSAntiRipMarkStash noted it at
+            // the start of the build: put it back.
+            if (mark == null) mark = KSAntiRipMarkStash.Restore(avatarGameObject);
+            else KSAntiRipMarkStash.Forget(avatarGameObject);
             // The app can pause protection without removing the component.
             if (mark == null || !mark.enabled_)
             {
