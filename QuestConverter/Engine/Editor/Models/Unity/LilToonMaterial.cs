@@ -1,0 +1,870 @@
+// <copyright file="LilToonMaterial.cs" company="kurotu">
+// Copyright (c) kurotu.
+// Licensed under the MIT license. See LICENSE.txt file in the project root for full license information.
+// </copyright>
+
+using System.Collections.Generic;
+using KawaiiStudio.QuestConverter.Utils;
+using UnityEditor;
+using UnityEngine;
+using UnityEngine.Rendering;
+
+namespace KawaiiStudio.QuestConverter.Models.Unity
+{
+    /// <summary>
+    /// lilToon material.
+    /// </summary>
+    internal class LilToonMaterial : MaterialBase, IToonStandardConvertable
+    {
+        /// <summary>
+        /// Package display name.
+        /// </summary>
+        internal const string PackageDisplayName = "lilToon";
+
+        /// <summary>
+        /// Required version.
+        /// </summary>
+        internal const string RequiredVersion = "1.10.0";
+
+        /// <summary>
+        /// Breaking version.
+        /// </summary>
+        internal const string BreakingVersion = "3.0.0";
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="LilToonMaterial"/> class.
+        /// </summary>
+        /// <param name="material">Material.</param>
+        internal LilToonMaterial(Material material)
+            : base(material)
+        {
+#if KSQ_LILTOON_LEGACY || !KSQ_LILTOON
+            throw new LegacyPackageException(PackageDisplayName, RequiredVersion);
+#endif
+#if KSQ_LILTOON_BREAKING
+            throw new BreakingPackageException(PackageDisplayName, BreakingVersion);
+#endif
+        }
+
+        /// <summary>
+        /// Blend mode for matcap texture.
+        /// </summary>
+        internal enum MatCapBlendMode
+        {
+            /// <summary>
+            /// Normal.
+            /// </summary>
+            Normal = 0,
+
+            /// <summary>
+            /// Additive matcap.
+            /// </summary>
+            Add = 1,
+
+            /// <summary>
+            /// Screen matcap.
+            /// </summary>
+            Screen = 2,
+
+            /// <summary>
+            /// Multiply matcap.
+            /// </summary>
+            Multiply = 3,
+        }
+
+        /// <summary>
+        /// Gets metallic value.
+        /// </summary>
+        internal float Metallic => Material.GetFloat("_Metallic");
+
+        /// <inheritdoc/>
+        internal override Vector2 MainTextureScale => Material.GetTextureScale("_MainTex");
+
+        /// <inheritdoc/>
+        internal override Vector2 MainTextureOffset => Material.GetTextureOffset("_MainTex");
+
+        /// <summary>
+        /// Gets minimum brightness.
+        /// </summary>
+        internal float MinimumBrightness => Material.GetFloat("_LightMinLimit");
+
+        /// <inheritdoc/>
+        internal override Shader ToonLitBakeShader => Shader.Find("Hidden/KawaiiStudio/QuestConverter/lilToon");
+
+        /// <summary>
+        /// Gets a value indicating whether to use shadow.
+        /// </summary>
+        internal bool UseShadow => Material.GetFloat("_UseShadow") > 0.5f;
+
+        /// <summary>
+        /// Gets a value indicating whether to use 2nd shadow.
+        /// </summary>
+        internal bool UseShadow2nd => UseShadow && Material.GetColor("_Shadow2ndColor").a > 0.0f;
+
+        /// <summary>
+        /// Gets a value indicating whether to use 3rd shadow.
+        /// </summary>
+        internal bool UseShadow3rd => UseShadow && Material.GetColor("_Shadow3rdColor").a > 0.0f;
+
+        /// <summary>
+        /// Gets the 1st shadow color.
+        /// </summary>
+        internal Color ShadowColor => Material.GetColor("_ShadowColor");
+
+        /// <summary>
+        /// Gets the 2nd shadow color.
+        /// </summary>
+        internal Color Shadow2ndColor => Material.GetColor("_Shadow2ndColor");
+
+        /// <summary>
+        /// Gets the 3rd shadow color.
+        /// </summary>
+        internal Color Shadow3rdColor => Material.GetColor("_Shadow3rdColor");
+
+        /// <summary>
+        /// Gets the shadow strength.
+        /// </summary>
+        internal float ShadowStrength => Material.GetFloat("_ShadowStrength");
+
+        /// <summary>
+        /// Gets a value indicating whether to use main 2nd texture.
+        /// </summary>
+        internal bool UseMain2ndTex => Material.GetFloat("_UseMain2ndTex") > 0.5f;
+
+        /// <summary>
+        /// Gets a value indicating whether to use main 3rd texture.
+        /// </summary>
+        internal bool UseMain3rdTex => Material.GetFloat("_UseMain3rdTex") > 0.5f;
+
+        /// <summary>
+        /// Gets the main 2nd texture.
+        /// </summary>
+        internal Texture Main2ndTex => Material.GetTexture("_Main2ndTex");
+
+        /// <summary>
+        /// Gets the main 3rd texture.
+        /// </summary>
+        internal Texture Main3rdTex => Material.GetTexture("_Main3rdTex");
+
+        /// <summary>
+        /// Gets the ao map texture.
+        /// </summary>
+        internal Texture AOMap => Material.GetTexture("_ShadowBorderMask");
+
+        /// <summary>
+        /// Gets the ao map texture scale.
+        /// </summary>
+        internal Vector2 AOMapTextureScale => Material.GetTextureScale("_ShadowBorderMask");
+
+        /// <summary>
+        /// Gets the ao map texture offset.
+        /// </summary>
+        internal Vector2 AOMapTextureOffset => Material.GetTextureOffset("_ShadowBorderMask");
+
+        /// <summary>
+        /// Gets the AO map remap parameters for 1st and 2nd shadows (x: 1st scale, y: 1st offset, z: 2nd scale, w: 2nd offset).
+        /// </summary>
+        internal Vector4 ShadowAOShift => Material.GetVector("_ShadowAOShift");
+
+        /// <summary>
+        /// Gets the AO map remap parameters for 3rd shadow (x: 3rd scale, y: 3rd offset).
+        /// </summary>
+        internal Vector4 ShadowAOShift2 => Material.GetVector("_ShadowAOShift2");
+
+        /// <summary>
+        /// Gets cull mode.
+        /// </summary>
+        internal CullMode CullMode => (CullMode)Material.GetFloat("_Cull");
+
+        /// <summary>
+        /// Gets a value indicating whether to use normal map.
+        /// </summary>
+        internal bool UseNormalMap => Material.GetFloat("_UseBumpMap") > 0.5f;
+
+        /// <summary>
+        /// Gets the normal map.
+        /// </summary>
+        internal Texture NormalMap => Material.GetTexture("_BumpMap");
+
+        /// <summary>
+        /// Gets the normal map texture scale.
+        /// </summary>
+        internal Vector2 NormalMapTextureScale => Material.GetTextureScale("_BumpMap");
+
+        /// <summary>
+        /// Gets the normal map texture offset.
+        /// </summary>
+        internal Vector2 NormalMapTextureOffset => Material.GetTextureOffset("_BumpMap");
+
+        /// <summary>
+        /// Gets the normal map scale.
+        /// </summary>
+        internal float NormalMapScale => Material.GetFloat("_BumpScale");
+
+        /// <summary>
+        /// Gets the light minimum limit.
+        /// </summary>
+        internal float LightMinLimit => Material.GetFloat("_LightMinLimit");
+
+        /// <summary>
+        /// Gets or sets a value indicating whether to use emission.
+        /// </summary>
+        internal bool UseEmission
+        {
+            get => Material.GetFloat("_UseEmission") > 0.5f;
+            set => Material.SetFloat("_UseEmission", value ? 1.0f : 0.0f);
+        }
+
+        /// <summary>
+        /// Gets the emission map.
+        /// </summary>
+        internal Texture EmissionMap => Material.GetTexture("_EmissionMap");
+
+        /// <summary>
+        /// Gets the emission map texture scale.
+        /// </summary>
+        internal Vector2 EmissionMapTextureScale => Material.GetTextureScale("_EmissionMap");
+
+        /// <summary>
+        /// Gets the emission map texture offset.
+        /// </summary>
+        internal Vector2 EmissionMapTextureOffset => Material.GetTextureOffset("_EmissionMap");
+
+        /// <summary>
+        /// Gets or sets the emission color.
+        /// </summary>
+        internal Color EmissionColor
+        {
+            get => Material.GetColor("_EmissionColor");
+            set => Material.SetColor("_EmissionColor", value);
+        }
+
+        /// <summary>
+        /// Gets the emission blend mask texture.
+        /// </summary>
+        internal Texture EmissionBlendMask => Material.GetTexture("_EmissionBlendMask");
+
+        /// <summary>
+        /// Gets the emission blend mask texture scale.
+        /// </summary>
+        internal float EmissionBlend => Material.GetFloat("_EmissionBlend");
+
+        /// <summary>
+        /// Gets or sets a value indicating whether to use 2nd emission.
+        /// </summary>
+        internal bool UseEmission2nd
+        {
+            get => Material.GetFloat("_UseEmission2nd") > 0.5f;
+            set => Material.SetFloat("_UseEmission2nd", value ? 1.0f : 0.0f);
+        }
+
+        /// <summary>
+        /// Gets the 2nd emission map.
+        /// </summary>
+        internal Texture Emission2ndMap => Material.GetTexture("_Emission2ndMap");
+
+        /// <summary>
+        /// Gets or sets the 2nd emission color.
+        /// </summary>
+        internal Color Emission2ndColor
+        {
+            get => Material.GetColor("_Emission2ndColor");
+            set => Material.SetColor("_Emission2ndColor", value);
+        }
+
+        /// <summary>
+        /// Gets the 2nd emission blend mask texture.
+        /// </summary>
+        internal Texture Emission2ndBlendMask => Material.GetTexture("_Emission2ndBlendMask");
+
+        /// <summary>
+        /// Gets the 2nd emission blend mask texture scale.
+        /// </summary>
+        internal float Emission2ndBlend => Material.GetFloat("_Emission2ndBlend");
+
+        /// <summary>
+        /// Gets a value indicating whether to use reflection.
+        /// </summary>
+        internal bool UseReflection => Material.GetFloat("_UseReflection") > 0.5f;
+
+        /// <summary>
+        /// Gets the metallic map.
+        /// </summary>
+        internal Texture MetallicMap => Material.GetTexture("_MetallicGlossMap");
+
+        /// <summary>
+        /// Gets the metallic map texture scale.
+        /// </summary>
+        internal Vector2 MetallicMapTextureScale => Material.GetTextureScale("_MetallicGlossMap");
+
+        /// <summary>
+        /// Gets the metallic map texture offset.
+        /// </summary>
+        internal Vector2 MetallicMapTextureOffset => Material.GetTextureOffset("_MetallicGlossMap");
+
+        /// <summary>
+        /// Gets the smoothness map.
+        /// </summary>
+        internal Texture SmoothnessTex => Material.GetTexture("_SmoothnessTex");
+
+        /// <summary>
+        /// Gets the smoothness texture scale.
+        /// </summary>
+        internal Vector2 SmoothnessTexScale => Material.GetTextureScale("_SmoothnessTex");
+
+        /// <summary>
+        /// Gets the smoothness texture offset.
+        /// </summary>
+        internal Vector2 SmoothnessTexOffset => Material.GetTextureOffset("_SmoothnessTex");
+
+        /// <summary>
+        /// Gets the reflection color tex.
+        /// </summary>
+        internal Texture ReflectionColorTex => Material.GetTexture("_ReflectionColorTex");
+
+        /// <summary>
+        /// Gets the reflection color.
+        /// </summary>
+        internal Color ReflectionColor => Material.GetColor("_ReflectionColor");
+
+        /// <summary>
+        /// Gets the smoothness value.
+        /// </summary>
+        internal float Smoothness => Material.GetFloat("_Smoothness");
+
+        /// <summary>
+        /// Gets the reflectance value.
+        /// </summary>
+        internal float Reflectance => Material.GetFloat("_Reflectance");
+
+        /// <summary>
+        /// Gets the specular blur.
+        /// </summary>
+        internal float SpecularBlur => Material.GetFloat("_SpecularBlur");
+
+        /// <summary>
+        /// Gets a value indicating whether to use matcap.
+        /// </summary>
+        internal bool UseMatCap => Material.GetFloat("_UseMatCap") > 0.5f;
+
+        /// <summary>
+        /// Gets the matcap texture.
+        /// </summary>
+        internal Texture MatCapTex => Material.GetTexture("_MatCapTex");
+
+        /// <summary>
+        /// Gets the matcap color.
+        /// </summary>
+        internal Color MatCapColor => Material.GetColor("_MatCapColor");
+
+        /// <summary>
+        /// Gets the matcap color strength.
+        /// </summary>
+        internal float MatCapMainStrength => Material.GetFloat("_MatCapMainStrength");
+
+        /// <summary>
+        /// Gets the matcap mask texture.
+        /// </summary>
+        internal Texture MatCapMask => Material.GetTexture("_MatCapBlendMask");
+
+        /// <summary>
+        /// Gets the matcap mask texture scale.
+        /// </summary>
+        internal Vector2 MatCapMaskTextureScale => Material.GetTextureScale("_MatCapBlendMask");
+
+        /// <summary>
+        /// Gets the matcap mask texture offset.
+        /// </summary>
+        internal Vector2 MatCapMaskTextureOffset => Material.GetTextureOffset("_MatCapBlendMask");
+
+        /// <summary>
+        /// Gets the matcap blend value.
+        /// </summary>
+        internal float MatCapBlend => Material.GetFloat("_MatCapBlend");
+
+        /// <summary>
+        /// Gets the matcap blending mode.
+        /// </summary>
+        internal MatCapBlendMode MatCapBlendingMode => (MatCapBlendMode)Material.GetFloat("_MatCapBlendMode");
+
+        /// <summary>
+        /// Gets a value indicating whether to use rim light.
+        /// </summary>
+        internal bool UseRimLight => Material.GetFloat("_UseRim") > 0.5f;
+
+        /// <summary>
+        /// Gets the rim light color.
+        /// </summary>
+        internal Color RimLightColor => Material.GetColor("_RimColor");
+
+        /// <summary>
+        /// Gets the rim light main color strength.
+        /// </summary>
+        internal float RimMainStrength => Material.GetFloat("_RimMainStrength");
+
+        /// <summary>
+        /// Gets the rim light border.
+        /// </summary>
+        internal float RimLightBorder => Material.GetFloat("_RimBorder");
+
+        /// <summary>
+        /// Gets the rim light enable lighting.
+        /// </summary>
+        internal float RimEnableLighting => Material.GetFloat("_RimEnableLighting");
+
+        /// <summary>
+        /// Gets the rim light fresnel power.
+        /// </summary>
+        internal float RimFresnelPower => Material.GetFloat("_RimFresnelPower");
+
+        /// <summary>
+        /// Gets the rim light blur.
+        /// </summary>
+        internal float RimLightBlur => Material.GetFloat("_RimBlur");
+
+        /// <inheritdoc/>
+        internal override (int MaxTextureSize, TextureFormat Format)? GetToonLitPlatformOverride()
+        {
+            // Use main textures and emission textures, but only if features are actually enabled
+            var textures = new List<Texture>(5);
+
+            // Always include main texture if it exists
+            if (Material.mainTexture != null)
+            {
+                textures.Add(Material.mainTexture);
+            }
+
+            // Include Main2nd if enabled
+            if (UseMain2ndTex && Main2ndTex != null)
+            {
+                textures.Add(Main2ndTex);
+            }
+
+            // Include Main3rd if enabled
+            if (UseMain3rdTex && Main3rdTex != null)
+            {
+                textures.Add(Main3rdTex);
+            }
+
+            // Include emission textures if enabled
+            if (UseEmission && EmissionMap != null)
+            {
+                textures.Add(EmissionMap);
+            }
+
+            if (UseEmission2nd && Emission2ndMap != null)
+            {
+                textures.Add(Emission2ndMap);
+            }
+
+            if (textures.Count > 0)
+            {
+                return TextureUtility.GetBestPlatformOverrideSettings(textures.ToArray());
+            }
+
+            return null;
+        }
+
+        /// <inheritdoc/>
+        internal override AsyncCallbackRequest GenerateToonLitImage(IToonLitConvertSettings settings, System.Action<Texture2D> completion)
+        {
+            var main = DisposableObject.New(MainBake(Material, 0));
+            return EmissionBake(main.Object, Material, settings, (texture) =>
+            {
+                main.Dispose();
+                completion?.Invoke(texture);
+            });
+        }
+
+        /// <summary>
+        /// Bake main texture.
+        /// </summary>
+        /// <returns>Baked main texture.</returns>
+        internal RenderTexture BakeMain()
+        {
+            return MainBake(Material, 0);
+        }
+
+        private static void CopyMaterialProperty(Material target, Material source, MaterialProperty property)
+        {
+            if (property.name == null)
+            {
+                // The property is missing in the source material.
+                return;
+            }
+            var targetProp = MaterialEditor.GetMaterialProperty(new[] { target }, property.name);
+            if (targetProp.name == null)
+            {
+                Logger.LogWarning(
+                    $"Property {property.name} not found in target material.\n" +
+                    $"Material: {source}, Shader: {source.shader.name}");
+            }
+            else if (targetProp.type != property.type)
+            {
+                Logger.LogWarning(
+                    $"Property {property.name} type mismatch: target: {targetProp.type}, source: {property.type}.\n" +
+                    $"Material: {source}, Shader: {source.shader.name}");
+            }
+            switch (property.type)
+            {
+                case MaterialProperty.PropType.Color:
+                    target.SetColor(property.name, property.colorValue);
+                    break;
+                case MaterialProperty.PropType.Float:
+                    target.SetFloat(property.name, property.floatValue);
+                    break;
+                case MaterialProperty.PropType.Range:
+                    target.SetFloat(property.name, property.floatValue);
+                    break;
+                case MaterialProperty.PropType.Texture:
+                    target.SetTexture(property.name, property.textureValue);
+                    break;
+                case MaterialProperty.PropType.Vector:
+                    target.SetVector(property.name, property.vectorValue);
+                    break;
+                case MaterialProperty.PropType.Int:
+                    target.SetInt(property.name, property.intValue);
+                    break;
+            }
+        }
+
+        private static void DestroyNonAssetTexture(Texture texture)
+        {
+            if (texture != null && string.IsNullOrEmpty(AssetDatabase.GetAssetPath(texture)))
+            {
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        private static void AdjustEmissionTextureST(Material baker, string texName, Material source)
+        {
+            var mainScale = source.mainTextureScale;
+            var mainOffset = source.mainTextureOffset;
+            if (Mathf.Approximately(mainScale.x, 0f) || Mathf.Approximately(mainScale.y, 0f))
+            {
+                return;
+            }
+
+            var emScale = source.GetTextureScale(texName);
+            var emOffset = source.GetTextureOffset(texName);
+            var adjScale = new Vector2(emScale.x / mainScale.x, emScale.y / mainScale.y);
+            var adjOffset = new Vector2(emOffset.x - (mainOffset.x * adjScale.x), emOffset.y - (mainOffset.y * adjScale.y));
+            baker.SetTextureScale(texName, adjScale);
+            baker.SetTextureOffset(texName, adjOffset);
+        }
+
+        /// <summary>
+        /// Reused codes from lilInspector.cs v1.2.12 with some modification.
+        /// </summary>
+        /// <remarks>
+        /// lilToon: Licensed under MIT License by lilxyzw. See NOTICE.txt.
+        /// </remarks>
+        /// <param name="material">Material to bake main textures.</param>
+        /// <param name="bakeType">Bake type: 0: All.</param>
+        private RenderTexture MainBake(Material material, int bakeType)
+        {
+            var ltsbaker = Shader.Find("Hidden/ltsother_baker");
+            var defaultHSVG = new Vector4(0.0f, 1.0f, 1.0f, 1.0f);
+            var mats = new[] { material };
+            var mainColor = MaterialEditor.GetMaterialProperty(mats, "_Color");
+            var mainTex = MaterialEditor.GetMaterialProperty(mats, "_MainTex");
+            var mainTexHSVG = MaterialEditor.GetMaterialProperty(mats, "_MainTexHSVG");
+            var mainGradationStrength = MaterialEditor.GetMaterialProperty(mats, "_MainGradationStrength");
+            var mainGradationTex = MaterialEditor.GetMaterialProperty(mats, "_MainGradationTex");
+            var mainColorAdjustMask = MaterialEditor.GetMaterialProperty(mats, "_MainColorAdjustMask");
+
+            var useMain2ndTex = MaterialEditor.GetMaterialProperty(mats, "_UseMain2ndTex");
+            var mainColor2nd = MaterialEditor.GetMaterialProperty(mats, "_Color2nd");
+            var main2ndTex = MaterialEditor.GetMaterialProperty(mats, "_Main2ndTex");
+            var main2ndTexAngle = MaterialEditor.GetMaterialProperty(mats, "_Main2ndTexAngle");
+            var main2ndTexUVMode = MaterialEditor.GetMaterialProperty(mats, "_Main2ndTex_UVMode");
+            var main2ndTexDecalAnimation = MaterialEditor.GetMaterialProperty(mats, "_Main2ndTexDecalAnimation");
+            var main2ndTexDecalSubParam = MaterialEditor.GetMaterialProperty(mats, "_Main2ndTexDecalSubParam");
+            var main2ndTexIsDecal = MaterialEditor.GetMaterialProperty(mats, "_Main2ndTexIsDecal");
+            var main2ndTexIsLeftOnly = MaterialEditor.GetMaterialProperty(mats, "_Main2ndTexIsLeftOnly");
+            var main2ndTexIsRightOnly = MaterialEditor.GetMaterialProperty(mats, "_Main2ndTexIsRightOnly");
+            var main2ndTexShouldCopy = MaterialEditor.GetMaterialProperty(mats, "_Main2ndTexShouldCopy");
+            var main2ndTexShouldFlipMirror = MaterialEditor.GetMaterialProperty(mats, "_Main2ndTexShouldFlipMirror");
+            var main2ndTexShouldFlipCopy = MaterialEditor.GetMaterialProperty(mats, "_Main2ndTexShouldFlipCopy");
+            var main2ndTexIsMSDF = MaterialEditor.GetMaterialProperty(mats, "_Main2ndTexIsMSDF");
+            var main2ndBlendMask = MaterialEditor.GetMaterialProperty(mats, "_Main2ndBlendMask");
+            var main2ndTexBlendMode = MaterialEditor.GetMaterialProperty(mats, "_Main2ndTexBlendMode");
+
+            var useMain3rdTex = MaterialEditor.GetMaterialProperty(mats, "_UseMain3rdTex");
+            var mainColor3rd = MaterialEditor.GetMaterialProperty(mats, "_Color3rd");
+            var main3rdTex = MaterialEditor.GetMaterialProperty(mats, "_Main3rdTex");
+            var main3rdTexAngle = MaterialEditor.GetMaterialProperty(mats, "_Main3rdTexAngle");
+            var main3rdTexUVMode = MaterialEditor.GetMaterialProperty(mats, "_Main3rdTex_UVMode");
+            var main3rdTexDecalAnimation = MaterialEditor.GetMaterialProperty(mats, "_Main3rdTexDecalAnimation");
+            var main3rdTexDecalSubParam = MaterialEditor.GetMaterialProperty(mats, "_Main3rdTexDecalSubParam");
+            var main3rdTexIsDecal = MaterialEditor.GetMaterialProperty(mats, "_Main3rdTexIsDecal");
+            var main3rdTexIsLeftOnly = MaterialEditor.GetMaterialProperty(mats, "_Main3rdTexIsLeftOnly");
+            var main3rdTexIsRightOnly = MaterialEditor.GetMaterialProperty(mats, "_Main3rdTexIsRightOnly");
+            var main3rdTexShouldCopy = MaterialEditor.GetMaterialProperty(mats, "_Main3rdTexShouldCopy");
+            var main3rdTexShouldFlipMirror = MaterialEditor.GetMaterialProperty(mats, "_Main3rdTexShouldFlipMirror");
+            var main3rdTexShouldFlipCopy = MaterialEditor.GetMaterialProperty(mats, "_Main3rdTexShouldFlipCopy");
+            var main3rdTexIsMSDF = MaterialEditor.GetMaterialProperty(mats, "_Main3rdTexIsMSDF");
+            var main3rdBlendMask = MaterialEditor.GetMaterialProperty(mats, "_Main3rdBlendMask");
+            var main3rdTexBlendMode = MaterialEditor.GetMaterialProperty(mats, "_Main3rdTexBlendMode");
+
+            // bool shouldBake1st = (bakeType == 1 || bakeType == 4) && mainTex.textureValue != null;
+            bool shouldNotBakeColor = (bakeType == 1 || bakeType == 4) && mainColor.colorValue == Color.white && mainTexHSVG.vectorValue == defaultHSVG;
+            bool cannotBake1st = mainTex.textureValue == null;
+            bool shouldNotBake2nd = (bakeType == 2 || bakeType == 5) && useMain2ndTex.floatValue == 0.0;
+            bool shouldNotBake3rd = (bakeType == 3 || bakeType == 6) && useMain3rdTex.floatValue == 0.0;
+            bool shouldNotBakeAll = bakeType == 0 && mainColor.colorValue == Color.white && mainTexHSVG.vectorValue == defaultHSVG && useMain2ndTex.floatValue == 0.0 && useMain3rdTex.floatValue == 0.0;
+            /*
+            if (cannotBake1st)
+            {
+                return null;
+            }
+            else if (shouldNotBakeColor)
+            {
+                Logger.Log("Should not need to bake");
+                return null;
+            }
+            else if (shouldNotBake2nd)
+            {
+                Logger.Log("Should not bake 2nd");
+                return null;
+            }
+            else if (shouldNotBake3rd)
+            {
+                Logger.Log("Should not bake 3rd");
+                return null;
+            }
+            else if (shouldNotBakeAll)
+            {
+                Logger.Log("Should not bake all");
+                return null;
+            }*/
+            if (false)
+            {
+            }
+            else
+            {
+                bool bake2nd = (bakeType == 0 || bakeType == 2 || bakeType == 5) && useMain2ndTex.floatValue != 0.0;
+                if (main2ndTexUVMode.floatValue > 0.0f && main2ndTex.textureValue != null)
+                {
+                    bake2nd = false;
+                }
+
+                bool bake3rd = (bakeType == 0 || bakeType == 3 || bakeType == 6) && useMain3rdTex.floatValue != 0.0;
+                if (main3rdTexUVMode.floatValue > 0.0f && main3rdTex.textureValue != null)
+                {
+                    bake3rd = false;
+                }
+
+                // run bake
+                // Texture bufMainTexture = mainTex.textureValue;
+                Material hsvgMaterial = new Material(ltsbaker);
+
+                Texture srcTexture = TextureUtility.CreateMinimumEmptyTexture();
+                Texture srcMain2 = TextureUtility.CreateMinimumEmptyTexture();
+                Texture srcMain3 = TextureUtility.CreateMinimumEmptyTexture();
+                Texture srcMask2 = TextureUtility.CreateMinimumEmptyTexture();
+                Texture srcMask3 = TextureUtility.CreateMinimumEmptyTexture();
+
+                CopyMaterialProperty(hsvgMaterial, material, mainColor);
+                CopyMaterialProperty(hsvgMaterial, material, mainTexHSVG);
+                CopyMaterialProperty(hsvgMaterial, material, mainColorAdjustMask);
+                hsvgMaterial.SetFloat(mainGradationStrength.name, 0.0f);
+
+                CopyMaterialProperty(hsvgMaterial, material, mainGradationStrength);
+                CopyMaterialProperty(hsvgMaterial, material, mainGradationTex);
+
+                srcTexture = TextureUtility.LoadUncompressedTexture(material.GetTexture(mainTex.name));
+                if (srcTexture != null)
+                {
+                    hsvgMaterial.SetTexture(mainTex.name, srcTexture);
+                }
+                else
+                {
+                    srcTexture = TextureUtility.CreateMinimumEmptyTexture();
+                    hsvgMaterial.SetTexture(mainTex.name, Texture2D.whiteTexture);
+                }
+
+                if (bake2nd)
+                {
+                    CopyMaterialProperty(hsvgMaterial, material, useMain2ndTex);
+                    CopyMaterialProperty(hsvgMaterial, material, mainColor2nd);
+                    CopyMaterialProperty(hsvgMaterial, material, main2ndTexAngle);
+                    CopyMaterialProperty(hsvgMaterial, material, main2ndTexDecalAnimation);
+                    CopyMaterialProperty(hsvgMaterial, material, main2ndTexDecalSubParam);
+                    CopyMaterialProperty(hsvgMaterial, material, main2ndTexIsDecal);
+                    CopyMaterialProperty(hsvgMaterial, material, main2ndTexIsLeftOnly);
+                    CopyMaterialProperty(hsvgMaterial, material, main2ndTexIsRightOnly);
+                    CopyMaterialProperty(hsvgMaterial, material, main2ndTexShouldCopy);
+                    CopyMaterialProperty(hsvgMaterial, material, main2ndTexShouldFlipMirror);
+                    CopyMaterialProperty(hsvgMaterial, material, main2ndTexShouldFlipCopy);
+                    CopyMaterialProperty(hsvgMaterial, material, main2ndTexIsMSDF);
+                    CopyMaterialProperty(hsvgMaterial, material, main2ndTexBlendMode);
+                    hsvgMaterial.SetTextureOffset(main2ndTex.name, material.GetTextureOffset(main2ndTex.name));
+                    hsvgMaterial.SetTextureScale(main2ndTex.name, material.GetTextureScale(main2ndTex.name));
+                    hsvgMaterial.SetTextureOffset(main2ndBlendMask.name, material.GetTextureOffset(main2ndBlendMask.name));
+                    hsvgMaterial.SetTextureScale(main2ndBlendMask.name, material.GetTextureScale(main2ndBlendMask.name));
+
+                    Object.DestroyImmediate(srcMain2);
+                    srcMain2 = TextureUtility.LoadUncompressedTexture(material.GetTexture(main2ndTex.name));
+                    if (srcMain2 != null)
+                    {
+                        hsvgMaterial.SetTexture(main2ndTex.name, srcMain2);
+                    }
+                    else
+                    {
+                        srcMain2 = TextureUtility.CreateMinimumEmptyTexture();
+                        hsvgMaterial.SetTexture(main2ndTex.name, Texture2D.whiteTexture);
+                    }
+
+                    Object.DestroyImmediate(srcMask2);
+                    srcMask2 = TextureUtility.LoadUncompressedTexture(material.GetTexture(main2ndBlendMask.name));
+                    if (srcMask2 != null)
+                    {
+                        hsvgMaterial.SetTexture(main2ndBlendMask.name, srcMask2);
+                    }
+                    else
+                    {
+                        srcMask2 = TextureUtility.CreateMinimumEmptyTexture();
+                        hsvgMaterial.SetTexture(main2ndBlendMask.name, Texture2D.whiteTexture);
+                    }
+                }
+
+                if (bake3rd)
+                {
+                    CopyMaterialProperty(hsvgMaterial, material, useMain3rdTex);
+                    CopyMaterialProperty(hsvgMaterial, material, mainColor3rd);
+                    CopyMaterialProperty(hsvgMaterial, material, main3rdTexAngle);
+                    CopyMaterialProperty(hsvgMaterial, material, main3rdTexDecalAnimation);
+                    CopyMaterialProperty(hsvgMaterial, material, main3rdTexDecalSubParam);
+                    CopyMaterialProperty(hsvgMaterial, material, main3rdTexIsDecal);
+                    CopyMaterialProperty(hsvgMaterial, material, main3rdTexIsLeftOnly);
+                    CopyMaterialProperty(hsvgMaterial, material, main3rdTexIsRightOnly);
+                    CopyMaterialProperty(hsvgMaterial, material, main3rdTexShouldCopy);
+                    CopyMaterialProperty(hsvgMaterial, material, main3rdTexShouldFlipMirror);
+                    CopyMaterialProperty(hsvgMaterial, material, main3rdTexShouldFlipCopy);
+                    CopyMaterialProperty(hsvgMaterial, material, main3rdTexIsMSDF);
+                    CopyMaterialProperty(hsvgMaterial, material, main3rdTexBlendMode);
+                    hsvgMaterial.SetTextureOffset(main3rdTex.name, material.GetTextureOffset(main3rdTex.name));
+                    hsvgMaterial.SetTextureScale(main3rdTex.name, material.GetTextureScale(main3rdTex.name));
+                    hsvgMaterial.SetTextureOffset(main3rdBlendMask.name, material.GetTextureOffset(main3rdBlendMask.name));
+                    hsvgMaterial.SetTextureScale(main3rdBlendMask.name, material.GetTextureScale(main3rdBlendMask.name));
+
+                    Object.DestroyImmediate(srcMain3);
+                    srcMain3 = TextureUtility.LoadUncompressedTexture(material.GetTexture(main3rdTex.name));
+                    if (srcMain3 != null)
+                    {
+                        hsvgMaterial.SetTexture(main3rdTex.name, srcMain3);
+                    }
+                    else
+                    {
+                        srcMain3 = TextureUtility.CreateMinimumEmptyTexture();
+                        hsvgMaterial.SetTexture(main3rdTex.name, Texture2D.whiteTexture);
+                    }
+
+                    Object.DestroyImmediate(srcMask3);
+                    srcMask3 = TextureUtility.LoadUncompressedTexture(material.GetTexture(main3rdBlendMask.name));
+                    if (srcMask3 != null)
+                    {
+                        hsvgMaterial.SetTexture(main3rdBlendMask.name, srcMask3);
+                    }
+                    else
+                    {
+                        srcMask3 = TextureUtility.CreateMinimumEmptyTexture();
+                        hsvgMaterial.SetTexture(main3rdBlendMask.name, Texture2D.whiteTexture);
+                    }
+                }
+
+                var rt = new RenderTexture(srcTexture.width, srcTexture.height, 0, RenderTextureFormat.ARGB32);
+                var activeRT = RenderTexture.active;
+                try
+                {
+                    Graphics.Blit(srcTexture, rt, hsvgMaterial);
+                    return rt;
+                }
+                finally
+                {
+                    RenderTexture.active = activeRT;
+                    Object.DestroyImmediate(hsvgMaterial);
+                    DestroyNonAssetTexture(srcTexture);
+                    DestroyNonAssetTexture(srcMain2);
+                    DestroyNonAssetTexture(srcMain3);
+                    DestroyNonAssetTexture(srcMask2);
+                    DestroyNonAssetTexture(srcMask3);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Additional step for emission.
+        /// </summary>
+        /// <param name="main">Baked main texture.</param>
+        /// <param name="material">Material to bake.</param>
+        private AsyncCallbackRequest EmissionBake(RenderTexture main, Material material, IToonLitConvertSettings settings, System.Action<Texture2D> completion)
+        {
+            var mats = new[] { material };
+            var emissionMap = MaterialEditor.GetMaterialProperty(mats, "_EmissionMap");
+            var emissionBlendMask = MaterialEditor.GetMaterialProperty(mats, "_EmissionBlendMask");
+            var emissionGradTex = MaterialEditor.GetMaterialProperty(mats, "_EmissionGradTex");
+            var emission2ndMap = MaterialEditor.GetMaterialProperty(mats, "_Emission2ndMap");
+            var emission2ndBlendMask = MaterialEditor.GetMaterialProperty(mats, "_Emission2ndBlendMask");
+            var emission2ndGradTex = MaterialEditor.GetMaterialProperty(mats, "_Emission2ndGradTex");
+
+            // Check platform override settings from source textures used in baking
+            var platformOverride = TextureUtility.GetBestPlatformOverrideSettings(
+                emissionMap.textureValue,
+                emissionBlendMask.textureValue,
+                emissionGradTex.textureValue,
+                emission2ndMap.textureValue,
+                emission2ndBlendMask.textureValue,
+                emission2ndGradTex.textureValue);
+
+            var maxTextureSize = platformOverride?.MaxTextureSize ?? (int)settings.MaxTextureSize;
+            var width = main.width;
+            var height = main.height;
+            if (maxTextureSize > 0)
+            {
+                width = System.Math.Min(maxTextureSize, width);
+                height = System.Math.Min(maxTextureSize, height);
+            }
+
+            using (var baker = DisposableObject.New(Object.Instantiate(material)))
+            using (var srcEmissionMap = DisposableObject.New(TextureUtility.LoadUncompressedTexture(emissionMap.textureValue)))
+            using (var srcEmissionBlendMask = DisposableObject.New(TextureUtility.LoadUncompressedTexture(emissionBlendMask.textureValue)))
+            using (var srcEmissionGradTex = DisposableObject.New(TextureUtility.LoadUncompressedTexture(emissionGradTex.textureValue)))
+            using (var srcEmission2ndMap = DisposableObject.New(TextureUtility.LoadUncompressedTexture(emission2ndMap.textureValue)))
+            using (var srcEmission2ndBlendMask = DisposableObject.New(TextureUtility.LoadUncompressedTexture(emission2ndBlendMask.textureValue)))
+            using (var srcEmission2ndGradTex = DisposableObject.New(TextureUtility.LoadUncompressedTexture(emission2ndGradTex.textureValue)))
+            {
+                var lilBaker = Shader.Find("Hidden/KawaiiStudio/QuestConverter/lilToon");
+                baker.Object.parent = null;
+                baker.Object.shader = lilBaker;
+                baker.Object.SetFloat("_VQT_MainTexBrightness", settings.MainTextureBrightness);
+                baker.Object.SetFloat("_VQT_GenerateShadow", settings.GenerateShadowFromNormalMap ? 1 : 0);
+                baker.Object.mainTexture = main;
+                baker.Object.mainTextureOffset = new Vector2(0.0f, 0.0f);
+                baker.Object.mainTextureScale = new Vector2(1.0f, 1.0f);
+                baker.Object.color = Color.white;
+
+                baker.Object.SetTexture(emissionMap.name, srcEmissionMap.Object);
+                baker.Object.SetTexture(emissionBlendMask.name, srcEmissionBlendMask.Object);
+                baker.Object.SetTexture(emissionGradTex.name, srcEmissionGradTex.Object);
+                baker.Object.SetTexture(emission2ndMap.name, srcEmission2ndMap.Object);
+                baker.Object.SetTexture(emission2ndBlendMask.name, srcEmission2ndBlendMask.Object);
+                baker.Object.SetTexture(emission2ndGradTex.name, srcEmission2ndGradTex.Object);
+
+                // Adjust emission UV tiling relative to main UV tiling.
+                // The baked texture is rendered at runtime by Toon Lit using the original
+                // mainTextureScale and mainTextureOffset. Emission ST must be pre-adjusted
+                // so it samples from the correct UV coordinates:
+                //   adjScale  = emScale / mainScale
+                //   adjOffset = emOffset - mainOffset * adjScale
+                AdjustEmissionTextureST(baker.Object, emissionMap.name, material);
+                AdjustEmissionTextureST(baker.Object, emissionBlendMask.name, material);
+                AdjustEmissionTextureST(baker.Object, emission2ndMap.name, material);
+                AdjustEmissionTextureST(baker.Object, emission2ndBlendMask.name, material);
+
+                return TextureUtility.BakeTexture(main, true, width, height, true, baker.Object, completion);
+            }
+        }
+    }
+}

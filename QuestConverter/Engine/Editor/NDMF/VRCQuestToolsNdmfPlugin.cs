@@ -1,0 +1,86 @@
+using System;
+using KawaiiStudio.QuestConverter.Models;
+using KawaiiStudio.QuestConverter.Ndmf;
+using nadena.dev.ndmf;
+using UnityEditor;
+using UnityEngine;
+
+[assembly: ExportsPlugin(typeof(VRCQuestToolsNdmfPlugin))]
+
+namespace KawaiiStudio.QuestConverter.Ndmf
+{
+    /// <summary>
+    /// NDMF plugin of VRCQuestTools.
+    /// </summary>
+    internal class VRCQuestToolsNdmfPlugin : Plugin<VRCQuestToolsNdmfPlugin>
+    {
+        private static readonly Lazy<Texture2D> LazyLogoTexture = new Lazy<Texture2D>(() => AssetDatabase.LoadAssetAtPath<Texture2D>(AssetDatabase.GUIDToAssetPath("0a8b7fb68cd7bdc8945ea26fba0e09a1")));
+
+        /// <summary>
+        /// Gets the display name of the plugin.
+        /// </summary>
+        public override string DisplayName => "KS Quest Converter";
+
+        /// <inheritdoc/>
+        public override string QualifiedName => "com.kawaiistudio.questconverter";
+
+        /// <inheritdoc/>
+        public override Texture2D LogoTexture => LazyLogoTexture.Value;
+
+        /// <inheritdoc/>
+        protected override void Configure()
+        {
+            InPhase(BuildPhase.Resolving)
+                .BeforePlugin("dev.logilabo.virtuallens2.apply-non-destructive") // need to configure vlens2.
+                .BeforePlugin("nadena.dev.modular-avatar") // need to configure modular avatar
+                .Run(BuildTargetConfigurationPass.Instance)
+                .Then.Run(PlatformGameObjectRemoverPass.Instance)
+                .PreviewingWith(new PlatformGameObjectRemoverFilter())
+                .Then.Run(PlatformComponentRemoverPass.Instance)
+                .Then.Run(AvatarConverterResolvingPass.Instance);
+
+            InPhase(BuildPhase.Generating)
+                .Run(AssignNetworkIDsPass.Instance);
+
+            InPhase(BuildPhase.Transforming)
+                .AfterPlugin("net.rs64.tex-trans-tool") // needs generated textures
+                .AfterPlugin("nadena.dev.modular-avatar") // convert built avatar
+                .AfterPlugin("jp.lilxyzw.lilycalinventory") // convert built avatar
+                .Run(AvatarConverterTransformingPass.Instance)
+                .PreviewingWith(new MaterialConversionFilter(AvatarConverterNdmfPhase.Transforming))
+                ;
+
+            InPhase(BuildPhase.Transforming)
+                .BeforePlugin("MantisLODEditor.ndmf") // needs unmodified UVs for mask textures
+                .Run(MeshFlipperPass.Instance)
+                .PreviewingWith(new MeshFlipperFilter(Components.MeshFlipperProcessingPhase.BeforePolygonReduction))
+                ;
+
+            InPhase(BuildPhase.Transforming)
+                .AfterPlugin("MantisLODEditor.ndmf") // needs vertex color to control polygon reduction
+                .Run(RemoveVertexColorPass.Instance)
+                .PreviewingWith(new VertexColorRemoverFilter())
+                ;
+
+            InPhase(BuildPhase.Optimizing)
+                .AfterPlugin("net.rs64.tex-trans-tool") // needs generated textures
+                .AfterPlugin("jp.unisakistudio.posingsystemeditor.posingsystemconverter") // needs created menus
+                .AfterPlugin("jp.lilxyzw.ndmfmeshsimplifier.NDMF.NDMFPlugin") // polygon reduction
+                .AfterPlugin("Meshia.MeshSimplification.Ndmf.Editor.NdmfPlugin ") // polygon reduction
+                .AfterPlugin("com.aoyon.overall-ndmf-mesh-simplifier") // polygon reduction
+                .BeforePlugin("com.anatawa12.avatar-optimizer")
+                .Run(AvatarConverterOptimizingPass.Instance)
+                .PreviewingWith(new MaterialConversionFilter(AvatarConverterNdmfPhase.Optimizing))
+                .Then.Run(MeshFlipperAfterPolygonReductionPass.Instance)
+                .PreviewingWith(new MeshFlipperFilter(Components.MeshFlipperProcessingPhase.AfterPolygonReduction))
+                .Then.Run(RemoveUnsupportedComponentsPass.Instance)
+                .Then.Run(MenuIconResizerPass.Instance)
+                .Then.Run(RemoveVRCQuestToolsComponentsPass.Instance);
+
+            InPhase(BuildPhase.Optimizing)
+                .AfterPlugin("net.rs64.tex-trans-tool") // needs generated textures
+                .AfterPlugin("com.anatawa12.avatar-optimizer")
+                .Run(CheckTextureFormatPass.Instance);
+        }
+    }
+}

@@ -1,0 +1,31 @@
+﻿using UnityEngine;
+
+namespace KawaiiStudio.QuestConverter.Components
+{
+    /// <summary>
+    /// PlatformGameObjectRemover removes the attached GameObject depending on the target platform.
+    /// </summary>
+    [AddComponentMenu("Kawaii Studio/Quest Converter/Platform GameObject Remover")]
+    [HelpURL("https://kurotu.github.io/VRCQuestTools/docs/references/components/platform-gameobject-remover?lang=auto")]
+    [DisallowMultipleComponent]
+    public class PlatformGameObjectRemover : VRCQuestToolsEditorOnly, INdmfComponent, IManualConversionComponent
+    {
+        /// <summary>
+        /// Remove the GameObject this component is attached when the target platform is PC.
+        /// </summary>
+        public bool removeOnPC = false;
+
+        /// <summary>
+        /// Remove the GameObject this component is attached when the target platform is Android.
+        /// </summary>
+        public bool removeOnAndroid = false;
+
+        /// <summary>
+        /// Serialized schema version for forward compatibility.
+        /// </summary>
+        [SerializeField]
+#pragma warning disable CS0414
+        private int serializedVersion = 1;
+#pragma warning restore CS0414
+    }
+}

@@ -20,3 +20,6 @@ Thumbs.db
 *.meta
 !Shaders~/*.meta
 !Materials~/*.meta
+# KS Quest Converter: its code finds its shaders, textures and translations by GUID, so its .meta files are tracked
+!QuestConverter.meta
+!QuestConverter/**/*.meta

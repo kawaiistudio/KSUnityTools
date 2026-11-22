@@ -1,0 +1,779 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Crowdin-Project: vrc-quest-tools\n"
+"X-Crowdin-Project-ID: 712497\n"
+"X-Crowdin-Language: en\n"
+"X-Crowdin-File: /master/Packages/com.github.kurotu.vrc-quest-tools/Editor/I18n/en-US.po\n"
+"X-Crowdin-File-ID: 58\n"
+"Project-Id-Version: vrc-quest-tools\n"
+"Language-Team: English\n"
+"PO-Revision-Date: 2026-04-29 10:55\n"
+
+msgid "CancelLabel"
+msgstr "Cancel"
+
+msgid "OpenLabel"
+msgstr "Open"
+
+msgid "CloseLabel"
+msgstr "Close"
+
+msgid "DismissLabel"
+msgstr "Dismiss"
+
+msgid "ExitLabel"
+msgstr "Exit"
+
+msgid "YesLabel"
+msgstr "Yes"
+
+msgid "NoLabel"
+msgstr "No"
+
+msgid "AbortLabel"
+msgstr "Abort"
+
+msgid "AddLabel"
+msgstr "Add"
+
+msgid "RemoveLabel"
+msgstr "Remove"
+
+msgid "FixLabel"
+msgstr "Fix"
+
+msgid "Maximum"
+msgstr "Maximum"
+
+msgid "TextureFormatHighQuality"
+msgstr "High Quality"
+
+msgid "TextureFormatStandard"
+msgstr "Standard"
+
+msgid "TextureFormatHighCompression"
+msgstr "High Compression"
+
+msgid "AvatarConverterSettingsEditorDescription"
+msgstr "Convert this avatar to be uploadable to the Mobile (Android, iOS) platform."
+
+msgid "AvatarConverterSettingsEditorDescriptionNDMF"
+msgstr "When the build target is Mobile (Android, iOS), convert this avatar so it can be uploaded to the platform."
+
+msgid "ExitPlayModeToEdit"
+msgstr "Exit play mode to edit."
+
+msgid "BeginConvertSettingsButtonLabel"
+msgstr "Begin Conversion Setup"
+
+msgid "BeginConvertSettingsButtonDescription"
+msgstr "This will add the following components."
+
+msgid "AvatarLabel"
+msgstr "Avatar"
+
+msgid "GenerateMobileTexturesLabel"
+msgstr "Generate Textures for Mobile"
+
+msgid "GenerateMobileTexturesTooltip"
+msgstr "Generate new textures that apply material parameters beyond just the main texture, to bring the appearance closer to the PC version of the avatar."
+
+msgid "SupportedShadersLabel"
+msgstr "Supported Shaders"
+
+msgid "SaveToLabel"
+msgstr "Save Folder"
+
+msgid "ConvertButtonLabel"
+msgstr "Convert"
+
+msgid "UpdateTexturesLabel"
+msgstr "Update Converted Mobile Textures"
+
+msgid "AdvancedConverterSettingsLabel"
+msgstr "Advanced Converter Settings"
+
+msgid "RemoveVertexColorLabel"
+msgstr "Remove Vertex Color from Meshes"
+
+msgid "RemoveVertexColorTooltip"
+msgstr "Usually you don't have to disable this option. You can disable this option to prevent unexpected behavior when you are using special shaders which require vertex colors in PC avatars.\n"
+"This process only applies to a duplicated mesh and does not affect the original mesh."
+
+msgid "RemoveExtraMaterialSlotsLabel"
+msgstr "Remove Extra Material Slots"
+
+msgid "RemoveExtraMaterialSlotsTooltip"
+msgstr "Remove extra material slots that are greater than the number of submeshes for each Renderer."
+
+msgid "MenuIconSettingsLabel"
+msgstr "Menu Icon Settings"
+
+msgid "ResizeExpressionsMenuIconsLabel"
+msgstr "Resize Menu Icons"
+
+msgid "ResizeExpressionsMenuIconsTooltip"
+msgstr "Resize expressions menu icons on mobile build target."
+
+msgid "CompressExpressionsMenuIconsTooltip"
+msgstr "Compress expressions menu icons if they are not compressed."
+
+msgid "AssignNetworkIdsLabel"
+msgstr "Assign Network IDs"
+
+msgid "AssignNetworkIdsTooltip"
+msgstr "Assign network IDs to PhysBones during build."
+
+msgid "NdmfPhaseLabel"
+msgstr "NDMF Phase to Convert"
+
+msgid "NdmfPhaseTooltip"
+msgstr "Convert the avatar in the selected NDMF phase."
+
+msgid "EnableMaterialPreviewLabel"
+msgstr "Enable Material Preview"
+
+msgid "EnableMaterialPreviewTooltip"
+msgstr "Enable material preview in the editor. When enabled, converted materials will be previewed in the scene view."
+
+msgid "ForceMaterialPreviewEnableLabel"
+msgstr "Enable temporary preview"
+
+msgid "ForceMaterialPreviewDisableLabel"
+msgstr "Disable temporary preview"
+
+msgid "ForceMaterialPreviewEnableTooltip"
+msgstr "Temporarily enable material conversion preview via NDMF Preview."
+
+msgid "ForceMaterialPreviewDisableTooltip"
+msgstr "Disable the temporarily enabled material conversion preview via NDMF Preview."
+
+msgid "NdmfBuildAndTestLabel"
+msgstr "Test avatar on PC"
+
+msgid "NdmfBuildAndTestTooltip"
+msgstr "Build the avatar with mobile settings to make it testable on PC."
+
+msgid "GeneratingTexturesDialogMessage"
+msgstr "Generating textures..."
+
+msgid "AvatarConverterFailedDialogMessage"
+msgstr "An error occurred when converting the avatar. Aborted."
+
+msgid "MaterialExceptionDialogMessage"
+msgstr "An error occurred when converting materials. Aborted."
+
+msgid "AnimationClipExceptionDialogMessage"
+msgstr "An error occurred when converting Animation Clips. Aborted."
+
+msgid "AnimatorControllerExceptionDialogMessage"
+msgstr "An error occurred when converting Animator Controllers. Aborted."
+
+msgid "InvalidReplacementMaterialExceptionDialogMessage"
+msgstr "The replacement material is not allowed for mobile avatars. Aborted."
+
+msgid "InfoForNdmfConversion2"
+msgstr "You can non-destructively convert the avatar at build-time when the project has Non-Destructive Modular Framework (NDMF) package. Now you can also upload the avatar directly from VRChat SDK Control Panel."
+
+msgid "InfoForNdmfAutoConversion"
+msgstr "When the build target is Mobile, this avatar will be automatically converted (non-destructive) at build time. You can upload it as usual from the VRChat SDK Control Panel."
+
+msgid "PhysBoneSyncReminder"
+msgstr "To synchronize PhysBones between PC and Mobile, please upload the non-converted avatar for PC."
+
+msgid "WarningForPerformance"
+msgstr "Estimated performance rating is Very Poor, but you can upload the converted avatar for Mobile platform.\n"
+"Mobile users will see its imposter or fallback avatar by default. However, they can see the avatar by changing the \"Avatar Display\" setting (also known as \"Show Avatar\")."
+
+msgid "WarningForAppearance"
+msgstr "Texture transparency has no effect, so this may cause issues with facial expressions. In that case, you'll need to address it yourself (for example, by editing animation clips or removing the problematic meshes).\n"
+"You should check the converted avatar's appearance on PC by uploading with another Blueprint ID or using Avatars 3.0 local testing."
+
+msgid "WarningForUnsupportedShaders"
+msgstr "The following materials are using unsupported shaders. Textures might not be generated correctly.\n"
+"Disabling the \"Generate Textures for Mobile\" option only changes the shader."
+
+msgid "AlertForComponents"
+msgstr "The following unsupported components will be removed. Check avatar features after conversion."
+
+msgid "AlertForDynamicBoneConversion"
+msgstr "KS Quest Converter doesn't convert Dynamic Bones to PhysBones. Please set up PhysBones before converting the avatar."
+
+msgid "AlertForMAConvertConstraints"
+msgstr "Unity Constraints cannot be used on Mobile. Adding a MA Convert Constraints component to the avatar non-destructively converts Unity Constraints to VRChat Constraints."
+
+msgid "AlertForUnityConstraintsConversion"
+msgstr "KS Quest Converter doesn't convert Unity Constraints to VRChat Constraints. Please set up VRChat Constraints before converting the avatar."
+
+msgid "AlertForMASyncParameterSequence"
+msgstr "Adding a MA Sync Parameter Sequence component prevents parameter synchronization mismatches between platforms."
+
+msgid "AlertForAaoTraceAndOptimize"
+msgstr "Adding an AAO Trace and Optimize component automatically optimizes the avatar."
+
+msgid "AlertForAvatarDynamicsPerformance"
+msgstr "Avatar Dynamics (PhysBones and Contacts) performance rating will be \"Very Poor\", so components will be removed even if you upload to Mobile. Please reduce components so the Avatar Dynamics performance rating stays at \"Poor\" or better."
+
+msgid "ErrorForPrefabStage"
+msgstr "Cannot convert the avatar in prefab mode. Please go back to a scene from prefab mode."
+
+msgid "ExitPrefabStageButtonLabel"
+msgstr "Back to Scene"
+
+msgid "AvatarConverterMaterialConvertSettingsLabel"
+msgstr "Material Conversion Settings"
+
+msgid "AvatarConverterDefaultMaterialConvertSettingLabel"
+msgstr "Default Material Conversion Settings"
+
+msgid "AvatarConverterAdditionalMaterialConvertSettingsLabel"
+msgstr "Additional Material Conversion Settings"
+
+msgid "AvatarConverterAvatarDynamicsSettingsLabel"
+msgstr "Avatar Dynamics Settings"
+
+msgid "AvatarConverterRemoveAvatarDynamicsLabel"
+msgstr "Remove Avatar Dynamics"
+
+msgid "AvatarConverterRemoveAvatarDynamicsTooltip"
+msgstr "Keep avatar dynamics components which are selected in \"Avatar Dynamics Settings\". Unselected components will be removed during conversion."
+
+msgid "AvatarConverterPhysBonesTooltip"
+msgstr "Set PhysBones to keep during conversion."
+
+msgid "AvatarConverterPhysBoneCollidersTooltip"
+msgstr "Set PhysBoneColliders to keep during conversion."
+
+msgid "AvatarConverterContactsTooltip"
+msgstr "Set ContactSenders and ContactReceivers to keep during conversion."
+
+msgid "ManualConversionWarning"
+msgstr "When converting manually, non-destructive components other than MA Merge Animator are not considered. Unexpected issues may occur in the resulting behavior after combining."
+
+msgid "ManualConvertButtonLabel"
+msgstr "Convert"
+
+msgid "ManualConversionFoldoutLabel"
+msgstr "Manual Conversion"
+
+msgid "ConfirmationForMAConvertConstraints"
+msgstr "You can non-destructively convert Unity Constraints to VRChat Constraints by adding an MA Convert Constraints component. Do you want to add the component before conversion?"
+
+msgid "IMaterialConvertSettingsTexturesSizeLimitLabel"
+msgstr "Max Size"
+
+msgid "IMaterialConvertSettingsMobileTextureFormatLabel"
+msgstr "Compression Format"
+
+msgid "IMaterialConvertSettingsMainTextureSettingsLabel"
+msgstr "Main Texture Settings"
+
+msgid "IMaterialConvertSettingsMaskTextureSettingsLabel"
+msgstr "Mask Texture Settings"
+
+msgid "IMaterialConvertSettingsMatCapTextureSettingsLabel"
+msgstr "MatCap Settings"
+
+msgid "IMaterialConvertSettingsMainTextureBrightnessLabel"
+msgstr "Brightness"
+
+msgid "IMaterialConvertSettingsMainTextureBrightnessTooltip"
+msgstr "Tweak main texture color."
+
+msgid "ToonLitConvertSettingsGenerateShadowFromNormalMapLabel"
+msgstr "Generate shadow from normal map"
+
+msgid "MatCapLitConvertSettingsMatCapTextureLabel"
+msgstr "MatCap Texture"
+
+msgid "MatCapLitConvertSettingsMatCapTextureWarning"
+msgstr "Set the MatCap texture."
+
+msgid "ToonStandardConvertSettingsFallbackShadowRampLabel"
+msgstr "Fallback Shading"
+
+msgid "ToonStandardConvertSettingsGenerateShadowRampLabel"
+msgstr "Generate shadow ramp"
+
+msgid "ToonStandardConvertSettingsCustomFallbackShadowRampLabel"
+msgstr "Shadow Ramp"
+
+msgid "ToonStandardConvertSettingsFeaturesLabel"
+msgstr "Feature Settings"
+
+msgid "ToonStandardConvertSettingsFeaturesNormalMapLabel"
+msgstr "Normal Map"
+
+msgid "ToonStandardConvertSettingsFeaturesEmissionLabel"
+msgstr "Emission"
+
+msgid "ToonStandardConvertSettingsFeaturesOcclusionLabel"
+msgstr "Occlusion"
+
+msgid "ToonStandardConvertSettingsFeaturesSpecularLabel"
+msgstr "Specular"
+
+msgid "ToonStandardConvertSettingsFeaturesMatcapLabel"
+msgstr "MatCap"
+
+msgid "ToonStandardConvertSettingsFeaturesRimLightingLabel"
+msgstr "Rim Lighting"
+
+msgid "ToonStandardConvertSettingsFeaturesModeOptIn"
+msgstr "Opt-In"
+
+msgid "ToonStandardConvertSettingsFeaturesModeOptOut"
+msgstr "Opt-Out"
+
+msgid "AdditionalMaterialConvertSettingsTargetMaterialLabel"
+msgstr "Target Material"
+
+msgid "AdditionalMaterialConvertSettingsSelectMaterialLabel"
+msgstr "Select Material"
+
+msgid "MaterialConvertTypePopupLabelToonLit"
+msgstr "Toon Lit"
+
+msgid "MaterialConvertTypePopupLabelMatCapLit"
+msgstr "MatCap Lit"
+
+msgid "MaterialConvertTypePopupLabelToonStandard"
+msgstr "Toon Standard"
+
+msgid "MaterialConvertTypePopupLabelMaterialReplace"
+msgstr "Material Replacement"
+
+msgid "MaterialReplaceSettingsMaterialLabel"
+msgstr "Replacement Material"
+
+msgid "MaterialReplaceSettingsMaterialTooltip"
+msgstr "Target material will be replaced by this material."
+
+msgid "MaterialReplaceSettingsMaterialWarning"
+msgstr "This material's shader is not allowed for mobile avatars."
+
+msgid "NoMissingComponentsMessage"
+msgstr "There are no \"missing\" components in {0}."
+
+msgid "MissingRemoverConfirmationMessage"
+msgstr "Remove \"missing\" components from {0}."
+
+msgid "UnpackPrefabMessage"
+msgstr "This also executes the \"Unpack Prefab\" operation."
+
+msgid "MissingRemoverOnBuildDialogMessage"
+msgstr "{0} has \"missing\" components. Would you like to continue building the avatar without such components?"
+
+msgid "SourceMeshLabel"
+msgstr "Source Mesh"
+
+msgid "TargetMeshLabel"
+msgstr "Target Mesh"
+
+msgid "CopyButtonLabel"
+msgstr "Copy BlendShape Weights"
+
+msgid "SwitchButtonLabel"
+msgstr "Switch Source/Target"
+
+msgid "NoUnsupportedComponentsMessage"
+msgstr "There are no unsupported components in {0}."
+
+msgid "UnsupportedRemoverConfirmationMessage"
+msgstr "Remove the following unsupported components from {0}."
+
+msgid "SelectComponentsToKeep"
+msgstr "Select components to keep."
+
+msgid "PhysBonesListTooltip"
+msgstr "The list of components and their root transforms."
+
+msgid "PhysBonesWillBeRemovedAtRunTime"
+msgstr "You can upload this avatar to Mobile, but all PhysBone components will be removed. Please reduce PhysBone components."
+
+msgid "PhysBoneCollidersWillBeRemovedAtRunTime"
+msgstr "You can upload this avatar to Mobile, but all PhysBoneCollider components will be removed. Please reduce PhysBoneCollider components."
+
+msgid "ContactsWillBeRemovedAtRunTime"
+msgstr "You can upload this avatar to Mobile, but all ContactReceiver and ContactSender components will be removed. Please reduce ContactReceiver and ContactSender components."
+
+msgid "PhysBonesTransformsShouldBeReduced"
+msgstr "You can upload this avatar to Mobile, but all PhysBone components will be removed. Please reduce the number of PhysBone components or the number of transforms in the hierarchy under them."
+
+msgid "PhysBonesCollisionCheckCountShouldBeReduced"
+msgstr "You can upload this avatar to Mobile, but all PhysBoneCollider components will be removed. Please reduce the collision check count between PhysBone components and PhysBoneCollider components."
+
+msgid "PhysBonesShouldHaveNetworkID"
+msgstr "To properly synchronize PhysBones, PhysBones must have same Network ID between PC and Mobile. Please assign Network IDs to both of PC version and Mobile version with Network ID Utility of VRCSDK, then re-upload both."
+
+msgid "AlertForMultiplePhysBones"
+msgstr "There are multiple PhysBones in a single GameObject. They may not be properly synchronized between PC and Mobile after removing PhysBones."
+
+msgid "EstimatedPerformanceStats"
+msgstr "Estimated Performance Stats"
+
+msgid "DeleteUnselectedComponents"
+msgstr "Delete Unselected Components"
+
+msgid "SetPlatformComponentRemoverButtonLabel"
+msgstr "Set Platform Component Remover"
+
+msgid "SelectAllButtonLabel"
+msgstr "Select All"
+
+msgid "DeselectAllButtonLabel"
+msgstr "Deselect All"
+
+msgid "ApplyButtonLabel"
+msgstr "Apply"
+
+msgid "EditorOnlyTooltip"
+msgstr "This object is tagged as EditorOnly. VRChat SDK removes it when building the avatar."
+
+msgid "TextureLabel"
+msgstr "Texture"
+
+msgid "InvertLabel"
+msgstr "Invert"
+
+msgid "SaveFileDialogTitle"
+msgstr "Save {0}"
+
+msgid "SaveFileDialogMessage"
+msgstr "Please choose a location to save the texture"
+
+msgid "GenerateButtonLabel"
+msgstr "Generate Metallic Smoothness"
+
+msgid "RecommendedUnitySettingsForMobile"
+msgstr "Recommended Settings for Mobile"
+
+msgid "AndroidBuildSupportHelp"
+msgstr "Android Build Support is required to upload avatars for Android platform."
+
+msgid "AndroidBuildSupportButtonLabel"
+msgstr "How to Install"
+
+msgid "IOSBuildSupportHelp"
+msgstr "iOS Build Support is required to switch build target to iOS platform."
+
+msgid "IOSBuildSupportButtonLabel"
+msgstr "How to Install"
+
+msgid "TextureCompressionLabel"
+msgstr "Android Texture Compression"
+
+msgid "TextureCompressionHelp"
+msgstr "ASTC improves Android texture quality at the cost of longer compression times."
+
+msgid "TextureCompressionButtonLabel"
+msgstr "Set texture compression to ASTC"
+
+msgid "ShowOnStartupLabel"
+msgstr "Show on startup"
+
+msgid "AllAppliedHelp"
+msgstr "OK, all recommended settings are applied."
+
+msgid "GetUpdate"
+msgstr "Get Update"
+
+msgid "SeeChangelog"
+msgstr "Changelog"
+
+msgid "SkipThisVersion"
+msgstr "Skip This"
+
+msgid "NewVersionHasBreakingChanges"
+msgstr "This version may include breaking changes that affect compatibility."
+
+msgid "MissingScripts"
+msgstr "The following objects have \"Missing\" components. Please check for assets or packages you forgot to import."
+
+msgid "ExperimentalComponentWarning"
+msgstr "This component is an experimental feature."
+
+msgid "AvatarRootComponentMustBeOnAvatarRoot"
+msgstr "This component must be attached to the GameObject that has a VRC_AvatarDescriptor."
+
+msgid "VertexColorRemoverEditorDescription"
+msgstr "Vertex color is automatically removed from this GameObject's mesh."
+
+msgid "VertexColorRemoverEditorRemove"
+msgstr "Remove Vertex Color"
+
+msgid "VertexColorRemoverEditorRestore"
+msgstr "Restore Vertex Color"
+
+msgid "ConvertedAvatarEditorMessage"
+msgstr "This component indicates the avatar was converted by KS Quest Converter."
+
+msgid "ConvertedAvatarEditorNDMFMessage"
+msgstr "Components that are not supported on Mobile will be removed during the NDMF optimization phase."
+
+msgid "NetworkIDAssignerEditorDescription"
+msgstr "Assigns Network IDs to the avatar's components, such as PhysBones, during the build process. IDs are determined by hash values of the hierarchy paths from the avatar root."
+
+msgid "PlatformTargetSettingsEditorDescription"
+msgstr "Components are forced to use settings for a specific platform during the NDMF build process."
+
+msgid "PlatformTargetSettingsIsRequiredToEnforcePlatform"
+msgstr "To override the platform for this component, add a Platform Target Settings component to the avatar root object."
+
+msgid "ComponentRequiresNdmf"
+msgstr "Non-Destructive Modular Framework (NDMF) is required."
+
+msgid "ComponentRequiresNdmfForBuild"
+msgstr "Non-Destructive Modular Framework (NDMF) is required to apply this component on build. Without NDMF, only the settings for Mobile are applied by the manual conversion of Avatar Converter Settings."
+
+msgid "PlatformComponentRemoverManualConversionUnavailable"
+msgstr "The Avatar Dynamics settings are still stored in Avatar Converter Settings, so the manual conversion applies those settings instead of this component's ones."
+
+msgid "BuildTargetLabel"
+msgstr "Build Target"
+
+msgid "BuildTargetTooltip"
+msgstr "Select the build target platform. Use Unity's target platform when Auto is selected."
+
+msgid "PlatformComponentRemoverEditorDescription"
+msgstr "Components will be removed at build time for unselected build targets."
+
+msgid "PlatformComponentRemoverEditorComponentSettingsLabel"
+msgstr "Components to Keep"
+
+msgid "PlatformComponentRemoverEditorComponentSettingsTooltip"
+msgstr "Select the platforms on which to keep these components."
+
+msgid "PlatformComponentRemoverEditorCheckboxPCTooltip"
+msgstr "Keep the selected components in the PC build."
+
+msgid "PlatformComponentRemoverEditorCheckboxMobileTooltip"
+msgstr "Keep the selected components in the Mobile build."
+
+msgid "ComponentLabel"
+msgstr "Component"
+
+msgid "MigrateAvatarDynamicsSettingsWindowTitle"
+msgstr "Avatar Dynamics Migration"
+
+msgid "MigrateAvatarDynamicsSettingsDescription"
+msgstr "Avatar Dynamics keep/remove settings are now managed with the Platform Component Remover component. The Avatar Converter Settings listed here still have settings saved in the old format. Migrating replaces them with Platform Component Remover components while preserving which PhysBones, PhysBone Colliders, and Contacts are kept. Select the Prefabs and scene objects to migrate."
+
+msgid "MigrateAvatarDynamicsSettingsAssetWarning"
+msgstr "Migrating a Prefab or an unloaded scene file writes the changes directly to the asset file. Undo cannot revert them. Before continuing, back up your project or make sure it is under version control."
+
+msgid "MigrateAvatarDynamicsSettingsConfirmation"
+msgstr "This will directly modify {0} project Prefab asset(s) and unloaded scene file(s) in total. Undo cannot revert this change. Continue?"
+
+msgid "MigrateAvatarDynamicsSettingsProjectPrefabsLabel"
+msgstr "Project Prefabs"
+
+msgid "MigrateAvatarDynamicsSettingsSceneObjectsLabel"
+msgstr "Scene Objects"
+
+msgid "MigrateAvatarDynamicsSettingsNoTargetsMessage"
+msgstr "No Avatar Dynamics settings need migration."
+
+msgid "MigrateAvatarDynamicsSettingsButtonLabel"
+msgstr "Migrate Selected ({0})"
+
+msgid "MigrateAvatarDynamicsSettingsResultMessage"
+msgstr "Migrated {0} target(s). {1} target(s) needed no change, for example because they inherit settings from an already migrated base Prefab."
+
+msgid "PlatformGameObjectRemoverEditorDescription"
+msgstr "This GameObject will be removed at build time for unselected build targets."
+
+msgid "PlatformGameObjectRemoverEditorKeepOnPCLabel"
+msgstr "Keep on PC"
+
+msgid "PlatformGameObjectRemoverEditorKeepOnMobileLabel"
+msgstr "Keep on Mobile"
+
+msgid "MeshFlipperEditorDescription"
+msgstr "Duplicate the polygons of a mesh to make it double-sided, or flip the faces to reverse them."
+
+msgid "MeshFlipperEditorDirectionLabel"
+msgstr "Mesh Direction"
+
+msgid "MeshFlipperEditorEnabledOnPCLabel"
+msgstr "Enable on PC"
+
+msgid "MeshFlipperEditorEnabledOnMobileLabel"
+msgstr "Enable on Mobile"
+
+msgid "MeshFlipperEditorUseMaskLabel"
+msgstr "Use Mask"
+
+msgid "MeshFlipperEditorMaskTextureLabel"
+msgstr "Mask Texture"
+
+msgid "MeshFlipperEditorMaskModeLabel"
+msgstr "Mask Mode"
+
+msgid "MeshFlipperEditorProcessingPhaseLabel"
+msgstr "NDMF Phase"
+
+msgid "MeshFlipperEditorEnabledOnPCWarning"
+msgstr "You may be able to achieve the same result using shader settings instead of this component."
+
+msgid "MeshFlipperEditorBothSidesWarning"
+msgstr "The polygon count for this mesh will increase."
+
+msgid "MeshFlipperEditorMaskTextureMissingError"
+msgstr "Mask texture is missing."
+
+msgid "MeshFlipperEditorMaskTextureNotReadableError"
+msgstr "Mask texture must be readable."
+
+msgid "MeshFlipperMeshDirectionFlip"
+msgstr "Flipped"
+
+msgid "MeshFlipperMeshDirectionDoubleSide"
+msgstr "Double Sided"
+
+msgid "MaterialSwapEditorDescription"
+msgstr "Replace this avatar's materials for the Mobile platform build."
+
+msgid "MaterialSwapEditorMaterialMappingsLabel"
+msgstr "Material Mappings"
+
+msgid "MaterialSwapEditorOriginalMaterialLabel"
+msgstr "Original Material"
+
+msgid "MaterialSwapEditorReplacementMaterialLabel"
+msgstr "Replacement Material"
+
+msgid "MaterialSwapEditorSelectMaterialLabel"
+msgstr "Select from children"
+
+msgid "MaterialSwapEditorReplacementMaterialError"
+msgstr "This material's shader is not allowed for Mobile avatars."
+
+msgid "MaterialConversionSettingsEditorDescription"
+msgstr "Convert materials for the Mobile platform."
+
+msgid "MaterialConversionSettingsEditorDefaultConversionWarning"
+msgstr "Place this component alone on the avatar's root object, or use VQT Avatar Converter Settings instead (in that case, its settings take priority)."
+
+msgid "MaterialConversionSettingsEditorConversionSettingsLabel"
+msgstr "Material Conversion Settings"
+
+msgid "MenuIconResizerEditorDescription"
+msgstr "Resize menu icons in the avatar's Expressions Menu."
+
+msgid "MenuIconResizerEditorResizeModePCLabel"
+msgstr "Resize Mode (PC)"
+
+msgid "MenuIconResizerEditorResizeModeMobileLabel"
+msgstr "Resize Mode (Mobile)"
+
+msgid "MenuIconResizerEditorCompressTexturesLabel"
+msgstr "Compress Uncompressed Textures"
+
+msgid "MenuIconResizerEditorMobileTextureFormatLabel"
+msgstr "Compression Format"
+
+msgid "BuildAndTestRequiresSdkControlPanel"
+msgstr "VRChat SDK Control Panel is not available. Please open it first."
+
+msgid "BuildAndTestFailed"
+msgstr "Failed to build avatar: {0}"
+
+msgid "BuildAndTestSucceeded"
+msgstr "Successfully built the avatar {0} for local testing.\nYou can test it in \"SDK Test Avatars\" in VRChat."
+
+msgid "LegacyPackageExceptionMessage"
+msgstr "The current version of {0} is not supported. Update {0} to {1} or later."
+
+msgid "BreakingPackageExceptionMessage"
+msgstr "The current version of {0} is not supported. Update KS Quest Converter or downgrade {0} to a version earlier than {1}."
+
+msgid "NDMF:RemovedUnsupportedComponentTitle"
+msgstr "Removed Unsupported Component"
+
+msgid "NDMF:RemovedUnsupportedComponentDescription"
+msgstr "Unsupported component {0} is removed from \"{1}\" during build. Please test the avatar."
+
+msgid "NDMF:MaterialConversionErrorTitle"
+msgstr "Material Conversion Error"
+
+msgid "NDMF:MaterialConversionErrorDescription"
+msgstr "An error occurred when conversion a material.\n\n"
+"Material: {0}\n"
+"Shader: {1}\n\n"
+"{2}: {3}\n"
+"{4}"
+
+msgid "NDMF:PackageCompatibilityErrorTitle"
+msgstr "Unsupported Version of {0}"
+
+msgid "NDMF:PackageCompatibilityErrorDescription"
+msgstr "{0}"
+
+msgid "NDMF:MaterialSwapNullErrorTitle"
+msgstr "Material Not Set"
+
+msgid "NDMF:MaterialSwapNullErrorDescription"
+msgstr "Material is not set to the VQT Material Swap component.\n\n"
+"Original: {0}\n"
+"Replacement: {1}"
+
+msgid "NDMF:ObjectConversionErrorTitle"
+msgstr "{0} Conversion Error"
+
+msgid "NDMF:ObjectConversionErrorDescription"
+msgstr "An error occurred when converting {0}.\n\n"
+"{0}: {1}\n\n"
+"{2}: {3}\n"
+"{4}"
+
+msgid "NDMF:TargetMaterialNullErrorTitle"
+msgstr "Target Material Not Set"
+
+msgid "NDMF:TargetMaterialNullErrorTitle:description"
+msgstr "Target material is not set to the {0} component."
+
+msgid "NDMF:UnsupportedTextureFormatTitle"
+msgstr "Unsupported Texture Format"
+
+msgid "NDMF:UnsupportedTextureFormatDescription"
+msgstr "Unsupported texture format {0} is used for {1}. When textures were generated by manual bake, switch target platform then execute manual bake again."
+
+msgid "NDMF:UnknownTextureFormatTitle"
+msgstr "Unknown Texture Format"
+
+msgid "NDMF:UnknownTextureFormatDescription"
+msgstr "Unknown texture format {0} is used for {1}. Please report to the tool's developer to suppress this warning."
+
+msgid "NDMF:MissingNetworkIDAssignerTitle"
+msgstr "Network ID Assignment"
+
+msgid "NDMF:MissingNetworkIDAssignerDescription"
+msgstr "To properly synchronize PhysBones, they must have the same Network ID between PC and Mobile.\n"
+"Enable Assign Network IDs in Avatar Converter Settings to assign Network IDs non-destructively during build. Upload again for each platform after enabling this option."
+
+msgid "NDMF:MeshFlipperMaskMissingErrorTitle"
+msgstr "Missing Mask Texture"
+
+msgid "NDMF:MeshFlipperMaskMissingErrorDescription"
+msgstr "Mask texture is missing. Set a texture."
+
+msgid "NDMF:MeshFlipperMaskNotReadableErrorTitle"
+msgstr "Unreadable Mask Texture"
+
+msgid "NDMF:MeshFlipperMaskNotReadableErrorDescription"
+msgstr "The mask texture is not readable. Change the texture's import settings."
+
+msgid "NDMF:ReplacementMaterialErrorTitle"
+msgstr "Invalid Replacement Material"
+
+msgid "NDMF:ReplacementMaterialErrorDescription"
+msgstr "The replacement material {0} uses a shader {1} which is not allowed for mobile avatars."
+
+msgid "FallbackAvatarEditorDescription"
+msgstr "Automatically enables this avatar to be used as a fallback avatar after a Mobile upload if the performance rank is Good or better."
+

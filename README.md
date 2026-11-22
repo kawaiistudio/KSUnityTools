@@ -51,6 +51,17 @@
 
 ---
 
+### PC to Quest Converter `NEW in 3.19`
+> A Quest (Android) version of your PC avatar in one click.
+
+- `Kawaii Studio > VRC > PC to Quest Converter`: pick the avatar, **MAKE THE QUEST VERSION**. Your PC avatar is not changed (a converted copy is made beside it, the PC one is only hidden; one Undo brings everything back)
+- VRChat's own performance rank on PC and on Quest, before and after
+- **Switch Unity to Android** and **Open the VRChat SDK** from the same window; the Quest version keeps the PC avatar's ID
+- Engine: [VRCQuestTools](https://github.com/kurotu/VRCQuestTools) by kurotu (MIT), carried under Kawaii Studio names so it never collides with an installed VRCQuestTools, plus our fixes (old lilToon, masked emission, colours under other names, Kawaii Studio shaders)
+- Needs Unity 2022.3 + VRChat Avatars SDK 3.9 or newer (switched off anywhere else)
+
+---
+
 ### Texture Asset To PNG `NEW in 3.7`
 > Make the exact `.asset` textures of a VRChat Archive repaired project editable, and put them back.
 
@@ -398,6 +409,10 @@ can be moved aside in one click — nothing is deleted.
 ## License
 
 **MIT License** — free to use, modify, and distribute. See [LICENSE](LICENSE).
+
+**Third-party code:** the PC to Quest Converter's engine is [VRCQuestTools](https://github.com/kurotu/VRCQuestTools)
+by kurotu (MIT) with parts of [lilToon](https://github.com/lilxyzw/lilToon) by lilxyzw (MIT); their licence files ship
+in `QuestConverter/Engine` (LICENSE.txt, NOTICE.txt).
 
 ---
 

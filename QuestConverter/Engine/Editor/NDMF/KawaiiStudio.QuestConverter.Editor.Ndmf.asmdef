@@ -1,0 +1,56 @@
+{
+    "name": "KawaiiStudio.QuestConverter.Editor.Ndmf",
+    "rootNamespace": "KawaiiStudio.QuestConverter.Ndmf",
+    "references": [
+        "KawaiiStudio.QuestConverter",
+        "KawaiiStudio.QuestConverter.Editor",
+        "nadena.dev.ndmf",
+        "VRC.SDK3A.Editor",
+        "VRC.SDKBase.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "System.Collections.Immutable.dll",
+        "VRCCore-Editor.dll",
+        "VRCSDK3A.dll",
+        "VRCSDKBase.dll",
+        "VRCSDKBase-Editor.dll",
+        "VRC.Dynamics.dll",
+        "VRC.SDK3.Dynamics.PhysBone.dll",
+        "0Harmony.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "KSQ_HAS_NDMF",
+        "UNITY_2022_3_OR_NEWER",
+        "KSQ_VRCSDK_AVATARS"
+    ],
+    "versionDefines": [
+        {
+            "name": "nadena.dev.ndmf",
+            "expression": "[1.5.0,2.0.0-a)",
+            "define": "KSQ_HAS_NDMF"
+        },
+        {
+            "name": "nadena.dev.ndmf",
+            "expression": "[1.6.8,2.0.0-a)",
+            "define": "KSQ_NDMF_HAS_TRY_REGISTER_REPLACED_OBJECT"
+        },
+        {
+            "name": "jp.lilxyzw.ndmfmeshsimplifier",
+            "expression": "0.2.0",
+            "define": "KSQ_LIL_NDMF_MESH_SIMPLIFIER"
+        },
+        {
+            "name": "com.vrchat.avatars",
+            "expression": "3.9.0",
+            "define": "KSQ_VRCSDK_AVATARS"
+        }
+    ],
+    "noEngineReferences": false
+}

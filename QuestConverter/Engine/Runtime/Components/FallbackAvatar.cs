@@ -1,0 +1,26 @@
+// <copyright file="FallbackAvatar.cs" company="kurotu">
+// Copyright (c) kurotu.
+// Licensed under the MIT license. See LICENSE.txt file in the project root for full license information.
+// </copyright>
+
+using UnityEngine;
+
+namespace KawaiiStudio.QuestConverter.Components
+{
+    /// <summary>
+    /// Marker component to set avatar as fallback after upload if performance requirements are met.
+    /// </summary>
+    [AddComponentMenu("Kawaii Studio/Quest Converter/Fallback Avatar")]
+    [HelpURL("https://kurotu.github.io/VRCQuestTools/docs/references/components/fallback-avatar?lang=auto")]
+    [DisallowMultipleComponent]
+    public class FallbackAvatar : VRCQuestToolsEditorOnly, IAvatarRootComponent
+    {
+        /// <summary>
+        /// Serialized schema version for forward compatibility.
+        /// </summary>
+        [SerializeField]
+#pragma warning disable CS0414
+        private int serializedVersion = 1;
+#pragma warning restore CS0414
+    }
+}

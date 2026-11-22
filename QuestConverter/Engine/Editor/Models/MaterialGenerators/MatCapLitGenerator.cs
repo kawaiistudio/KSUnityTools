@@ -1,0 +1,48 @@
+using System;
+using System.Linq;
+using KawaiiStudio.QuestConverter.Models.Unity;
+using KawaiiStudio.QuestConverter.Utils;
+using UnityEngine;
+
+namespace KawaiiStudio.QuestConverter.Models
+{
+    /// <summary>
+    /// Material generator for MatCap Lit shader.
+    /// </summary>
+    internal class MatCapLitGenerator : IMaterialGenerator
+    {
+        private MatCapLitConvertSettings matCapLitConvertSettings;
+        private ToonLitGenerator toonLitGenerator;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="MatCapLitGenerator"/> class.
+        /// </summary>
+        /// <param name="matCapLitConvertSettings">Convert setttings.</param>
+        /// <param name="forEditorPreview">Whether the conversion is for the NDMF editor preview.</param>
+        public MatCapLitGenerator(MatCapLitConvertSettings matCapLitConvertSettings, bool forEditorPreview = false)
+        {
+            this.matCapLitConvertSettings = matCapLitConvertSettings;
+            toonLitGenerator = new ToonLitGenerator(matCapLitConvertSettings, forEditorPreview);
+        }
+
+        /// <inheritdoc/>
+        public AsyncCallbackRequest GenerateMaterial(MaterialBase material, UnityEditor.BuildTarget buildTarget, bool saveTextureAsPng, string texturesPath, Action<Material> completion)
+        {
+            var originalName = material.Material.name;
+            return toonLitGenerator.GenerateMaterial(material, buildTarget, saveTextureAsPng, texturesPath, newMaterial =>
+            {
+                var shader = Shader.Find("VRChat/Mobile/MatCap Lit");
+                newMaterial.name = $"{originalName}_{shader.name.Split('/').Last()}";
+                newMaterial.shader = shader;
+                newMaterial.SetTexture("_MatCap", matCapLitConvertSettings.matCapTexture);
+                completion?.Invoke(newMaterial);
+            });
+        }
+
+        /// <inheritdoc/>
+        public AsyncCallbackRequest GenerateTextures(MaterialBase material, UnityEditor.BuildTarget buildTarget, bool saveAsPng, string texturesPath, Action completion)
+        {
+            return toonLitGenerator.GenerateTextures(material, buildTarget, saveAsPng, texturesPath, completion);
+        }
+    }
+}

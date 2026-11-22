@@ -1,0 +1,62 @@
+// <copyright file="VRCQuestToolsSettingsMenus.cs" company="kurotu">
+// Copyright (c) kurotu.
+// Licensed under the MIT license. See LICENSE.txt file in the project root for full license information.
+// </copyright>
+
+using KawaiiStudio.QuestConverter.Models;
+using UnityEditor;
+
+namespace KawaiiStudio.QuestConverter.Menus
+{
+    /// <summary>
+    /// Settings menus for VRCQuestTools.
+    /// </summary>
+    internal static class SettingsMenu
+    {
+        [InitializeOnLoadMethod]
+        private static void InitDebugLog()
+        {
+            Logger.UseDebug = VRCQuestToolsSettings.IsDebugLogEnabled;
+        }
+
+        [MenuItem(VRCQuestToolsMenus.MenuPaths.EnableValidationAutomator, false, (int)VRCQuestToolsMenus.MenuPriorities.EnableValidationAutomator)]
+        private static void ToggleValidationAutomator()
+        {
+            VRCQuestToolsSettings.IsValidationAutomatorEnabled = !VRCQuestToolsSettings.IsValidationAutomatorEnabled;
+        }
+
+        [MenuItem(VRCQuestToolsMenus.MenuPaths.EnableValidationAutomator, true)]
+        private static bool ToggleValidationAutomatorValidation()
+        {
+            Menu.SetChecked(VRCQuestToolsMenus.MenuPaths.EnableValidationAutomator, VRCQuestToolsSettings.IsValidationAutomatorEnabled);
+            return true;
+        }
+
+        [MenuItem(VRCQuestToolsMenus.MenuPaths.EnableTextureFormatCheckOnStandalone, false, (int)VRCQuestToolsMenus.MenuPriorities.EnableTextureFormatCheckOnStandalone)]
+        private static void ToggleTextureFormatCheckOnStandalone()
+        {
+            VRCQuestToolsSettings.IsCheckTextureFormatOnStandaloneEnabled = !VRCQuestToolsSettings.IsCheckTextureFormatOnStandaloneEnabled;
+        }
+
+        [MenuItem(VRCQuestToolsMenus.MenuPaths.EnableTextureFormatCheckOnStandalone, true)]
+        private static bool ToggleTextureFormatCheckOnStandaloneValidation()
+        {
+            Menu.SetChecked(VRCQuestToolsMenus.MenuPaths.EnableTextureFormatCheckOnStandalone, VRCQuestToolsSettings.IsCheckTextureFormatOnStandaloneEnabled);
+            return true;
+        }
+
+        [MenuItem(VRCQuestToolsMenus.MenuPaths.EnableDebugLog, false, (int)VRCQuestToolsMenus.MenuPriorities.EnableDebugLog)]
+        private static void ToggleDebugLog()
+        {
+            VRCQuestToolsSettings.IsDebugLogEnabled = !VRCQuestToolsSettings.IsDebugLogEnabled;
+            Logger.UseDebug = VRCQuestToolsSettings.IsDebugLogEnabled;
+        }
+
+        [MenuItem(VRCQuestToolsMenus.MenuPaths.EnableDebugLog, true)]
+        private static bool ToggleDebugLogValidation()
+        {
+            Menu.SetChecked(VRCQuestToolsMenus.MenuPaths.EnableDebugLog, VRCQuestToolsSettings.IsDebugLogEnabled);
+            return true;
+        }
+    }
+}

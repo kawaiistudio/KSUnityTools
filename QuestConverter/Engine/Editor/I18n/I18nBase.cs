@@ -1,0 +1,341 @@
+// <copyright file="I18nBase.cs" company="kurotu">
+// Copyright (c) kurotu.
+// Licensed under the MIT license. See LICENSE.txt file in the project root for full license information.
+// </copyright>
+
+#pragma warning disable SA1201 // Elements should appear in the correct order
+#pragma warning disable SA1516 // Elements should be separated by blank line
+#pragma warning disable SA1600 // Elements should be documented
+
+using System;
+using System.Collections.Generic;
+using UnityEditor;
+using UnityEngine;
+
+namespace KawaiiStudio.QuestConverter.I18n
+{
+    /// <summary>
+    /// Base class for i18n object.
+    /// </summary>
+    internal abstract class I18nBase
+    {
+        /// <summary>
+        /// Gets localization asset for this i18n.
+        /// </summary>
+        private readonly Lazy<LocalizationAsset> localizationAsset;
+
+        /// <summary>
+        /// Gets fallback to en-US.
+        /// </summary>
+        private readonly Lazy<LocalizationAsset> fallback = new Lazy<LocalizationAsset>(() =>
+            AssetDatabase.LoadAssetAtPath<LocalizationAsset>(AssetDatabase.GUIDToAssetPath("55ce9c2b6147a1ab0a2f1baa26d77b90")));
+
+        internal I18nBase(string assetGuid)
+        {
+            localizationAsset = new Lazy<LocalizationAsset>(() =>
+                AssetDatabase.LoadAssetAtPath<LocalizationAsset>(AssetDatabase.GUIDToAssetPath(assetGuid)));
+        }
+
+        internal string GetText(string key)
+        {
+            var str = localizationAsset.Value.GetLocalizedString(key);
+            if ((key == str) && (localizationAsset.Value != fallback.Value))
+            {
+                return fallback.Value.GetLocalizedString(key);
+            }
+            return str;
+        }
+
+        private string GetText(string key, params object[] args)
+        {
+            var str = GetText(key);
+            return string.Format(str, args);
+        }
+
+        internal string CancelLabel => GetText("CancelLabel");
+        internal string OpenLabel => GetText("OpenLabel");
+        internal string CloseLabel => GetText("CloseLabel");
+        internal string DismissLabel => GetText("DismissLabel");
+        internal string ExitLabel => GetText("ExitLabel");
+        internal string YesLabel => GetText("YesLabel");
+        internal string NoLabel => GetText("NoLabel");
+        internal string AbortLabel => GetText("AbortLabel");
+        internal string AddLabel => GetText("AddLabel");
+        internal string RemoveLabel => GetText("RemoveLabel");
+        internal string FixLabel => GetText("FixLabel");
+
+        internal string Maximum => GetText("Maximum");
+
+        internal string TextureFormatHighQuality => GetText("TextureFormatHighQuality");
+        internal string TextureFormatStandard => GetText("TextureFormatStandard");
+        internal string TextureFormatHighCompression => GetText("TextureFormatHighCompression");
+
+        // Convert Avatar for Quest
+        internal string AvatarConverterSettingsEditorDescription => GetText("AvatarConverterSettingsEditorDescription");
+        internal string AvatarConverterSettingsEditorDescriptionNDMF => GetText("AvatarConverterSettingsEditorDescriptionNDMF");
+        internal string ExitPlayModeToEdit => GetText("ExitPlayModeToEdit");
+        internal string BeginConvertSettingsButtonLabel => GetText("BeginConvertSettingsButtonLabel");
+        internal string BeginConvertSettingsButtonDescription => GetText("BeginConvertSettingsButtonDescription");
+
+        internal string AvatarLabel => GetText("AvatarLabel");
+        internal string GenerateMobileTexturesLabel => GetText("GenerateMobileTexturesLabel");
+        internal string GenerateMobileTexturesTooltip => GetText("GenerateMobileTexturesTooltip");
+        internal string SupportedShadersLabel => GetText("SupportedShadersLabel");
+        internal string SaveToLabel => GetText("SaveToLabel");
+        internal string ConvertButtonLabel => GetText("ConvertButtonLabel");
+        internal string UpdateTexturesLabel => GetText("UpdateTexturesLabel");
+        internal string AdvancedConverterSettingsLabel => GetText("AdvancedConverterSettingsLabel");
+        internal string RemoveVertexColorLabel => GetText("RemoveVertexColorLabel");
+        internal string RemoveVertexColorTooltip => GetText("RemoveVertexColorTooltip");
+        internal string RemoveExtraMaterialSlotsLabel => GetText("RemoveExtraMaterialSlotsLabel");
+        internal string RemoveExtraMaterialSlotsTooltip => GetText("RemoveExtraMaterialSlotsTooltip");
+        internal string MenuIconSettingsLabel => GetText("MenuIconSettingsLabel");
+        internal string ResizeExpressionsMenuIconsLabel => GetText("ResizeExpressionsMenuIconsLabel");
+        internal string ResizeExpressionsMenuIconsTooltip => GetText("ResizeExpressionsMenuIconsTooltip");
+        internal string CompressExpressionsMenuIconsTooltip => GetText("CompressExpressionsMenuIconsTooltip");
+        internal string AssignNetworkIdsLabel => GetText("AssignNetworkIdsLabel");
+        internal string AssignNetworkIdsTooltip => GetText("AssignNetworkIdsTooltip");
+        internal string NdmfPhaseLabel => GetText("NdmfPhaseLabel");
+        internal string NdmfPhaseTooltip => GetText("NdmfPhaseTooltip");
+        internal string EnableMaterialPreviewLabel => GetText("EnableMaterialPreviewLabel");
+        internal string EnableMaterialPreviewTooltip => GetText("EnableMaterialPreviewTooltip");
+        internal string ForceMaterialPreviewEnableLabel => GetText("ForceMaterialPreviewEnableLabel");
+        internal string ForceMaterialPreviewDisableLabel => GetText("ForceMaterialPreviewDisableLabel");
+        internal string ForceMaterialPreviewEnableTooltip => GetText("ForceMaterialPreviewEnableTooltip");
+        internal string ForceMaterialPreviewDisableTooltip => GetText("ForceMaterialPreviewDisableTooltip");
+        internal string NdmfBuildAndTestLabel => GetText("NdmfBuildAndTestLabel");
+        internal string NdmfBuildAndTestTooltip => GetText("NdmfBuildAndTestTooltip");
+        internal string GeneratingTexturesDialogMessage => GetText("GeneratingTexturesDialogMessage");
+        internal string AvatarConverterFailedDialogMessage => GetText("AvatarConverterFailedDialogMessage");
+        internal string MaterialExceptionDialogMessage => GetText("MaterialExceptionDialogMessage");
+        internal string AnimationClipExceptionDialogMessage => GetText("AnimationClipExceptionDialogMessage");
+        internal string AnimatorControllerExceptionDialogMessage => GetText("AnimatorControllerExceptionDialogMessage");
+        internal string InvalidReplacementMaterialExceptionDialogMessage => GetText("InvalidReplacementMaterialExceptionDialogMessage");
+        internal string InfoForNdmfConversion2 => GetText("InfoForNdmfConversion2");
+        internal string InfoForNdmfAutoConversion => GetText("InfoForNdmfAutoConversion");
+        internal string PhysBoneSyncReminder => GetText("PhysBoneSyncReminder");
+
+        internal string WarningForPerformance => GetText("WarningForPerformance");
+        internal string WarningForAppearance => GetText("WarningForAppearance");
+        internal string WarningForUnsupportedShaders => GetText("WarningForUnsupportedShaders");
+        internal string AlertForDynamicBoneConversion => GetText("AlertForDynamicBoneConversion");
+        internal string AlertForMAConvertConstraints => GetText("AlertForMAConvertConstraints");
+        internal string AlertForUnityConstraintsConversion => GetText("AlertForUnityConstraintsConversion");
+        internal string AlertForMASyncParameterSequence => GetText("AlertForMASyncParameterSequence");
+        internal string AlertForAaoTraceAndOptimize => GetText("AlertForAaoTraceAndOptimize");
+        internal string AlertForMultiplePhysBones => GetText("AlertForMultiplePhysBones");
+        internal string AlertForAvatarDynamicsPerformance => GetText("AlertForAvatarDynamicsPerformance");
+        internal string AlertForComponents => GetText("AlertForComponents");
+        internal string ErrorForPrefabStage => GetText("ErrorForPrefabStage");
+        internal string ExitPrefabStageButtonLabel => GetText("ExitPrefabStageButtonLabel");
+
+        internal string AvatarConverterMaterialConvertSettingsLabel => GetText("AvatarConverterMaterialConvertSettingsLabel");
+        internal string AvatarConverterDefaultMaterialConvertSettingLabel => GetText("AvatarConverterDefaultMaterialConvertSettingLabel");
+        internal string AvatarConverterAdditionalMaterialConvertSettingsLabel => GetText("AvatarConverterAdditionalMaterialConvertSettingsLabel");
+
+        internal string AvatarConverterAvatarDynamicsSettingsLabel => GetText("AvatarConverterAvatarDynamicsSettingsLabel");
+        internal string AvatarConverterRemoveAvatarDynamicsLabel => GetText("AvatarConverterRemoveAvatarDynamicsLabel");
+        internal string AvatarConverterRemoveAvatarDynamicsTooltip => GetText("AvatarConverterRemoveAvatarDynamicsTooltip");
+        internal string AvatarConverterPhysBonesTooltip => GetText("AvatarConverterPhysBonesTooltip");
+        internal string AvatarConverterPhysBoneCollidersTooltip => GetText("AvatarConverterPhysBoneCollidersTooltip");
+        internal string AvatarConverterContactsTooltip => GetText("AvatarConverterContactsTooltip");
+        internal string ManualConversionWarning => GetText("ManualConversionWarning");
+        internal string ManualConvertButtonLabel => GetText("ManualConvertButtonLabel");
+        internal string ManualConversionFoldoutLabel => GetText("ManualConversionFoldoutLabel");
+        internal string ConfirmationForMAConvertConstraints => GetText("ConfirmationForMAConvertConstraints");
+
+        // IMaterialConvertSettings
+        internal string IMaterialConvertSettingsTexturesSizeLimitLabel => GetText("IMaterialConvertSettingsTexturesSizeLimitLabel");
+        internal string IMaterialConvertSettingsMobileTextureFormatLabel => GetText("IMaterialConvertSettingsMobileTextureFormatLabel");
+        internal string IMaterialConvertSettingsMainTextureSettingsLabel => GetText("IMaterialConvertSettingsMainTextureSettingsLabel");
+        internal string IMaterialConvertSettingsMaskTextureSettingsLabel => GetText("IMaterialConvertSettingsMaskTextureSettingsLabel");
+        internal string IMaterialConvertSettingsMatCapTextureSettingsLabel => GetText("IMaterialConvertSettingsMatCapTextureSettingsLabel");
+        internal string IMaterialConvertSettingsMainTextureBrightnessLabel => GetText("IMaterialConvertSettingsMainTextureBrightnessLabel");
+        internal string IMaterialConvertSettingsMainTextureBrightnessTooltip => GetText("IMaterialConvertSettingsMainTextureBrightnessTooltip");
+        internal string ToonLitConvertSettingsGenerateShadowFromNormalMapLabel => GetText("ToonLitConvertSettingsGenerateShadowFromNormalMapLabel");
+        internal string MatCapLitConvertSettingsMatCapTextureLabel => GetText("MatCapLitConvertSettingsMatCapTextureLabel");
+        internal string MatCapLitConvertSettingsMatCapTextureWarning => GetText("MatCapLitConvertSettingsMatCapTextureWarning");
+        internal string ToonStandardConvertSettingsGenerateShadowRampLabel => GetText("ToonStandardConvertSettingsGenerateShadowRampLabel");
+        internal string ToonStandardConvertSettingsFallbackShadowRampLabel => GetText("ToonStandardConvertSettingsFallbackShadowRampLabel");
+        internal string ToonStandardConvertSettingsCustomFallbackShadowRampLabel => GetText("ToonStandardConvertSettingsCustomFallbackShadowRampLabel");
+        internal string ToonStandardConvertSettingsFeaturesLabel => GetText("ToonStandardConvertSettingsFeaturesLabel");
+        internal string ToonStandardConvertSettingsFeaturesNormalMapLabel => GetText("ToonStandardConvertSettingsFeaturesNormalMapLabel");
+        internal string ToonStandardConvertSettingsFeaturesEmissionLabel => GetText("ToonStandardConvertSettingsFeaturesEmissionLabel");
+        internal string ToonStandardConvertSettingsFeaturesOcclusionLabel => GetText("ToonStandardConvertSettingsFeaturesOcclusionLabel");
+        internal string ToonStandardConvertSettingsFeaturesSpecularLabel => GetText("ToonStandardConvertSettingsFeaturesSpecularLabel");
+        internal string ToonStandardConvertSettingsFeaturesMatcapLabel => GetText("ToonStandardConvertSettingsFeaturesMatcapLabel");
+        internal string ToonStandardConvertSettingsFeaturesRimLightingLabel => GetText("ToonStandardConvertSettingsFeaturesRimLightingLabel");
+        internal string ToonStandardConvertSettingsFeaturesModeOptIn => GetText("ToonStandardConvertSettingsFeaturesModeOptIn");
+        internal string ToonStandardConvertSettingsFeaturesModeOptOut => GetText("ToonStandardConvertSettingsFeaturesModeOptOut");
+        internal string AdditionalMaterialConvertSettingsTargetMaterialLabel => GetText("AdditionalMaterialConvertSettingsTargetMaterialLabel");
+        internal string AdditionalMaterialConvertSettingsSelectMaterialLabel => GetText("AdditionalMaterialConvertSettingsSelectMaterialLabel");
+        internal string MaterialConvertTypePopupLabelToonLit => GetText("MaterialConvertTypePopupLabelToonLit");
+        internal string MaterialConvertTypePopupLabelMatCapLit => GetText("MaterialConvertTypePopupLabelMatCapLit");
+        internal string MaterialConvertTypePopupLabelToonStandard => GetText("MaterialConvertTypePopupLabelToonStandard");
+        internal string MaterialConvertTypePopupLabelMaterialReplace => GetText("MaterialConvertTypePopupLabelMaterialReplace");
+        internal string MaterialReplaceSettingsMaterialLabel => GetText("MaterialReplaceSettingsMaterialLabel");
+        internal string MaterialReplaceSettingsMaterialTooltip => GetText("MaterialReplaceSettingsMaterialTooltip");
+        internal string MaterialReplaceSettingsMaterialWarning => GetText("MaterialReplaceSettingsMaterialWarning");
+
+        // Remove Missing Components
+        internal string NoMissingComponentsMessage(string objectName) => GetText("NoMissingComponentsMessage", objectName);
+        internal string MissingRemoverConfirmationMessage(string objectName) => GetText("MissingRemoverConfirmationMessage", objectName);
+        internal string UnpackPrefabMessage => GetText("UnpackPrefabMessage");
+        internal string MissingRemoverOnBuildDialogMessage(string objectName) => GetText("MissingRemoverOnBuildDialogMessage", objectName);
+
+        // BlendShapes Copy
+        internal string SourceMeshLabel => GetText("SourceMeshLabel");
+        internal string TargetMeshLabel => GetText("TargetMeshLabel");
+        internal string CopyButtonLabel => GetText("CopyButtonLabel");
+        internal string SwitchButtonLabel => GetText("SwitchButtonLabel");
+
+        // Remove Unsupported Components
+        internal string NoUnsupportedComponentsMessage(string objectName) => GetText("NoUnsupportedComponentsMessage", objectName);
+        internal string UnsupportedRemoverConfirmationMessage(string objectName) => GetText("UnsupportedRemoverConfirmationMessage", objectName);
+
+        // Remove PhysBones
+        internal string SelectComponentsToKeep => GetText("SelectComponentsToKeep");
+        internal string PhysBonesListTooltip => GetText("PhysBonesListTooltip");
+        internal string PhysBonesWillBeRemovedAtRunTime => GetText("PhysBonesWillBeRemovedAtRunTime");
+        internal string PhysBoneCollidersWillBeRemovedAtRunTime => GetText("PhysBoneCollidersWillBeRemovedAtRunTime");
+        internal string ContactsWillBeRemovedAtRunTime => GetText("ContactsWillBeRemovedAtRunTime");
+        internal string PhysBonesTransformsShouldBeReduced => GetText("PhysBonesTransformsShouldBeReduced");
+        internal string PhysBonesCollisionCheckCountShouldBeReduced => GetText("PhysBonesCollisionCheckCountShouldBeReduced");
+
+        internal string PhysBonesShouldHaveNetworkID => GetText("PhysBonesShouldHaveNetworkID");
+        internal string EstimatedPerformanceStats => GetText("EstimatedPerformanceStats");
+        internal string DeleteUnselectedComponents => GetText("DeleteUnselectedComponents");
+        internal string SetPlatformComponentRemoverButtonLabel => GetText("SetPlatformComponentRemoverButtonLabel");
+
+        // Avatar Dynamics Selector
+        internal string SelectAllButtonLabel => GetText("SelectAllButtonLabel");
+        internal string DeselectAllButtonLabel => GetText("DeselectAllButtonLabel");
+        internal string ApplyButtonLabel => GetText("ApplyButtonLabel");
+        internal string EditorOnlyTooltip => GetText("EditorOnlyTooltip");
+
+        // Metallic Smoothness
+        internal string TextureLabel => GetText("TextureLabel");
+        internal string InvertLabel => GetText("InvertLabel");
+        internal string SaveFileDialogTitle(string thing) => GetText("SaveFileDialogTitle", thing);
+        internal string SaveFileDialogMessage => GetText("SaveFileDialogMessage");
+        internal string GenerateButtonLabel => GetText("GenerateButtonLabel");
+
+        // Unity Settings
+        internal string RecommendedUnitySettingsForMobile => GetText("RecommendedUnitySettingsForMobile");
+        internal string AndroidBuildSupportButtonLabel => GetText("AndroidBuildSupportButtonLabel");
+        internal string AndroidBuildSupportHelp => GetText("AndroidBuildSupportHelp");
+        internal string IOSBuildSupportButtonLabel => GetText("IOSBuildSupportButtonLabel");
+        internal string IOSBuildSupportHelp => GetText("IOSBuildSupportHelp");
+        internal string TextureCompressionLabel => GetText("TextureCompressionLabel");
+        internal string TextureCompressionHelp => GetText("TextureCompressionHelp");
+        internal string TextureCompressionButtonLabel => GetText("TextureCompressionButtonLabel");
+        internal string ShowOnStartupLabel => GetText("ShowOnStartupLabel");
+        internal string AllAppliedHelp => GetText("AllAppliedHelp");
+
+        // Check for Update
+        internal string GetUpdate => GetText("GetUpdate");
+        internal string SeeChangelog => GetText("SeeChangelog");
+        internal string SkipThisVersion => GetText("SkipThisVersion");
+        internal string NewVersionHasBreakingChanges => GetText("NewVersionHasBreakingChanges");
+
+        // Validations
+        internal string MissingScripts => GetText("MissingScripts");
+
+        // Inspector
+        internal string ExperimentalComponentWarning => GetText("ExperimentalComponentWarning");
+        internal string AvatarRootComponentMustBeOnAvatarRoot => GetText("AvatarRootComponentMustBeOnAvatarRoot");
+
+        // Vertex Color
+        internal string VertexColorRemoverEditorDescription => GetText("VertexColorRemoverEditorDescription");
+        internal string VertexColorRemoverEditorRemove => GetText("VertexColorRemoverEditorRemove");
+        internal string VertexColorRemoverEditorRestore => GetText("VertexColorRemoverEditorRestore");
+
+        // Converted Avatar
+        internal string ConvertedAvatarEditorMessage => GetText("ConvertedAvatarEditorMessage");
+        internal string ConvertedAvatarEditorNDMFMessage => GetText("ConvertedAvatarEditorNDMFMessage");
+
+        // Network ID Assigner
+        internal string NetworkIDAssignerEditorDescription => GetText("NetworkIDAssignerEditorDescription");
+
+        // Platform Target Settings
+        internal string PlatformTargetSettingsEditorDescription => GetText("PlatformTargetSettingsEditorDescription");
+        internal string PlatformTargetSettingsIsRequiredToEnforcePlatform => GetText("PlatformTargetSettingsIsRequiredToEnforcePlatform");
+
+        // Platform Component Remover
+        internal string ComponentRequiresNdmf => GetText("ComponentRequiresNdmf");
+        internal string ComponentRequiresNdmfForBuild => GetText("ComponentRequiresNdmfForBuild");
+        internal string PlatformComponentRemoverManualConversionUnavailable => GetText("PlatformComponentRemoverManualConversionUnavailable");
+        internal string BuildTargetLabel => GetText("BuildTargetLabel");
+        internal string BuildTargetTooltip => GetText("BuildTargetTooltip");
+        internal string PlatformComponentRemoverEditorDescription => GetText("PlatformComponentRemoverEditorDescription");
+        internal string PlatformComponentRemoverEditorComponentSettingsLabel => GetText("PlatformComponentRemoverEditorComponentSettingsLabel");
+        internal string PlatformComponentRemoverEditorComponentSettingsTooltip => GetText("PlatformComponentRemoverEditorComponentSettingsTooltip");
+        internal string PlatformComponentRemoverEditorCheckboxPCTooltip => GetText("PlatformComponentRemoverEditorCheckboxPCTooltip");
+        internal string PlatformComponentRemoverEditorCheckboxMobileTooltip => GetText("PlatformComponentRemoverEditorCheckboxMobileTooltip");
+        internal string ComponentLabel => GetText("ComponentLabel");
+
+        // Avatar Dynamics Migration
+        internal string MigrateAvatarDynamicsSettingsWindowTitle => GetText("MigrateAvatarDynamicsSettingsWindowTitle");
+        internal string MigrateAvatarDynamicsSettingsDescription => GetText("MigrateAvatarDynamicsSettingsDescription");
+        internal string MigrateAvatarDynamicsSettingsAssetWarning => GetText("MigrateAvatarDynamicsSettingsAssetWarning");
+        internal string MigrateAvatarDynamicsSettingsConfirmation(int directWriteCount) => GetText("MigrateAvatarDynamicsSettingsConfirmation", directWriteCount);
+        internal string MigrateAvatarDynamicsSettingsProjectPrefabsLabel => GetText("MigrateAvatarDynamicsSettingsProjectPrefabsLabel");
+        internal string MigrateAvatarDynamicsSettingsSceneObjectsLabel => GetText("MigrateAvatarDynamicsSettingsSceneObjectsLabel");
+        internal string MigrateAvatarDynamicsSettingsNoTargetsMessage => GetText("MigrateAvatarDynamicsSettingsNoTargetsMessage");
+        internal string MigrateAvatarDynamicsSettingsButtonLabel(int count) => GetText("MigrateAvatarDynamicsSettingsButtonLabel", count);
+        internal string MigrateAvatarDynamicsSettingsResultMessage(int migratedCount, int skippedCount) => GetText("MigrateAvatarDynamicsSettingsResultMessage", migratedCount, skippedCount);
+
+        // Platform GameObject Remover
+        internal string PlatformGameObjectRemoverEditorDescription => GetText("PlatformGameObjectRemoverEditorDescription");
+        internal string PlatformGameObjectRemoverEditorKeepOnPCLabel => GetText("PlatformGameObjectRemoverEditorKeepOnPCLabel");
+        internal string PlatformGameObjectRemoverEditorKeepOnMobileLabel => GetText("PlatformGameObjectRemoverEditorKeepOnMobileLabel");
+
+        // Mesh Flipper
+        internal string MeshFlipperEditorDescription => GetText("MeshFlipperEditorDescription");
+        internal string MeshFlipperEditorDirectionLabel => GetText("MeshFlipperEditorDirectionLabel");
+        internal string MeshFlipperEditorUseMaskLabel => GetText("MeshFlipperEditorUseMaskLabel");
+        internal string MeshFlipperEditorMaskTextureLabel => GetText("MeshFlipperEditorMaskTextureLabel");
+        internal string MeshFlipperEditorMaskModeLabel => GetText("MeshFlipperEditorMaskModeLabel");
+        internal string MeshFlipperEditorProcessingPhaseLabel => GetText("MeshFlipperEditorProcessingPhaseLabel");
+        internal string MeshFlipperEditorEnabledOnPCLabel => GetText("MeshFlipperEditorEnabledOnPCLabel");
+        internal string MeshFlipperEditorEnabledOnMobileLabel => GetText("MeshFlipperEditorEnabledOnMobileLabel");
+        internal string MeshFlipperEditorEnabledOnPCWarning => GetText("MeshFlipperEditorEnabledOnPCWarning");
+        internal string MeshFlipperEditorBothSidesWarning => GetText("MeshFlipperEditorBothSidesWarning");
+        internal string MeshFlipperEditorMaskTextureMissingError => GetText("MeshFlipperEditorMaskTextureMissingError");
+        internal string MeshFlipperEditorMaskTextureNotReadableError => GetText("MeshFlipperEditorMaskTextureNotReadableError");
+        internal string MeshFlipperMeshDirectionFlip => GetText("MeshFlipperMeshDirectionFlip");
+        internal string MeshFlipperMeshDirectionDoubleSide => GetText("MeshFlipperMeshDirectionDoubleSide");
+
+        // Material Swap
+        internal string MaterialSwapEditorDescription => GetText("MaterialSwapEditorDescription");
+        internal string MaterialSwapEditorMaterialMappingsLabel => GetText("MaterialSwapEditorMaterialMappingsLabel");
+        internal string MaterialSwapEditorOriginalMaterialLabel => GetText("MaterialSwapEditorOriginalMaterialLabel");
+        internal string MaterialSwapEditorReplacementMaterialLabel => GetText("MaterialSwapEditorReplacementMaterialLabel");
+        internal string MaterialSwapEditorSelectMaterialLabel => GetText("MaterialSwapEditorSelectMaterialLabel");
+        internal string MaterialSwapEditorReplacementMaterialError => GetText("MaterialSwapEditorReplacementMaterialError");
+
+        // Material Conversion Settings
+        internal string MaterialConversionSettingsEditorDescription => GetText("MaterialConversionSettingsEditorDescription");
+        internal string MaterialConversionSettingsEditorDefaultConversionWarning => GetText("MaterialConversionSettingsEditorDefaultConversionWarning");
+
+        // Menu Icons Resizer
+        internal string MenuIconResizerEditorDescription => GetText("MenuIconResizerEditorDescription");
+        internal string MenuIconResizerEditorResizeModePCLabel => GetText("MenuIconResizerEditorResizeModePCLabel");
+        internal string MenuIconResizerEditorResizeModeMobileLabel => GetText("MenuIconResizerEditorResizeModeMobileLabel");
+        internal string MenuIconResizerEditorCompressTexturesLabel => GetText("MenuIconResizerEditorCompressTexturesLabel");
+        internal string MenuIconResizerEditorMobileTextureFormatLabel => GetText("MenuIconResizerEditorMobileTextureFormatLabel");
+
+        // Fallback Avatar
+        internal string FallbackAvatarEditorDescription => GetText("FallbackAvatarEditorDescription");
+
+        // Build and Test
+        internal string BuildAndTestRequiresSdkControlPanel => GetText("BuildAndTestRequiresSdkControlPanel");
+        internal string BuildAndTestFailed(string message) => GetText("BuildAndTestFailed", message);
+        internal string BuildAndTestSucceeded(string avatarName) => GetText("BuildAndTestSucceeded", avatarName);
+
+        // Compatibility Exceptions
+        internal string LegacyPackageExceptionMessage(string packageName, string requiredVersion) => GetText("LegacyPackageExceptionMessage", packageName, requiredVersion);
+        internal string BreakingPackageExceptionMessage(string packageName, string breakingVersion) => GetText("BreakingPackageExceptionMessage", packageName, breakingVersion);
+
+    }
+}

@@ -30,6 +30,7 @@ import gzip
 import hashlib
 import io
 import os
+import re
 import sys
 import tarfile
 import time
@@ -342,8 +343,11 @@ def main() -> int:
     # assets for every .unitypackage this script had built; the same tar with the header renamed imported fine).
     with open(out, "wb") as raw,             gzip.GzipFile(filename="archtemp.tar", mode="wb", fileobj=raw, mtime=mtime) as gz,             tarfile.open(fileobj=gz, mode="w", format=tarfile.USTAR_FORMAT) as tar:
         for unity_path, disk in entries:
-            guid = guid_for(unity_path)
             meta = meta_for(unity_path, disk is None, disk).encode("utf-8")
+            # the entry is named by the GUID INSIDE its .meta: a tracked .meta (QuestConverter, Shaders~, Materials~)
+            # carries its own GUID, which the code may look the asset up by (3.19.0: the Quest Converter engine)
+            found = re.search(rb"^guid: ([0-9a-f]{32})", meta, re.M)
+            guid = found.group(1).decode("ascii") if found else guid_for(unity_path)
             tar.addfile(dir_entry(guid))
             if disk is not None:
                 with open(disk, "rb") as f:

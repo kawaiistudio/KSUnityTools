@@ -1,0 +1,673 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: ru\n"
+"Plural-Forms: nplurals=4; plural=((n%10==1 && n%100!=11) ? 0 : ((n%10 >= 2 && n%10 <=4 && (n%100 < 12 || n%100 > 14)) ? 1 : ((n%10 == 0 || (n%10 >= 5 && n%10 <=9)) || (n%100 >= 11 && n%100 <= 14)) ? 2 : 3));\n"
+"X-Crowdin-Project: vrc-quest-tools\n"
+"X-Crowdin-Project-ID: 712497\n"
+"X-Crowdin-Language: ru\n"
+"X-Crowdin-File: /master/Packages/com.github.kurotu.vrc-quest-tools/Editor/I18n/en-US.po\n"
+"X-Crowdin-File-ID: 58\n"
+"Project-Id-Version: vrc-quest-tools\n"
+"Language-Team: Russian\n"
+"PO-Revision-Date: 2026-05-14 04:34\n"
+
+msgid "CancelLabel"
+msgstr "Отмена"
+
+msgid "OpenLabel"
+msgstr "Открыть"
+
+msgid "CloseLabel"
+msgstr "Закрыть"
+
+msgid "DismissLabel"
+msgstr "Отклонить"
+
+msgid "ExitLabel"
+msgstr "Выход"
+
+msgid "YesLabel"
+msgstr "Да"
+
+msgid "NoLabel"
+msgstr "Нет"
+
+msgid "AbortLabel"
+msgstr "Прервать"
+
+msgid "AddLabel"
+msgstr "Добавить"
+
+msgid "RemoveLabel"
+msgstr "Удалить"
+
+msgid "FixLabel"
+msgstr ""
+
+msgid "Maximum"
+msgstr "Максимум"
+
+msgid "TextureFormatHighQuality"
+msgstr ""
+
+msgid "TextureFormatStandard"
+msgstr ""
+
+msgid "TextureFormatHighCompression"
+msgstr ""
+
+msgid "AvatarConverterSettingsEditorDescription"
+msgstr "Конвертировать этот аватар для загрузки на платформу Mobile (Android, iOS)."
+
+msgid "AvatarConverterSettingsEditorDescriptionNDMF"
+msgstr "Конвертировать этот аватар для загрузки на платформу Mobile (Android, iOS), когда целевая платформа - Mobile (Android, iOS)."
+
+msgid "ExitPlayModeToEdit"
+msgstr "Выйдите из игрового режима для редактирования."
+
+msgid "BeginConvertSettingsButtonLabel"
+msgstr "Начать настройки конвертера"
+
+msgid "BeginConvertSettingsButtonDescription"
+msgstr ""
+
+msgid "AvatarLabel"
+msgstr "Аватар"
+
+msgid "GenerateMobileTexturesLabel"
+msgstr "Создать текстуры для Mobile"
+
+msgid "GenerateMobileTexturesTooltip"
+msgstr "Создавая новые текстуры с применением параметров материалов, а не только основных текстур, приближайтесь к версии аватара для ПК"
+
+msgid "SupportedShadersLabel"
+msgstr "Поддерживаемые шейдеры"
+
+msgid "SaveToLabel"
+msgstr "Папка для сохранения"
+
+msgid "ConvertButtonLabel"
+msgstr "Конвертировать"
+
+msgid "UpdateTexturesLabel"
+msgstr "Обновить конвертированные текстуры для Mobile"
+
+msgid "AdvancedConverterSettingsLabel"
+msgstr "Расширенные настройки конвертера"
+
+msgid "RemoveVertexColorLabel"
+msgstr "Удалить цвет вершин из сеток"
+
+msgid "RemoveVertexColorTooltip"
+msgstr "Обычно вам не нужно отключать эту опцию. Вы можете отключить эту опцию, чтобы предотвратить неожиданное поведение при использовании специальных шейдеров, которые требуют цвет вершин в аватарах ПК."
+
+msgid "RemoveExtraMaterialSlotsLabel"
+msgstr ""
+
+msgid "RemoveExtraMaterialSlotsTooltip"
+msgstr ""
+
+msgid "CompressExpressionsMenuIconsTooltip"
+msgstr ""
+
+msgid "NdmfPhaseLabel"
+msgstr "Этап NDMF для конвертации"
+
+msgid "NdmfPhaseTooltip"
+msgstr "Конвертировать аватар на выбранном этапе NDMF."
+
+msgid "EnableMaterialPreviewLabel"
+msgstr ""
+
+msgid "EnableMaterialPreviewTooltip"
+msgstr ""
+
+msgid "GeneratingTexturesDialogMessage"
+msgstr "Создание текстур..."
+
+msgid "AvatarConverterFailedDialogMessage"
+msgstr ""
+
+msgid "MaterialExceptionDialogMessage"
+msgstr "Произошла ошибка при конвертации материалов. Прервано."
+
+msgid "AnimationClipExceptionDialogMessage"
+msgstr "Произошла ошибка при конвертации клипов анимации. Прервано."
+
+msgid "AnimatorControllerExceptionDialogMessage"
+msgstr "Произошла ошибка при конвертации контроллеров анимации. Прервано."
+
+msgid "InvalidReplacementMaterialExceptionDialogMessage"
+msgstr ""
+
+msgid "InfoForNdmfConversion2"
+msgstr ""
+
+
+msgid "WarningForPerformance"
+msgstr "Оценочная оценка производительности — «Очень плохо», но вы можете загрузить преобразованный аватар для платформы Mobile.\n"
+"Мобильные пользователи по умолчанию увидят его импостер или резервный аватар. Однако они могут увидеть аватар, изменив настройку «Отображение аватара» (также известную как «Показать аватар»)."
+
+msgid "WarningForAppearance"
+msgstr "Прозрачность текстуры не оказывает никакого эффекта, поэтому могут возникнуть проблемы с мимикой."
+
+msgid "WarningForUnsupportedShaders"
+msgstr "Следующие материалы используют неподдерживаемые шейдеры. Текстуры могут быть сгенерированы неправильно."
+
+msgid "AlertForComponents"
+msgstr "Следующие неподдерживаемые компоненты будут удалены. Проверьте функции аватара после конвертации."
+
+msgid "AlertForDynamicBoneConversion"
+msgstr "Не конвертируйте динамические кости(PhysBone) в физические кости(DynamicBone). Пожалуйста, настройте физические кости перед конвертацией аватара."
+
+msgid "AlertForMAConvertConstraints"
+msgstr "Unity Constraints нельзя использовать на Mobile. Вы можете без разрушения преобразовать Unity Constraints в VRChat Constraints, добавив компонент MA Convert Constraints к аватару."
+
+msgid "AlertForUnityConstraintsConversion"
+msgstr "Не конвертируйте ограничения Unity в ограничения VRChat. Пожалуйста, настройте ограничения VRChat перед конвертацией аватара."
+
+msgid "AlertForAvatarDynamicsPerformance"
+msgstr "Оценка производительности динамики аватара (физические кости и контакты) будет \"Очень Плохо\", поэтому компоненты будут удалены даже при загрузке для Mobile. Пожалуйста, уменьшите количество компонентов, чтобы оценка производительности динамики аватара оставалась на уровне \"Плохо\" или выше."
+
+msgid "ErrorForPrefabStage"
+msgstr "Невозможно конвертировать аватар в режиме префаба. Пожалуйста, вернитесь к сцене из режима префаба."
+
+msgid "ExitPrefabStageButtonLabel"
+msgstr "Назад к Scene"
+
+msgid "AvatarConverterMaterialConvertSettingsLabel"
+msgstr "Настройки конвертации материалов"
+
+msgid "AvatarConverterDefaultMaterialConvertSettingLabel"
+msgstr "Настройки конвертации материалов по умолчанию"
+
+msgid "AvatarConverterAdditionalMaterialConvertSettingsLabel"
+msgstr "Дополнительные настройки конвертации материалов"
+
+msgid "AvatarConverterAvatarDynamicsSettingsLabel"
+msgstr "Настройки динамики аватара"
+
+msgid "AvatarConverterRemoveAvatarDynamicsLabel"
+msgstr ""
+
+msgid "AvatarConverterRemoveAvatarDynamicsTooltip"
+msgstr ""
+
+msgid "AvatarConverterPhysBonesTooltip"
+msgstr "Установите физические кости, которые нужно сохранить во время конвертации."
+
+msgid "AvatarConverterPhysBoneCollidersTooltip"
+msgstr "Установите коллайдеры физической кости, которые нужно сохранить во время конвертации."
+
+msgid "AvatarConverterContactsTooltip"
+msgstr "Установите отправители и получатели контактов, которые нужно сохранить во время конвертации."
+
+msgid "ManualConversionWarning"
+msgstr "При ручном преобразовании не учитываются неразрушающие компоненты, кроме MA Merge Animator. Могут возникнуть неожиданные проблемы с работой после комбинирования."
+
+msgid "ManualConvertButtonLabel"
+msgstr "Преобразовать"
+
+msgid "ConfirmationForMAConvertConstraints"
+msgstr ""
+
+msgid "IMaterialConvertSettingsTexturesSizeLimitLabel"
+msgstr "Ограничение размера текстур"
+
+msgid "IMaterialConvertSettingsMobileTextureFormatLabel"
+msgstr ""
+
+msgid "IMaterialConvertSettingsMainTextureBrightnessLabel"
+msgstr "Яркость основной текстуры"
+
+msgid "IMaterialConvertSettingsMainTextureBrightnessTooltip"
+msgstr "Настройте цвет основной текстуры."
+
+msgid "ToonLitConvertSettingsGenerateShadowFromNormalMapLabel"
+msgstr "Создать тень из нормальной карты"
+
+msgid "MatCapLitConvertSettingsMatCapTextureLabel"
+msgstr "Текстура MatCap"
+
+msgid "MatCapLitConvertSettingsMatCapTextureWarning"
+msgstr "Установите текстуру MatCap."
+
+msgid "ToonStandardConvertSettingsFallbackShadowRampLabel"
+msgstr ""
+
+msgid "ToonStandardConvertSettingsGenerateShadowRampLabel"
+msgstr ""
+
+msgid "ToonStandardConvertSettingsCustomFallbackShadowRampLabel"
+msgstr ""
+
+msgid "ToonStandardConvertSettingsFeaturesLabel"
+msgstr ""
+
+msgid "ToonStandardConvertSettingsFeaturesNormalMapLabel"
+msgstr ""
+
+msgid "ToonStandardConvertSettingsFeaturesEmissionLabel"
+msgstr ""
+
+msgid "ToonStandardConvertSettingsFeaturesOcclusionLabel"
+msgstr ""
+
+msgid "ToonStandardConvertSettingsFeaturesSpecularLabel"
+msgstr ""
+
+msgid "ToonStandardConvertSettingsFeaturesMatcapLabel"
+msgstr ""
+
+msgid "ToonStandardConvertSettingsFeaturesRimLightingLabel"
+msgstr ""
+
+msgid "AdditionalMaterialConvertSettingsTargetMaterialLabel"
+msgstr "Целевой материал"
+
+msgid "AdditionalMaterialConvertSettingsSelectMaterialLabel"
+msgstr "Выбрать материал"
+
+msgid "MaterialConvertTypePopupLabelToonLit"
+msgstr "Мультяшный свет"
+
+msgid "MaterialConvertTypePopupLabelMatCapLit"
+msgstr "MatCap свет"
+
+msgid "MaterialConvertTypePopupLabelToonStandard"
+msgstr ""
+
+msgid "MaterialConvertTypePopupLabelMaterialReplace"
+msgstr "Замена материала"
+
+msgid "MaterialReplaceSettingsMaterialLabel"
+msgstr "Заменяющий материал"
+
+msgid "MaterialReplaceSettingsMaterialTooltip"
+msgstr "Целевой материал будет заменен этим материалом."
+
+msgid "MaterialReplaceSettingsMaterialWarning"
+msgstr ""
+
+msgid "NoMissingComponentsMessage"
+msgstr "В {0} нет \"недостающих\" компонентов."
+
+msgid "MissingRemoverConfirmationMessage"
+msgstr "Удалить \"недостающие\" компоненты из {0}?"
+
+msgid "UnpackPrefabMessage"
+msgstr "Это также выполняет операцию \"Разупаковать префаб\"."
+
+msgid "MissingRemoverOnBuildDialogMessage"
+msgstr "{0} имеет \"недостающие\" компоненты. Вы хотите продолжить сборку аватара без таких компонентов?"
+
+msgid "SourceMeshLabel"
+msgstr "Исходная сетка"
+
+msgid "TargetMeshLabel"
+msgstr "Целевая сетка"
+
+msgid "CopyButtonLabel"
+msgstr "Копировать веса BlendShape"
+
+msgid "SwitchButtonLabel"
+msgstr "Переключить источник/цель"
+
+msgid "NoUnsupportedComponentsMessage"
+msgstr "В {0} нет неподдерживаемых компонентов."
+
+msgid "UnsupportedRemoverConfirmationMessage"
+msgstr "Удалить следующие неподдерживаемые компоненты из {0}?"
+
+msgid "SelectComponentsToKeep"
+msgstr "Выберите компоненты для сохранения."
+
+msgid "PhysBonesListTooltip"
+msgstr "Список компонентов и их корневых трансформаций."
+
+msgid "PhysBonesWillBeRemovedAtRunTime"
+msgstr "Вы можете загрузить этот аватар для Mobile, но все компоненты PhysBone будут удалены. Пожалуйста, уменьшите количество компонентов PhysBone."
+
+msgid "PhysBoneCollidersWillBeRemovedAtRunTime"
+msgstr "Вы можете загрузить этот аватар для Mobile, но все компоненты PhysBoneCollider будут удалены. Пожалуйста, уменьшите количество компонентов PhysBoneCollider."
+
+msgid "ContactsWillBeRemovedAtRunTime"
+msgstr "Вы можете загрузить этот аватар для Mobile, но все компоненты ContactReceiver и ContactSender будут удалены. Пожалуйста, уменьшите количество компонентов ContactReceiver и ContactSender."
+
+msgid "PhysBonesTransformsShouldBeReduced"
+msgstr "Вы можете загрузить этот аватар для Mobile, но все компоненты PhysBone будут удалены. Пожалуйста, уменьшите количество компонентов VRCPhysBone или количество трансформаций в иерархии под компонентами VRCPhysBone."
+
+msgid "PhysBonesCollisionCheckCountShouldBeReduced"
+msgstr "Вы можете загрузить этот аватар для Mobile, но все компоненты PhysBoneCollider будут удалены. Пожалуйста, уменьшите количество проверок столкновений между компонентами VRCPhysBone и VRCPhysBoneCollider."
+
+msgid "PhysBonesShouldHaveNetworkID"
+msgstr "Чтобы правильно синхронизировать физические кости, физические кости должны иметь одинаковый сетевой ID между ПК и Mobile."
+
+msgid "AlertForMultiplePhysBones"
+msgstr "В одном GameObject есть несколько физических костей. Они могут быть неправильно синхронизированы между ПК и Mobile после удаления физических костей."
+
+msgid "EstimatedPerformanceStats"
+msgstr "Оценка производительности"
+
+msgid "DeleteUnselectedComponents"
+msgstr "Удалить невыбранные компоненты"
+
+msgid "SetPlatformComponentRemoverButtonLabel"
+msgstr ""
+
+msgid "SelectAllButtonLabel"
+msgstr "Выбрать все"
+
+msgid "DeselectAllButtonLabel"
+msgstr "Снять выделение"
+
+msgid "ApplyButtonLabel"
+msgstr "Применить"
+
+msgid "EditorOnlyTooltip"
+msgstr ""
+
+msgid "TextureLabel"
+msgstr "Текстура"
+
+msgid "InvertLabel"
+msgstr "Инвертировать"
+
+msgid "SaveFileDialogTitle"
+msgstr "Сохранить {0}"
+
+msgid "SaveFileDialogMessage"
+msgstr "Пожалуйста, выберите место для сохранения текстуры"
+
+msgid "GenerateButtonLabel"
+msgstr "Создать металлическую гладкость"
+
+msgid "RecommendedUnitySettingsForMobile"
+msgstr "Рекомендуемые настройки для Mobile"
+
+msgid "AndroidBuildSupportHelp"
+msgstr ""
+
+msgid "AndroidBuildSupportButtonLabel"
+msgstr ""
+
+msgid "TextureCompressionLabel"
+msgstr "Сжатие текстур для Android"
+
+msgid "TextureCompressionHelp"
+msgstr "ASTC улучшает качество текстур для Android в обмен на длительное время сжатия"
+
+msgid "TextureCompressionButtonLabel"
+msgstr "Установить сжатие текстур на ASTC"
+
+msgid "ShowOnStartupLabel"
+msgstr "Показывать при запуске"
+
+msgid "AllAppliedHelp"
+msgstr "Хорошо, все рекомендуемые настройки применены."
+
+msgid "GetUpdate"
+msgstr "Получить обновление"
+
+msgid "SeeChangelog"
+msgstr "Журнал изменений"
+
+msgid "SkipThisVersion"
+msgstr "Пропустить эту версию"
+
+msgid "NewVersionHasBreakingChanges"
+msgstr "Эта версия может иметь критические изменения в совместимости."
+
+msgid "MissingScripts"
+msgstr "Следующие объекты содержат компоненты в состоянии \"недостающие\". Проверьте, не забыли ли вы импортировать какие-либо ассеты или пакеты."
+
+msgid "ExperimentalComponentWarning"
+msgstr "Этот компонент является экспериментальной функцией."
+
+msgid "AvatarRootComponentMustBeOnAvatarRoot"
+msgstr "Этот компонент должен быть прикреплен к объекту VRC_AvatarDescriptor."
+
+msgid "VertexColorRemoverEditorDescription"
+msgstr "Цвет вершин автоматически удаляется из сетки этого объекта."
+
+msgid "VertexColorRemoverEditorRemove"
+msgstr "Удалить цвет вершин"
+
+msgid "VertexColorRemoverEditorRestore"
+msgstr "Восстановить цвет вершин"
+
+msgid "ConvertedAvatarEditorMessage"
+msgstr "Этот компонент указывает на то, что аватар был конвертирован с помощью KS Quest Converter."
+
+msgid "ConvertedAvatarEditorNDMFMessage"
+msgstr "Компоненты, которые не поддерживаются на Mobile, будут удалены на этапе оптимизации NDMF."
+
+msgid "NetworkIDAssignerEditorDescription"
+msgstr "Назначьте сетевые ID компонентам аватара, таким как физические кости. ID определяются хеш-значениями иерархических путей от корня аватара."
+
+msgid "PlatformTargetSettingsEditorDescription"
+msgstr "Компоненты принудительно используют определенные настройки платформы в процессе сборки NDMF."
+
+msgid "PlatformTargetSettingsIsRequiredToEnforcePlatform"
+msgstr "Чтобы переопределить платформу для этого компонента, добавьте компонент Platform Target Settings в корневой объект аватара."
+
+msgid "ComponentRequiresNdmf"
+msgstr "Требуется Неразрушаемая Модульная Структура (NDMF)."
+
+msgid "BuildTargetLabel"
+msgstr "Целевая сборка"
+
+msgid "BuildTargetTooltip"
+msgstr "Выберите целевую платформу сборки. Используйте целевую платформу Unity, когда выбрана Авто."
+
+msgid "PlatformComponentRemoverEditorDescription"
+msgstr "Компоненты будут удалены при сборке для невыбранных целевых платформ."
+
+msgid "PlatformComponentRemoverEditorComponentSettingsLabel"
+msgstr "Компоненты для сохранения"
+
+msgid "PlatformComponentRemoverEditorComponentSettingsTooltip"
+msgstr "Выберите платформу для сохранения компонентов."
+
+msgid "PlatformComponentRemoverEditorCheckboxPCTooltip"
+msgstr "Сохранить выбранные компоненты при сборке для ПК."
+
+msgid "PlatformComponentRemoverEditorCheckboxMobileTooltip"
+msgstr "Сохранить выбранные компоненты при сборке для Mobile."
+
+msgid "ComponentLabel"
+msgstr "Компонент"
+
+msgid "PlatformGameObjectRemoverEditorDescription"
+msgstr "Этот объект будет удален при сборке для невыбранных целевых платформ."
+
+msgid "PlatformGameObjectRemoverEditorKeepOnPCLabel"
+msgstr "Сохранить на ПК"
+
+msgid "PlatformGameObjectRemoverEditorKeepOnMobileLabel"
+msgstr "Сохранить на Mobile"
+
+msgid "MeshFlipperEditorDescription"
+msgstr "Дублируйте полигоны сетки, чтобы сделать ее двусторонней. Или переверните грани."
+
+msgid "MeshFlipperEditorDirectionLabel"
+msgstr "Направление сетки"
+
+msgid "MeshFlipperEditorEnabledOnPCLabel"
+msgstr "Включить на ПК"
+
+msgid "MeshFlipperEditorEnabledOnMobileLabel"
+msgstr "Включить на Mobile"
+
+msgid "MeshFlipperEditorUseMaskLabel"
+msgstr ""
+
+msgid "MeshFlipperEditorMaskTextureLabel"
+msgstr ""
+
+msgid "MeshFlipperEditorMaskModeLabel"
+msgstr ""
+
+msgid "MeshFlipperEditorProcessingPhaseLabel"
+msgstr ""
+
+msgid "MeshFlipperEditorEnabledOnPCWarning"
+msgstr "Возможно, это можно сделать с помощью настроек шейдера без использования этого компонента."
+
+msgid "MeshFlipperEditorBothSidesWarning"
+msgstr "Количество полигонов для этой сетки увеличится."
+
+msgid "MeshFlipperEditorMaskTextureMissingError"
+msgstr ""
+
+msgid "MeshFlipperEditorMaskTextureNotReadableError"
+msgstr ""
+
+msgid "MeshFlipperMeshDirectionFlip"
+msgstr "Перевернуто"
+
+msgid "MeshFlipperMeshDirectionDoubleSide"
+msgstr "Двусторонний"
+
+msgid "MaterialSwapEditorDescription"
+msgstr ""
+
+msgid "MaterialSwapEditorMaterialMappingsLabel"
+msgstr ""
+
+msgid "MaterialSwapEditorOriginalMaterialLabel"
+msgstr ""
+
+msgid "MaterialSwapEditorReplacementMaterialLabel"
+msgstr ""
+
+msgid "MaterialSwapEditorSelectMaterialLabel"
+msgstr ""
+
+msgid "MaterialSwapEditorReplacementMaterialError"
+msgstr ""
+
+msgid "MaterialConversionSettingsEditorDescription"
+msgstr ""
+
+msgid "MaterialConversionSettingsEditorDefaultConversionWarning"
+msgstr ""
+
+msgid "MaterialConversionSettingsEditorConversionSettingsLabel"
+msgstr ""
+
+msgid "MenuIconResizerEditorDescription"
+msgstr ""
+
+msgid "MenuIconResizerEditorResizeModePCLabel"
+msgstr ""
+
+msgid "MenuIconResizerEditorResizeModeMobileLabel"
+msgstr ""
+
+msgid "MenuIconResizerEditorCompressTexturesLabel"
+msgstr ""
+
+msgid "MenuIconResizerEditorMobileTextureFormatLabel"
+msgstr ""
+
+msgid "BuildAndTestRequiresSdkControlPanel"
+msgstr ""
+
+msgid "BuildAndTestFailed"
+msgstr ""
+
+msgid "BuildAndTestSucceeded"
+msgstr ""
+
+msgid "LegacyPackageExceptionMessage"
+msgstr ""
+
+msgid "BreakingPackageExceptionMessage"
+msgstr ""
+
+msgid "NDMF:RemovedUnsupportedComponentTitle"
+msgstr "Удалён неподдерживаемый компонент"
+
+msgid "NDMF:RemovedUnsupportedComponentDescription"
+msgstr "Неподдерживаемый компонент {0} был удалён из \"{1}\" во время сборки. Пожалуйста, протестируйте аватар."
+
+msgid "NDMF:MaterialConversionErrorTitle"
+msgstr "Ошибка конвертации материала"
+
+msgid "NDMF:MaterialConversionErrorDescription"
+msgstr "Произошла ошибка при конвертации материала.\n\n"
+"Материал: {0}\n"
+"Шейдер: {1}\n\n"
+"{2}: {3}\n"
+"{4}"
+
+msgid "NDMF:PackageCompatibilityErrorTitle"
+msgstr ""
+
+msgid "NDMF:PackageCompatibilityErrorDescription"
+msgstr ""
+
+msgid "NDMF:MaterialSwapNullErrorTitle"
+msgstr ""
+
+msgid "NDMF:MaterialSwapNullErrorDescription"
+msgstr ""
+
+msgid "NDMF:ObjectConversionErrorTitle"
+msgstr "Ошибка конвертации {0}"
+
+msgid "NDMF:ObjectConversionErrorDescription"
+msgstr "Произошла ошибка при конвертации {0}.\n\n"
+"{0}: {1}\n\n"
+"{2}: {3}\n"
+"{4}"
+
+msgid "NDMF:TargetMaterialNullErrorTitle"
+msgstr ""
+
+msgid "NDMF:TargetMaterialNullErrorTitle:description"
+msgstr ""
+
+msgid "NDMF:UnsupportedTextureFormatTitle"
+msgstr "Неподдерживаемый формат текстуры"
+
+msgid "NDMF:UnsupportedTextureFormatDescription"
+msgstr "Используется неподдерживаемый формат текстуры {0} для {1}. Когда текстуры были сгенерированы вручную, переключите целевую платформу, затем выполните ручное выпекание снова."
+
+msgid "NDMF:UnknownTextureFormatTitle"
+msgstr "Неизвестный формат текстуры"
+
+msgid "NDMF:UnknownTextureFormatDescription"
+msgstr "Используется неизвестный формат текстуры {0} для {1}. Пожалуйста, сообщите разработчику инструмента, чтобы подавить это предупреждение."
+
+msgid "NDMF:MissingNetworkIDAssignerTitle"
+msgstr "Назначение идентификатора сети"
+
+msgid "NDMF:MissingNetworkIDAssignerDescription"
+msgstr "Чтобы PhysBones синхронизировались корректно, они должны иметь одинаковые Network ID на ПК и Mobile.\n"
+"Включите Assign Network IDs в Avatar Converter Settings, чтобы неразрушающе назначать Network ID во время сборки. После включения этой настройки загрузите аватар для каждой платформы повторно."
+
+msgid "NDMF:MeshFlipperMaskMissingErrorTitle"
+msgstr ""
+
+msgid "NDMF:MeshFlipperMaskMissingErrorDescription"
+msgstr ""
+
+msgid "NDMF:MeshFlipperMaskNotReadableErrorTitle"
+msgstr ""
+
+msgid "NDMF:MeshFlipperMaskNotReadableErrorDescription"
+msgstr ""
+
+msgid "NDMF:ReplacementMaterialErrorTitle"
+msgstr ""
+
+msgid "NDMF:ReplacementMaterialErrorDescription"
+msgstr ""
+
+msgid "FallbackAvatarEditorDescription"
+msgstr ""
+

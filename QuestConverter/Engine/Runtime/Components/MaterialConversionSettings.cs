@@ -1,0 +1,99 @@
+using KawaiiStudio.QuestConverter.Models;
+using UnityEngine;
+using VRC.SDKBase;
+
+namespace KawaiiStudio.QuestConverter.Components
+{
+    /// <summary>
+    /// Component to configure material conversion.
+    /// </summary>
+    [AddComponentMenu("Kawaii Studio/Quest Converter/Material Conversion Settings")]
+
+    [HelpURL("https://kurotu.github.io/VRCQuestTools/docs/references/components/material-conversion-settings?lang=auto")]
+    public class MaterialConversionSettings : VRCQuestToolsEditorOnly, IMaterialConversionComponent, IPlatformDependentComponent, INdmfComponent
+    {
+        /// <summary>
+        /// Default material convert setting. The default value is <see cref="ToonStandardConvertSettings"/>.
+        /// </summary>
+        [SerializeReference]
+        public IMaterialConvertSettings defaultMaterialConvertSettings = ToonStandardConvertSettings.Default;
+
+        /// <summary>
+        /// Additional material convert settings.
+        /// </summary>
+        [SerializeReference]
+        public AdditionalMaterialConvertSettings[] additionalMaterialConvertSettings = { };
+
+        /// <summary>
+        /// Whether to remove redundant material slots that are greater than the number of submeshes.
+        /// </summary>
+        [SerializeField]
+        public bool removeExtraMaterialSlots = true;
+
+        /// <summary>
+        /// NDMF phase to convert the avatar.
+        /// </summary>
+        [SerializeField]
+        public AvatarConverterNdmfPhase ndmfPhase = AvatarConverterNdmfPhase.Auto;
+
+        /// <summary>
+        /// Whether to enable material preview in the editor.
+        /// </summary>
+        [SerializeField]
+        public bool enableMaterialPreview = true;
+
+        /// <summary>
+        /// Temporarily force enabling material preview for NDMF preview (non-serialized).
+        /// </summary>
+        [System.NonSerialized]
+        public bool forceMaterialPreview = false;
+
+        /// <summary>
+        /// Serialized schema version for forward compatibility.
+        /// </summary>
+        [SerializeField]
+#pragma warning disable CS0414
+        private int serializedVersion = 1;
+#pragma warning restore CS0414
+
+        /// <inheritdoc/>
+        public IMaterialConvertSettings DefaultMaterialConvertSettings => defaultMaterialConvertSettings;
+
+        /// <inheritdoc/>
+        public AdditionalMaterialConvertSettings[] AdditionalMaterialConvertSettings
+        {
+            get => additionalMaterialConvertSettings;
+            set => additionalMaterialConvertSettings = value;
+        }
+
+        /// <inheritdoc/>
+        public bool RemoveExtraMaterialSlots => removeExtraMaterialSlots;
+
+        /// <inheritdoc/>
+        public AvatarConverterNdmfPhase NdmfPhase => ndmfPhase;
+
+        /// <inheritdoc/>
+        public bool IsPrimaryRoot
+        {
+            get
+            {
+                var isRoot = gameObject.GetComponent<VRC_AvatarDescriptor>() != null;
+                var hasAvatarConverterSettings = gameObject.GetComponent<AvatarConverterSettings>() != null;
+                return isRoot && !hasAvatarConverterSettings;
+            }
+        }
+
+        /// <inheritdoc/>
+        public bool EnableMaterialPreview => enableMaterialPreview;
+
+        /// <summary>
+        /// Gets a value indicating whether the temporary force preview is enabled.
+        /// </summary>
+        public bool ForceMaterialPreview => forceMaterialPreview;
+
+        private void Reset()
+        {
+            defaultMaterialConvertSettings.LoadDefaultAssets();
+        }
+    }
+}

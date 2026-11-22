@@ -1,0 +1,118 @@
+﻿// <copyright file="VRCQuestToolsMenus.cs" company="kurotu">
+// Copyright (c) kurotu.
+// Licensed under the MIT license. See LICENSE.txt file in the project root for full license information.
+// </copyright>
+
+#pragma warning disable SA1201 // Elements should appear in the correct order
+#pragma warning disable SA1202 // Elements should be ordered by access
+#pragma warning disable SA1600 // Elements should be documented
+#pragma warning disable SA1602 // Enumeration items should be documented
+
+using UnityEditor;
+using UnityEngine;
+
+namespace KawaiiStudio.QuestConverter.Menus
+{
+    internal static class VRCQuestToolsMenus
+    {
+        internal static class MenuPaths
+        {
+            internal const string RootMenu = "Kawaii Studio/VRC/Quest Converter Tools/";
+            internal const string ConvertAvatarForMobile = RootMenu + "Setup Avatar for Mobile";
+            internal const string RemoveUnsupportedComponents = RootMenu + "Remove Unsupported Components";
+            internal const string RemoveMissingComponents = RootMenu + "Remove Missing Components";
+            internal const string RemoveAllVertexColors = RootMenu + "Remove All Vertex Colors";
+            internal const string RemovePhysBones = RootMenu + "Remove PhysBones";
+            internal const string MigrateAvatarDynamicsSettings = RootMenu + "Migrate Legacy Avatar Dynamics Settings";
+            internal const string BlendShapesCopy = RootMenu + "BlendShapes Copy";
+            internal const string MSMapGenerator = RootMenu + "Metallic Smoothness Map";
+            internal const string UnitySettings = RootMenu + "Unity Settings for Mobile";
+            internal const string ClearTextureCache = RootMenu + "Clear Texture Cache";
+            private const string SettingsMenu = RootMenu + "Settings/";
+            internal const string EnableValidationAutomator = SettingsMenu + "Enable Validation Automator";
+            internal const string EnableTextureFormatCheckOnStandalone = SettingsMenu + "[NDMF] Enable Texture Format Check on Windows Build";
+            internal const string EnableDebugLog = SettingsMenu + "Enable Debug Log";
+            private const string LanguageMenu = RootMenu + "Languages/";
+            internal const string LanguageAuto = LanguageMenu + "Auto (default)";
+            internal const string LanguageEnglish = LanguageMenu + "English";
+            internal const string LanguageJapanese = LanguageMenu + "日本語";
+            internal const string LanguageRussian = LanguageMenu + "Русский";
+            internal const string LanguageSimplifiedChinese = LanguageMenu + "简体中文";
+            internal const string CheckForUpdate = RootMenu + "Check for Update";
+            internal const string MissingSDK = RootMenu + "VRCSDK is missing or incompatible";
+            internal const string Help = RootMenu + "Help";
+            internal const string Version = RootMenu + "Version " + VRCQuestTools.Version;
+        }
+
+        internal enum MenuPriorities : int
+        {
+            ConvertAvatarForMobile = 600, // VRChat SDK/Splash Screen: 500
+            RemovePhysBones = 700,
+            RemoveMissingComponents,
+            RemoveUnsupportedComponents,
+            RemoveAllVertexColors,
+            MigrateAvatarDynamicsSettings,
+            BlendShapesCopy = 800,
+            MSMapGenerator,
+            UnitySettings = 900,
+            ClearTextureCache,
+            EnableValidationAutomator = 950,
+            EnableTextureFormatCheckOnStandalone,
+            EnableDebugLog,
+            LanguageAuto = 1000,
+            LanguageEnglish,
+            LanguageJapanese,
+            LanguageRussian,
+            LanguageSimplifiedChinese,
+            CheckForUpdate = 1100,
+            MissingSDK,
+            Help,
+            Version,
+        }
+
+        internal static class GameObjectMenuPaths
+        {
+            private const string MenuPrefix = "GameObject/Kawaii Studio/Quest Converter/";
+            internal const string ConvertAvatarForMobile = MenuPrefix + "Setup Avatar for Mobile";
+            internal const string NdmfManualBakeWithMobileSettings = MenuPrefix + "[NDMF] Manual Bake with Mobile Settings";
+            internal const string NdmfBuildAndTestWithMobileSettings = MenuPrefix + "[NDMF] Build and Test for PC with Mobile Settings";
+            internal const string RemovePhysBones = MenuPrefix + "Remove PhysBones";
+            internal const string RemoveMissingComponents = MenuPrefix + "Remove Missing Components";
+            internal const string RemoveUnsupportedComponents = MenuPrefix + "Remove Unsupported Components";
+            internal const string RemoveAllVertexColors = MenuPrefix + "Remove All Vertex Colors";
+        }
+
+        internal enum GameObjectMenuPriorities : int
+        {
+            GameObjectConvertAvatarForMobile = 30,
+            GameObjectNdmfManualBakeWithMobileSettings,
+            GameObjectNdmfBuildAndTestWithMobileSettings,
+            GameObjectRemovePhysBones = 130,
+            GameObjectRemoveMissingComponents,
+            GameObjectRemoveUnsupportedComponents,
+            GameObjectRemoveAllVertexColors,
+        }
+
+        internal static class ContextMenuPaths
+        {
+            internal const string CopyBlendShapeWeights = "CONTEXT/SkinnedMeshRenderer/Copy BlendShape Weights";
+        }
+
+        [MenuItem(MenuPaths.Help, false, (int)MenuPriorities.Help)]
+        private static void HelpMenu()
+        {
+            Application.OpenURL(VRCQuestTools.DocsURL + "?lang=auto");
+        }
+
+        [MenuItem(MenuPaths.Version, false, (int)MenuPriorities.Version)]
+        private static void Dummy()
+        {
+        }
+
+        [MenuItem(MenuPaths.Version, true)]
+        private static bool DummyValidation()
+        {
+            return false;
+        }
+    }
+}

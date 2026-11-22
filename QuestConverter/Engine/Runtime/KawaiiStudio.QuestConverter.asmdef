@@ -1,0 +1,33 @@
+{
+    "name": "KawaiiStudio.QuestConverter",
+    "rootNamespace": "KawaiiStudio.QuestConverter",
+    "references": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "VRCSDKBase.dll",
+        "VRC.Dynamics.dll",
+        "VRC.SDK3.Dynamics.PhysBone.dll",
+        "VRC.SDK3.Dynamics.Contact.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_2022_3_OR_NEWER",
+        "KSQ_VRCSDK_AVATARS"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.vrcfury.vrcfury",
+            "expression": "",
+            "define": "KSQ_VRCFURY"
+        },
+        {
+            "name": "com.vrchat.avatars",
+            "expression": "3.9.0",
+            "define": "KSQ_VRCSDK_AVATARS"
+        }
+    ],
+    "noEngineReferences": false
+}

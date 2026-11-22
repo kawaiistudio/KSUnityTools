@@ -1,0 +1,91 @@
+{
+    "name": "KawaiiStudio.QuestConverter.Editor",
+    "rootNamespace": "KawaiiStudio.QuestConverter",
+    "references": [
+        "KawaiiStudio.QuestConverter",
+        "VRC.SDK3A.Editor",
+        "VRC.SDKBase",
+        "VRC.SDKBase.Editor",
+        "nadena.dev.modular-avatar.core",
+        "nadena.dev.ndmf",
+        "com.anatawa12.avatar-optimizer.runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "VRCCore-Editor.dll",
+        "VRCSDKBase.dll",
+        "VRCSDKBase-Editor.dll",
+        "VRCSDK3A.dll",
+        "VRC.Dynamics.dll",
+        "VRC.SDK3.Dynamics.PhysBone.dll",
+        "Newtonsoft.Json.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_2022_3_OR_NEWER",
+        "KSQ_VRCSDK_AVATARS"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.nuget.newtonsoft-json",
+            "expression": "",
+            "define": "KSQ_HAS_NEWTONSOFT_JSON"
+        },
+        {
+            "name": "jp.lilxyzw.liltoon",
+            "expression": "",
+            "define": "KSQ_LILTOON"
+        },
+        {
+            "name": "jp.lilxyzw.liltoon",
+            "expression": "[0.0.0,1.10.0)",
+            "define": "KSQ_LILTOON_LEGACY"
+        },
+        {
+            "name": "jp.lilxyzw.liltoon",
+            "expression": "3.0.0-a",
+            "define": "KSQ_LILTOON_BREAKING"
+        },
+        {
+            "name": "nadena.dev.ndmf",
+            "expression": "[1.5.0,2.0.0-a)",
+            "define": "KSQ_HAS_NDMF"
+        },
+        {
+            "name": "nadena.dev.modular-avatar",
+            "expression": "",
+            "define": "KSQ_MODULAR_AVATAR"
+        },
+        {
+            "name": "nadena.dev.modular-avatar",
+            "expression": "[0.0.0,1.12.2)",
+            "define": "KSQ_MODULAR_AVATAR_LEGACY"
+        },
+        {
+            "name": "nadena.dev.modular-avatar",
+            "expression": "2.0.0-a",
+            "define": "KSQ_MODULAR_AVATAR_BREAKING"
+        },
+        {
+            "name": "nadena.dev.modular-avatar",
+            "expression": "1.16.0",
+            "define": "KSQ_MODULAR_AVATAR_SYNC_PARAMETER_SEQUENCE"
+        },
+        {
+            "name": "com.anatawa12.avatar-optimizer",
+            "expression": "",
+            "define": "KSQ_AVATAR_OPTIMIZER"
+        },
+        {
+            "name": "com.vrchat.avatars",
+            "expression": "3.9.0",
+            "define": "KSQ_VRCSDK_AVATARS"
+        }
+    ],
+    "noEngineReferences": false
+}

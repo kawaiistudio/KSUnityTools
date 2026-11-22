@@ -1,0 +1,56 @@
+using System.Linq;
+using KawaiiStudio.QuestConverter.Models;
+
+namespace KawaiiStudio.QuestConverter.Components
+{
+    /// <summary>
+    /// Interface for material conversion component.
+    /// </summary>
+    public interface IMaterialConversionComponent : IMaterialOperatorComponent
+    {
+        /// <summary>
+        /// Gets default material convert setting.
+        /// </summary>
+        IMaterialConvertSettings DefaultMaterialConvertSettings { get; }
+
+        /// <summary>
+        /// Gets or sets additional material convert settings.
+        /// </summary>
+        AdditionalMaterialConvertSettings[] AdditionalMaterialConvertSettings { get; set; }
+
+        /// <summary>
+        /// Gets a value indicating whether to remove redundant material slots that are greater than the number of submeshes.
+        /// </summary>
+        bool RemoveExtraMaterialSlots { get; }
+
+        /// <summary>
+        /// Gets NDMF phase to convert the avatar.
+        /// </summary>
+        AvatarConverterNdmfPhase NdmfPhase { get; }
+
+        /// <summary>
+        /// Gets a value indicating whether to use default material convert settings.
+        /// </summary>
+        bool IsPrimaryRoot { get; }
+
+        /// <summary>
+        /// Gets a value indicating whether to enable material preview in the editor.
+        /// </summary>
+        bool EnableMaterialPreview { get; }
+
+        /// <summary>
+        /// Gets a value indicating whether to force-enable material preview temporarily (non-serialized).
+        /// </summary>
+        bool ForceMaterialPreview { get; }
+
+        /// <summary>
+        /// Gets the cache key for the material conversion component.
+        /// </summary>
+        /// <returns>Cache key.</returns>
+        public string GetCacheKey()
+        {
+            return $"{DefaultMaterialConvertSettings.GetCacheKey()}_" +
+                   $"{string.Join("_", AdditionalMaterialConvertSettings.Select(s => s.GetCacheKey()))}";
+        }
+    }
+}

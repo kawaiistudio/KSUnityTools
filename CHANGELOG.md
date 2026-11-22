@@ -2,6 +2,30 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.19.0]
+
+**NEW: PC to Quest Converter.** `Kawaii Studio > VRC > PC to Quest Converter` makes the Quest (Android) version of a PC
+avatar in one click. Your PC avatar is not changed: a copy is made beside it, converted for Quest (Quest shaders,
+textures sized for Android, components Quest refuses removed) and the PC one is hidden; one Undo brings everything back.
+The window shows VRChat's own performance rank on PC and on Quest, switches Unity to Android and opens the VRChat SDK.
+The Quest version keeps the PC avatar's ID, so once uploaded from Android it is the Quest version of that same avatar.
+
+The conversion engine is **VRCQuestTools by kurotu** (MIT, https://github.com/kurotu/VRCQuestTools), carried under our
+own names in `QuestConverter/Engine`, so it installs with KS Unity Tools and never collides with a VRCQuestTools you
+already have (both were run side by side on the same avatar). Its licence and lilToon's (MIT) ship with it. Our own
+changes on top, each measured on a real 2.4 M-triangle avatar:
+
+- **an old lilToon (before 1.10) no longer stops the whole avatar**: the upstream engine refused it outright;
+- **masked emission kept masked**: a shader the engine does not know, with emission on but no `_EmissionMap` (its
+  emission behind a mask under another name), got the emission colour added to its whole surface;
+- **colours under other names**: `_MainColor`, `_BaseColor`, `_BaseMap`, `_AlbedoMap`... were read as white;
+- **emission that is always on** (a shader with an emission map and colour but no `_EMISSION` keyword) is kept;
+- **Kawaii Studio's own shaders**: KS Hair Realistic is converted with its own formula (its colour is mostly a tinted
+  reflection, which the generic path turned pale).
+
+Needs Unity 2022.3 and the VRChat Avatars SDK 3.9 or newer; in any other project the converter stays switched off and
+KS Unity Tools works as before. Known difference: gem shaders (lilToon Gem) come out with their plain texture colour.
+
 ## [3.18.1]
 
 **KS ANTI-RIP: a protected avatar in a project without Modular Avatar was uploaded WITHOUT its protection.** The

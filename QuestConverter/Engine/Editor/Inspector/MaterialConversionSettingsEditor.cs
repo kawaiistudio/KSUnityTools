@@ -1,0 +1,89 @@
+using KawaiiStudio.QuestConverter.Components;
+using KawaiiStudio.QuestConverter.Models;
+using UnityEditor;
+using UnityEditorInternal;
+using UnityEngine;
+
+namespace KawaiiStudio.QuestConverter.Inspector
+{
+    /// <summary>
+    /// Editor for <see cref="MaterialConversionSettings"/>.
+    /// </summary>
+    [CustomEditor(typeof(MaterialConversionSettings))]
+    internal class MaterialConversionSettingsEditor : VRCQuestToolsEditorOnlyEditorBase<MaterialConversionSettings>
+    {
+        private ReorderableList additionalMaterialConvertSettingsReorderableList;
+
+        /// <inheritdoc/>
+        protected override string Description
+        {
+            get
+            {
+                var i18n = VRCQuestToolsSettings.I18nResource;
+                return i18n.MaterialConversionSettingsEditorDescription;
+            }
+        }
+
+        /// <inheritdoc />
+        public override void OnInspectorGUIInternal()
+        {
+            var i18n = VRCQuestToolsSettings.I18nResource;
+            var editorState = EditorState.instance;
+
+            serializedObject.Update();
+
+            var useDefaultConversion = TargetComponent.IsPrimaryRoot;
+            if (!useDefaultConversion)
+            {
+                EditorGUILayout.HelpBox(i18n.MaterialConversionSettingsEditorDefaultConversionWarning, MessageType.Info);
+            }
+
+            additionalMaterialConvertSettingsReorderableList ??= MaterialConversionGUI.CreateAdditionalMaterialConvertSettingsList(serializedObject, serializedObject.FindProperty(nameof(MaterialConversionSettings.additionalMaterialConvertSettings)));
+            editorState.foldOutAdditionalMaterialSettings = MaterialConversionGUI.Draw(serializedObject, editorState.foldOutAdditionalMaterialSettings, additionalMaterialConvertSettingsReorderableList);
+
+            editorState.foldOutAdvancedSettings = Views.EditorGUIUtility.Foldout(i18n.AdvancedConverterSettingsLabel, editorState.foldOutAdvancedSettings);
+            if (editorState.foldOutAdvancedSettings)
+            {
+                using (var disabled = new EditorGUI.DisabledScope(!useDefaultConversion))
+                {
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("removeExtraMaterialSlots"), new GUIContent(i18n.RemoveExtraMaterialSlotsLabel, i18n.RemoveExtraMaterialSlotsTooltip));
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("ndmfPhase"), new GUIContent(i18n.NdmfPhaseLabel, i18n.NdmfPhaseTooltip));
+                    EditorGUILayout.PropertyField(serializedObject.FindProperty("enableMaterialPreview"), new GUIContent(i18n.EnableMaterialPreviewLabel, i18n.EnableMaterialPreviewTooltip));
+                }
+            }
+
+#if KSQ_HAS_NDMF
+            // Temporary force preview toggle (non-serialized), shown regardless of Advanced foldout state
+            using (var disabledPreview = new EditorGUI.DisabledGroupScope(Utils.ComponentUtility.IsMobileBuildTarget(TargetComponent.gameObject)))
+            {
+                var component = TargetComponent;
+                var forceLabel = component.ForceMaterialPreview ? i18n.ForceMaterialPreviewDisableLabel : i18n.ForceMaterialPreviewEnableLabel;
+                var forceTooltip = component.ForceMaterialPreview ? i18n.ForceMaterialPreviewDisableTooltip : i18n.ForceMaterialPreviewEnableTooltip;
+                var oldBg = GUI.backgroundColor;
+                if (component.ForceMaterialPreview)
+                {
+                    GUI.backgroundColor = Color.green;
+                }
+                if (GUILayout.Button(new GUIContent("[NDMF] " + forceLabel, forceTooltip)))
+                {
+                    component.forceMaterialPreview = !component.forceMaterialPreview;
+
+                    // forceMaterialPreview is not serialized and is written directly here, so Unity's object
+                    // change stream reports nothing. Tell NDMF explicitly, or the preview filters observing
+                    // this flag are never invalidated and the preview does not update.
+                    Utils.NdmfUtility.NotifyObjectUpdate(component);
+                }
+                GUI.backgroundColor = oldBg;
+            }
+#endif
+
+            serializedObject.ApplyModifiedProperties();
+        }
+
+        private class EditorState : ScriptableSingleton<EditorState>
+        {
+            public bool foldOutAdditionalMaterialSettings = true;
+            public bool foldOutAdvancedSettings;
+        }
+    }
+}

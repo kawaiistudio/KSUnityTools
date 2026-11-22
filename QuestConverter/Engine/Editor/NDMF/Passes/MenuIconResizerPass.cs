@@ -1,0 +1,114 @@
+using System.Linq;
+using KawaiiStudio.QuestConverter.Components;
+using KawaiiStudio.QuestConverter.Models;
+using KawaiiStudio.QuestConverter.Utils;
+using nadena.dev.ndmf;
+using UnityEngine;
+using VRC.SDK3.Avatars.Components;
+
+namespace KawaiiStudio.QuestConverter.Ndmf
+{
+    /// <summary>
+    /// Pass to resize menu icons in expressions menu.
+    /// </summary>
+    public class MenuIconResizerPass : Pass<MenuIconResizerPass>
+    {
+        private const int MaxActionTextureSize = 256;
+
+        /// <inheritdoc/>
+        public override string DisplayName => "Resize menu icons";
+
+        /// <summary>
+        /// Runs this pass directly for EditMode tests, bypassing the NDMF pass pipeline.
+        /// </summary>
+        /// <param name="context">BuildContext.</param>
+        internal void RunForTest(BuildContext context)
+        {
+            Execute(context);
+        }
+
+        /// <inheritdoc/>
+        protected override void Execute(BuildContext context)
+        {
+            var avatarDescriptor = context.AvatarRootObject.GetComponent<VRCAvatarDescriptor>();
+            if (avatarDescriptor == null)
+            {
+                Logger.LogWarning($"No VRCAvatarDescriptor found in the avatar root object. Skipping menu icon resizing.");
+                return;
+            }
+
+            var menu = avatarDescriptor.expressionsMenu;
+            if (menu == null)
+            {
+                return;
+            }
+
+            var icons = VRCSDKUtility.GetTexturesFromMenu(menu);
+            if (icons.Length == 0)
+            {
+                return;
+            }
+
+            var resizer = context.AvatarRootObject.GetComponentInChildren<MenuIconResizer>(true);
+            if (resizer == null)
+            {
+                return;
+            }
+
+            var target = NdmfHelper.ResolveBuildTarget(context.AvatarRootObject);
+
+            var maxSize = MaxActionTextureSize;
+            var resizeMode = target == BuildTarget.PC ? resizer.resizeModePC : resizer.resizeModeAndroid;
+            if (resizeMode != MenuIconResizer.TextureResizeMode.DoNotResize)
+            {
+                maxSize = (int)resizeMode;
+            }
+
+            var compressTextures = resizer.compressTextures;
+
+            if (maxSize == MaxActionTextureSize && !compressTextures)
+            {
+                return;
+            }
+
+            bool NeedToProcess(Texture2D texture)
+            {
+                if (texture.width > maxSize)
+                {
+                    return true;
+                }
+                if (texture.height > maxSize)
+                {
+                    return true;
+                }
+                if (compressTextures && TextureUtility.IsUncompressedFormat(texture.format))
+                {
+                    return true;
+                }
+                return false;
+            }
+            if (icons.FirstOrDefault(NeedToProcess) == null)
+            {
+                return;
+            }
+
+            var objectRegistry = context.GetState<NdmfObjectRegistry>();
+
+            var newMenu = VRCSDKUtility.DuplicateExpressionsMenu(menu);
+            avatarDescriptor.expressionsMenu = newMenu;
+            objectRegistry.RegisterReplacedObject(menu, newMenu);
+
+            var mobileTextureFormatForCompression = TextureUtility.GetCompressionFormat(resizer.mobileTextureFormat);
+
+            VRCSDKUtility.ResizeExpressionMenuIcons(newMenu, maxSize, compressTextures, (oldTex, newTex) =>
+            {
+                // CompressTextureForBuildTarget may return a different instance than newTex (e.g. the astcenc path
+                // destroys its input and returns a new Texture2D), so the compressed result -- not newTex -- must be
+                // what gets registered and ultimately wired up as the control's icon by ResizeExpressionMenuIcons.
+                var compressedTex = TextureUtility.CompressTextureForBuildTarget(newTex, UnityEditor.EditorUserBuildSettings.activeBuildTarget, mobileTextureFormatForCompression);
+                objectRegistry.RegisterReplacedObject(oldTex, compressedTex);
+                return compressedTex;
+            });
+        }
+    }
+}

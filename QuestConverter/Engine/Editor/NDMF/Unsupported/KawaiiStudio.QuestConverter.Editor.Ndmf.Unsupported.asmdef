@@ -1,0 +1,42 @@
+{
+    "name": "KawaiiStudio.QuestConverter.Editor.Ndmf.Unsupported",
+    "rootNamespace": "KawaiiStudio.QuestConverter.NonDestructive",
+    "references": [
+        "KawaiiStudio.QuestConverter",
+        "KawaiiStudio.QuestConverter.Editor",
+        "VRC.SDKBase.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "VRCSDKBase-Editor.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "KSQ_NDMF_LEGACY || KSQ_NDMF_BREAKING",
+        "UNITY_2022_3_OR_NEWER",
+        "KSQ_VRCSDK_AVATARS"
+    ],
+    "versionDefines": [
+        {
+            "name": "nadena.dev.ndmf",
+            "expression": "[0.0.0,1.5.0)",
+            "define": "KSQ_NDMF_LEGACY"
+        },
+        {
+            "name": "nadena.dev.ndmf",
+            "expression": "2.0.0-a",
+            "define": "KSQ_NDMF_BREAKING"
+        },
+        {
+            "name": "com.vrchat.avatars",
+            "expression": "3.9.0",
+            "define": "KSQ_VRCSDK_AVATARS"
+        }
+    ],
+    "noEngineReferences": false
+}

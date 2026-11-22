@@ -1,0 +1,29 @@
+using KawaiiStudio.QuestConverter.Components;
+using nadena.dev.ndmf;
+
+namespace KawaiiStudio.QuestConverter.Ndmf
+{
+    /// <summary>
+    /// Process MeshFlipper components before other polygon reduction tools.
+    /// </summary>
+    public class MeshFlipperPass : Pass<MeshFlipperPass>
+    {
+        /// <inheritdoc/>
+        public override string DisplayName => "Flip meshes before polygon reduction";
+
+        /// <summary>
+        /// Runs this pass directly for EditMode tests, bypassing the NDMF pass pipeline.
+        /// </summary>
+        /// <param name="context">BuildContext.</param>
+        internal void RunForTest(BuildContext context)
+        {
+            Execute(context);
+        }
+
+        /// <inheritdoc/>
+        protected override void Execute(BuildContext context)
+        {
+            MeshFlipperPassUtility.Execute(context, MeshFlipperProcessingPhase.BeforePolygonReduction);
+        }
+    }
+}

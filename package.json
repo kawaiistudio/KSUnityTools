@@ -1,9 +1,9 @@
 {
   "name": "com.kawaiistudio.ksunitytools",
   "displayName": "KS Unity Tools",
-  "version": "3.18.1",
+  "version": "3.19.0",
   "unity": "2019.4",
-  "description": "Kawaii Studio editor toolset for Unity: Kawaii Studio Link (Send to Unity from the Kawaii Studio app), Texture Asset To PNG, Menu Colorizer, Prefab Optimizer, Video Animator, Controller To Anim, GLB to FBX, Exporter, KS Anti-Rip (driven from the Kawaii Studio app), NSFW Detector, Tail-to-PhysBones, Contact Scanner, Constraint Tool and custom shaders. Installs its shaders, materials and output folders into Assets/Kawaii Studio.",
+  "description": "Kawaii Studio editor toolset for Unity: Kawaii Studio Link (Send to Unity from the Kawaii Studio app), PC to Quest Converter (a Quest version of an avatar in one click), Texture Asset To PNG, Menu Colorizer, Prefab Optimizer, Video Animator, Controller To Anim, GLB to FBX, Exporter, KS Anti-Rip (driven from the Kawaii Studio app), NSFW Detector, Tail-to-PhysBones, Contact Scanner, Constraint Tool and custom shaders. Installs its shaders, materials and output folders into Assets/Kawaii Studio.",
   "author": {
     "name": "Kawaii Studio",
     "url": "https://github.com/kawaiistudio"

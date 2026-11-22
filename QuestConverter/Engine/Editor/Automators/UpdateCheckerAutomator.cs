@@ -1,0 +1,107 @@
+// <copyright file="UpdateCheckerAutomator.cs" company="kurotu">
+// Copyright (c) kurotu.
+// Licensed under the MIT license. See LICENSE.txt file in the project root for full license information.
+// </copyright>
+
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+using KawaiiStudio.QuestConverter.Models;
+using UnityEditor;
+using UnityEngine;
+
+namespace KawaiiStudio.QuestConverter.Automators
+{
+    /// <summary>
+    /// Automatically check updates.
+    /// </summary>
+    [InitializeOnLoad]
+    internal static class UpdateCheckerAutomator
+    {
+        static UpdateCheckerAutomator()
+        {
+#if true // KS: no update check against the upstream project (KS Unity Tools is updated by the Kawaii Studio app)
+            return;
+#else
+            EditorApplication.playModeStateChanged += PlayModeStateChanged;
+            if (!EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                PlayModeStateChanged(PlayModeStateChange.EnteredEditMode);
+            }
+#endif
+        }
+
+        private static SemVer CurrentVersion => new SemVer(VRCQuestTools.Version);
+
+        /// <summary>
+        /// Check for updates.
+        /// </summary>
+        internal static async void CheckForUpdates()
+        {
+            await CheckForUpdates(false);
+        }
+
+        /// <summary>
+        /// Check for updates.
+        /// </summary>
+        /// <param name="ignoreCache">Ignore cache.</param>
+        /// <returns>true when update exists.</returns>
+        internal static async Task<bool> CheckForUpdates(bool ignoreCache)
+        {
+            try
+            {
+                var latestVersion = await GetLatestVersion(CurrentVersion.IsPrerelease, ignoreCache);
+                Logger.Log($"Latest version is {latestVersion} (Current: {CurrentVersion})");
+                var hasUpdate = latestVersion > CurrentVersion;
+                if (hasUpdate)
+                {
+                    Logger.LogWarning($"New version {latestVersion} is available, see {VRCQuestTools.BoothURL}");
+                }
+                return hasUpdate;
+            }
+            catch (Exception e)
+            {
+                Logger.LogWarning($"Failed to get latest version");
+                Logger.LogException(e);
+                return false;
+            }
+        }
+
+        private static void PlayModeStateChanged(PlayModeStateChange state)
+        {
+            switch (state)
+            {
+                case PlayModeStateChange.EnteredEditMode:
+                    EditorApplication.delayCall += CheckForUpdates;
+                    break;
+                case PlayModeStateChange.ExitingEditMode:
+                case PlayModeStateChange.EnteredPlayMode:
+                case PlayModeStateChange.ExitingPlayMode:
+                    break;
+                default:
+                    throw new NotImplementedException($"Case {state} is missng.");
+            }
+        }
+
+        private static async Task<SemVer> GetLatestVersion(bool allowPrerelease, bool ignoreCache)
+        {
+            var lastVersionCheckDate = VRCQuestToolsSettings.LastVersionCheckDateTime;
+            if (DateTime.Now < lastVersionCheckDate.AddDays(1) && !ignoreCache)
+            {
+                Logger.Log($"Version check is skipped until {lastVersionCheckDate.AddDays(1).ToLocalTime()}");
+                return VRCQuestToolsSettings.LatestVersionCache;
+            }
+
+            var repo = await VRCQuestTools.VPM.GetVPMRepository(VRCQuestTools.VPMRepositoryURL);
+            var vqt = repo.packages[VRCQuestTools.PackageName];
+            var latest = vqt.versions.Keys
+                .Select(v => new SemVer(v))
+                .Where(v => allowPrerelease || !v.IsPrerelease)
+                .OrderByDescending(v => v)
+                .First();
+            VRCQuestToolsSettings.LatestVersionCache = latest;
+            VRCQuestToolsSettings.LastVersionCheckDateTime = DateTime.Now;
+            return latest;
+        }
+    }
+}

@@ -1,0 +1,203 @@
+using System.Collections.Generic;
+using System.Linq;
+using KawaiiStudio.QuestConverter.Components;
+using KawaiiStudio.QuestConverter.Models;
+using KawaiiStudio.QuestConverter.Models.VRChat;
+using KawaiiStudio.QuestConverter.Utils;
+using nadena.dev.ndmf;
+using UnityEditor;
+using UnityEngine;
+using VRC.SDK3.Avatars.Components;
+using VRC.SDKBase;
+
+namespace KawaiiStudio.QuestConverter.Ndmf
+{
+    /// <summary>
+    /// Utility for avatar converter pass.
+    /// </summary>
+    internal static class AvatarConverterPassUtility
+    {
+        /// <summary>
+        /// Check if the avatar has material conversion components.
+        /// </summary>
+        /// <param name="avatarRoot">Root game object.</param>
+        /// <returns>True if the avatar has material conversion components.</returns></returns>
+        internal static bool HasMaterialOperatorComponents(GameObject avatarRoot)
+        {
+            return avatarRoot.GetComponentsInChildren<IMaterialOperatorComponent>(true).Length > 0;
+        }
+
+        /// <summary>
+        /// Resolve the NDMF phase from the avatar conversion.
+        /// </summary>
+        /// <param name="avatarRoot">Root game object.</param>
+        /// <returns>NDMF Phase.</returns>
+        internal static AvatarConverterNdmfPhase ResolveAvatarConverterNdmfPhase(GameObject avatarRoot)
+        {
+            var primaryRoot = ComponentUtility.GetPrimaryMaterialConversionComponent(avatarRoot);
+            if (primaryRoot != null)
+            {
+                return primaryRoot.NdmfPhase.Resolve(avatarRoot);
+            }
+
+            return AvatarConverterNdmfPhase.Auto.Resolve(avatarRoot);
+        }
+
+        /// <summary>
+        /// Convert the avatar with AvatarConverterSettings component in NDMF.
+        /// </summary>
+        /// <param name="context">BuildContext.</param>
+        internal static void ConvertAvatarInPass(BuildContext context)
+        {
+            var avatarDescriptor = context.AvatarRootObject.GetComponent<VRCAvatarDescriptor>();
+            if (avatarDescriptor == null)
+            {
+                Logger.LogWarning($"No VRCAvatarDescriptor found in the avatar root object. Skipping avatar conversion.");
+                return;
+            }
+
+            var buildTarget = NdmfHelper.ResolveBuildTarget(context.AvatarRootObject);
+            if (buildTarget != Models.BuildTarget.Android)
+            {
+                return;
+            }
+
+            var settings = context.AvatarRootObject.GetComponent<AvatarConverterSettings>();
+
+            try
+            {
+                TrackObjectRegistryForMaterialSwaps(avatarDescriptor);
+                TrackObjectRegistryForMaterialConversion(avatarDescriptor);
+
+                var avatar = new VRChatAvatar(avatarDescriptor);
+                var objectRegistry = context.GetState<NdmfObjectRegistry>();
+                VRCQuestTools.AvatarConverter.ConvertForQuestInPlace(avatar, VRCQuestTools.ComponentRemover, false, null, new Models.VRChat.AvatarConverter.ProgressCallback()
+                {
+                    onTextureProgress = (_, __, original, converted) =>
+                    {
+                        // Register converted material to ObjectRegistry when it is not an asset..
+                        if (converted != null && string.IsNullOrEmpty(AssetDatabase.GetAssetPath(converted)))
+                        {
+                            objectRegistry.RegisterReplacedObject(original, converted);
+                        }
+                    },
+                    onAnimationClipProgress = (_, __, original, converted) =>
+                    {
+                        if (converted != null)
+                        {
+                            objectRegistry.RegisterReplacedObject(original, converted);
+                        }
+                    },
+                    onRuntimeAnimatorProgress = (_, __, original, converted) =>
+                    {
+                        if (converted != null)
+                        {
+                            objectRegistry.RegisterReplacedObject(original, converted);
+                        }
+                    },
+                });
+
+                ConfigureMenuIconResizer(context.AvatarRootObject, settings);
+            }
+            catch (System.Exception exception)
+            {
+                NdmfPluginUtility.HandleConversionException(exception);
+            }
+        }
+
+        /// <summary>
+        /// Track object registry then add as new settings.
+        /// </summary>
+        private static void TrackObjectRegistryForMaterialConversion(VRCAvatarDescriptor avatarDescriptor)
+        {
+            var avatar = new VRChatAvatar(avatarDescriptor);
+            var currentMaterials = avatar.Materials;
+
+            var conversions = avatarDescriptor.GetComponentsInChildren<IMaterialConversionComponent>(true);
+            foreach (var conversion in conversions)
+            {
+                // Create new additional material settings by tracking object registry.
+                var newAdditionalMappings = new List<AdditionalMaterialConvertSettings>();
+                foreach (var material in currentMaterials)
+                {
+                    var original = (Material)NdmfObjectRegistry.GetReference(material).Object;
+                    if (material == original)
+                    {
+                        continue;
+                    }
+
+                    var setting = conversion.AdditionalMaterialConvertSettings.FirstOrDefault(s => s.targetMaterial == original);
+                    if (setting == null)
+                    {
+                        continue;
+                    }
+                    var newSetting = new AdditionalMaterialConvertSettings
+                    {
+                        targetMaterial = material,
+                        materialConvertSettings = setting.materialConvertSettings,
+                    };
+                    newAdditionalMappings.Add(newSetting);
+                }
+                conversion.AdditionalMaterialConvertSettings = conversion.AdditionalMaterialConvertSettings.Concat(newAdditionalMappings).ToArray();
+            }
+        }
+
+        private static void TrackObjectRegistryForMaterialSwaps(VRCAvatarDescriptor avatarDescriptor)
+        {
+            var avatar = new VRChatAvatar(avatarDescriptor);
+            var currentMaterials = avatar.Materials;
+
+            var swaps = avatarDescriptor.GetComponentsInChildren<MaterialSwap>(true);
+            foreach (var swap in swaps)
+            {
+                var newMappings = new List<MaterialSwap.MaterialMapping>();
+                foreach (var material in currentMaterials)
+                {
+                    var original = (Material)NdmfObjectRegistry.GetReference(material).Object;
+                    if (material == original)
+                    {
+                        continue;
+                    }
+
+                    var mapping = swap.materialMappings.FirstOrDefault(m => m.originalMaterial == original);
+                    if (mapping == null)
+                    {
+                        continue;
+                    }
+                    var newMapping = new MaterialSwap.MaterialMapping
+                    {
+                        originalMaterial = material,
+                        replacementMaterial = mapping.replacementMaterial,
+                    };
+                    newMappings.Add(newMapping);
+                }
+                swap.materialMappings = swap.materialMappings.Concat(newMappings).ToList();
+            }
+        }
+
+        private static void ConfigureMenuIconResizer(GameObject avatarRoot, AvatarConverterSettings settings)
+        {
+            if (settings == null)
+            {
+                return;
+            }
+
+            var resizer = avatarRoot.GetComponentInChildren<MenuIconResizer>(true);
+            if (resizer == null && !settings.resizeExpressionsMenuIcons && !settings.compressExpressionsMenuIcons)
+            {
+                return;
+            }
+
+            if (resizer == null)
+            {
+                resizer = avatarRoot.AddComponent<MenuIconResizer>();
+            }
+
+            resizer.resizeModeAndroid = settings.resizeExpressionsMenuIcons
+                ? settings.expressionsMenuIconResizeMode
+                : MenuIconResizer.TextureResizeMode.DoNotResize;
+            resizer.compressTextures = settings.compressExpressionsMenuIcons;
+            resizer.mobileTextureFormat = settings.expressionsMenuIconMobileTextureFormat;
+        }
+    }
+}

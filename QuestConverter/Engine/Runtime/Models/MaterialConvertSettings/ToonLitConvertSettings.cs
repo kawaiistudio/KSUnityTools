@@ -1,0 +1,75 @@
+using System;
+using UnityEngine;
+
+namespace KawaiiStudio.QuestConverter.Models
+{
+    /// <summary>
+    /// Material convert setting for Toon Lit shader.
+    /// </summary>
+    [Serializable]
+    public class ToonLitConvertSettings : IToonLitConvertSettings
+    {
+        /// <summary>
+        /// Whether to generate quest textures.
+        /// </summary>
+        public bool generateQuestTextures = true;
+
+        /// <summary>
+        /// Max texture size for quest.
+        /// </summary>
+        public TextureSizeLimit maxTextureSize = TextureSizeLimit.Max1024x1024;
+
+        /// <summary>
+        /// Texture format for android.
+        /// </summary>
+        public MobileTextureFormat mobileTextureFormat = MobileTextureFormat.NoOverride;
+
+        /// <summary>
+        /// Texture brightness for quest. [0-1].
+        /// </summary>
+        /// <remarks>
+        /// Toon Lit shader adds indirect light to main texture, but final color will be about 150% of texture color.
+        /// So 1.0 is too bright for light colors. (1 / 1.5 => 0.67 is a little dark.)
+        /// </remarks>
+        [Range(0.0f, 1.0f)]
+        public float mainTextureBrightness = 0.83f;
+
+        /// <summary>
+        /// Whether to generate shadow from normal map.
+        /// </summary>
+        public bool generateShadowFromNormalMap = true;
+
+        /// <summary>Serialized schema version for forward compatibility.</summary>
+        [SerializeField]
+#pragma warning disable CS0414
+        private int serializedVersion = 1;
+#pragma warning restore CS0414
+
+        /// <inheritdoc/>
+        public bool GenerateQuestTextures => generateQuestTextures;
+
+        /// <inheritdoc/>
+        public TextureSizeLimit MaxTextureSize => maxTextureSize;
+
+        /// <inheritdoc/>
+        public MobileTextureFormat MobileTextureFormat => mobileTextureFormat;
+
+        /// <inheritdoc/>
+        public float MainTextureBrightness => mainTextureBrightness;
+
+        /// <inheritdoc/>
+        public bool GenerateShadowFromNormalMap => generateShadowFromNormalMap;
+
+        /// <inheritdoc/>
+        public void LoadDefaultAssets()
+        {
+            // nothing.
+        }
+
+        /// <inheritdoc/>
+        public string GetCacheKey()
+        {
+            return JsonUtility.ToJson(this);
+        }
+    }
+}
