@@ -2,6 +2,27 @@
 
 All notable changes to KS Unity Tools are documented here.
 
+## [3.20.0]
+
+**One package: the Kawaii Studio Link is part of KS Unity Tools again.** Since 3.6.0 the Link was a second package
+(`com.kawaiistudio.link`) that KS Unity Tools pulled in, so the Creator Companion showed two Kawaii Studio packages.
+Now there is only KS Unity Tools, and the Link comes inside it (`Link/`, its own assembly `KawaiiStudio.Editor.Link`).
+Nothing changes in how you use it: same `Kawaii Studio > Kawaii Studio Link` window, same Send to Unity, Test in
+Kawaii Studio and AI on your open project.
+
+- **It repairs your project by itself.** When KS Unity Tools 3.20.0 loads in a project that still has the separate
+  Link, it takes it out: from `Packages/vpm-manifest.json` (and `Packages/manifest.json`), then its folder, and Unity
+  resolves the packages again. The original manifest is kept in `Library/KawaiiStudio`. While the old package is still
+  there the new Link stays switched off, so two Links never connect at once; it turns on by itself right after, in the
+  same session (measured: one recompile, no error). A Link left in `Assets/Kawaii Studio/Link` by an old
+  `.unitypackage` is removed the same way when KS Unity Tools is a Creator Companion package. It never runs in play
+  mode, while Unity compiles, or in a batch-mode build.
+- **World projects can install KS Unity Tools.** It no longer requires the VRChat Avatars SDK, so a world project gets
+  the Link the same way; there the avatar tools (KS Anti-Rip, PhysBones, contacts, the Quest converter...) stay
+  switched off by themselves, and everything that is not avatar-specific works.
+- The VPM listing no longer offers `com.kawaiistudio.link`, and the older KS Unity Tools versions it lists no longer
+  pull it in.
+
 ## [3.19.0]
 
 **NEW: PC to Quest Converter.** `Kawaii Studio > VRC > PC to Quest Converter` makes the Quest (Android) version of a PC

@@ -11,8 +11,15 @@
   "precompiledReferences": [],
   "autoReferenced": true,
   "defineConstraints": [
-    "VRC_SDK_VRCSDK3"
+    "VRC_SDK_VRCSDK3",
+    "!KS_WORLDS_SDK"
   ],
-  "versionDefines": [],
+  "versionDefines": [
+    {
+      "name": "com.vrchat.worlds",
+      "expression": "0.0.1",
+      "define": "KS_WORLDS_SDK"
+    }
+  ],
   "noEngineReferences": false
 }

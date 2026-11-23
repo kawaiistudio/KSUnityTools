@@ -4,10 +4,15 @@
 Every release published by .github/workflows/release.yml attaches, per package:
   - <package>-<version>.zip   the package itself
   - package.json              the manifest for that version (KS Unity Tools), or
-    <package>.package.json    the manifest of another package of the same release (since 3.6.0: the
+    <package>.package.json    the manifest of another package of the same release (3.6.0 - 3.19.x: the
                               Kawaii Studio Link, com.kawaiistudio.link, released with every tag)
-A package version carried by several releases (the Link when it did not change) is listed once, from
-the OLDEST release that carried it, so its url and zipSHA256 never move under VCC's cache.
+A package version carried by several releases is listed once, from the OLDEST release that carried it,
+so its url and zipSHA256 never move under VCC's cache.
+
+3.20.0: the Link is part of KS Unity Tools again, and the Creator Companion must show ONE package. So the
+old com.kawaiistudio.link entries are no longer listed (DROPPED_PACKAGES), and the older KS Unity Tools
+versions that depended on it are listed without that dependency (their zip is unchanged; they simply do
+not pull the Link in any more -- KS Unity Tools 3.20.0+ removes a separate Link from a project by itself).
 
 This script reads each release's package.json asset, rewrites its "url" to point
 at that release's zip, and collects them all into the VPM repository format:
@@ -34,6 +39,8 @@ LISTING_NAME = "Kawaii Studio"
 LISTING_ID = "com.kawaiistudio.listing"
 LISTING_AUTHOR = "Kawaii Studio"
 LISTING_DESCRIPTION = "Kawaii Studio Unity tools for VRChat creators."
+# packages merged into KS Unity Tools: never listed, and never a dependency of a listed version
+DROPPED_PACKAGES = {"com.kawaiistudio.link"}
 
 
 def api_get(url, token):
@@ -137,8 +144,15 @@ def add_package(packages, release, assets, manifest_asset, token):
     if not name or not version:
         print(f"  skip '{tag}' {manifest_asset['name']}: no name/version")
         return
+    if name in DROPPED_PACKAGES:
+        print(f"  - '{tag}' {name} {version}: merged into KS Unity Tools, not listed")
+        return
     if version in packages.get(name, {}).get("versions", {}):
         return  # an older release already listed this version
+    deps = manifest.get("vpmDependencies")
+    if isinstance(deps, dict):
+        for dropped in DROPPED_PACKAGES & set(deps):
+            del deps[dropped]
 
     zip_asset = find_zip(assets, manifest_asset, name, version)
     if zip_asset is None:

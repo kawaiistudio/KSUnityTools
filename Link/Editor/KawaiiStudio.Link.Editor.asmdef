@@ -1,5 +1,5 @@
 {
-  "name": "KawaiiStudio.Link.Editor",
+  "name": "KawaiiStudio.Editor.Link",
   "rootNamespace": "KawaiiStudio",
   "references": [],
   "includePlatforms": [
@@ -10,7 +10,15 @@
   "overrideReferences": false,
   "precompiledReferences": [],
   "autoReferenced": true,
-  "defineConstraints": [],
-  "versionDefines": [],
+  "defineConstraints": [
+    "!KS_SEPARATE_LINK_PACKAGE"
+  ],
+  "versionDefines": [
+    {
+      "name": "com.kawaiistudio.link",
+      "expression": "0.0.1",
+      "define": "KS_SEPARATE_LINK_PACKAGE"
+    }
+  ],
   "noEngineReferences": false
 }

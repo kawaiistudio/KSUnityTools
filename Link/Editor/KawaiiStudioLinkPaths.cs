@@ -7,14 +7,14 @@ namespace KawaiiStudio
 {
     /// <summary>
     /// Where the Link package lives and where it writes. The same layout KS Unity Tools uses: the package under
-    /// "Packages/com.kawaiistudio.link" (VCC) or "Assets/Kawaii Studio/Link" (the .unitypackage), and the files it
+    /// "Packages/com.kawaiistudio.ksunitytools/Link" (VCC; part of KS Unity Tools since 3.20.0) or "Assets/Kawaii Studio/Link" (the .unitypackage), and the files it
     /// imports under the workspace "Assets/Kawaii Studio/KS Exported" (kept apart from the package, so a package update
     /// never touches them). A trimmed copy of KS Unity Tools' KawaiiStudioPaths: the Link must not need KS Unity Tools.
     /// </summary>
     internal static class KawaiiStudioLinkPaths
     {
         public const string WorkspaceRoot = "Assets/Kawaii Studio";
-        private const string VpmRoot = "Packages/com.kawaiistudio.link";
+        private const string VpmRoot = "Packages/com.kawaiistudio.ksunitytools/Link";
         private const string LegacyRoot = "Assets/Kawaii Studio/Link";
         private static string _packageRoot;
         private static Texture2D _logo;
@@ -164,9 +164,10 @@ namespace KawaiiStudio
         private static string Combine(string a, string b) => string.IsNullOrEmpty(a) ? b : a + "/" + b;
     }
 
-    /// <summary>The Link package's version: must match Link~/package.json (the release checks it).</summary>
+    /// <summary>The Link's version. Since 3.20.0 the Link is part of KS Unity Tools and carries its version: it must match
+    /// package.json (the release checks it).</summary>
     internal static class KawaiiStudioLinkVersion
     {
-        public const string Current = "1.2.1";
+        public const string Current = "3.20.0";
     }
 }

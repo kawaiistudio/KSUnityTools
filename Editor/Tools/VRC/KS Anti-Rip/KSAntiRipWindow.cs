@@ -64,7 +64,8 @@ namespace KawaiiStudio.VRC.AntiRip
         /// </summary>
         static void OpenLinkWindow()
         {
-            var type = System.Type.GetType("KawaiiStudio.KawaiiStudioLinkWindow, KawaiiStudio.Link.Editor");
+            var type = System.Type.GetType("KawaiiStudio.KawaiiStudioLinkWindow, KawaiiStudio.Editor.Link")
+                       ?? System.Type.GetType("KawaiiStudio.KawaiiStudioLinkWindow, KawaiiStudio.Link.Editor");
             if (type != null)
             {
                 GetWindow(type, false, "Kawaii Studio Link").Show();

@@ -1,6 +1,7 @@
 # Changelog
 
-The Kawaii Studio Link package (`com.kawaiistudio.link`). It ships with KS Unity Tools (a dependency since 3.6.0) and installs alone in a world project.
+History of the Kawaii Studio Link while it was its own package (`com.kawaiistudio.link`, 3.6.0 - 3.19.x of KS Unity Tools).
+Since KS Unity Tools 3.20.0 the Link is part of KS Unity Tools and carries its version: see the main CHANGELOG.md.
 
 ## [1.2.1]
 

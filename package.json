@@ -1,9 +1,9 @@
 {
   "name": "com.kawaiistudio.ksunitytools",
   "displayName": "KS Unity Tools",
-  "version": "3.19.0",
+  "version": "3.20.0",
   "unity": "2019.4",
-  "description": "Kawaii Studio editor toolset for Unity: Kawaii Studio Link (Send to Unity from the Kawaii Studio app), PC to Quest Converter (a Quest version of an avatar in one click), Texture Asset To PNG, Menu Colorizer, Prefab Optimizer, Video Animator, Controller To Anim, GLB to FBX, Exporter, KS Anti-Rip (driven from the Kawaii Studio app), NSFW Detector, Tail-to-PhysBones, Contact Scanner, Constraint Tool and custom shaders. Installs its shaders, materials and output folders into Assets/Kawaii Studio.",
+  "description": "Kawaii Studio editor toolset for Unity, one package: Kawaii Studio Link (Send to Unity, Test in Kawaii Studio and the app's AI on your open project), PC to Quest Converter (a Quest version of an avatar in one click), Texture Asset To PNG, Menu Colorizer, Prefab Optimizer, Video Animator, Controller To Anim, GLB to FBX, Exporter, KS Anti-Rip (driven from the Kawaii Studio app), NSFW Detector, Tail-to-PhysBones, Contact Scanner, Constraint Tool and custom shaders. Avatar and world projects (the avatar tools turn on with the avatars SDK). Installs its shaders, materials and output folders into Assets/Kawaii Studio.",
   "author": {
     "name": "Kawaii Studio",
     "url": "https://github.com/kawaiistudio"
@@ -18,10 +18,7 @@
     "avatar",
     "shaders"
   ],
-  "vpmDependencies": {
-    "com.vrchat.avatars": ">=3.5.0",
-    "com.kawaiistudio.link": ">=1.2.1"
-  },
+  "vpmDependencies": {},
   "url": "https://github.com/kawaiistudio/KSUnityTools/releases/download/3.8.0/com.kawaiistudio.ksunitytools-3.8.0.zip",
   "changelogUrl": "https://github.com/kawaiistudio/KSUnityTools/blob/main/CHANGELOG.md",
   "documentationUrl": "https://github.com/kawaiistudio/KSUnityTools#readme"
